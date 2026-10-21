@@ -1,0 +1,12 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Id": "picture-in-picture",
+        "Name": "Picture in Picture",
+        "Description": "Small always-on-top video window in a screen corner (Meta+P), next corner with Meta+Shift+P; Firefox's PiP windows go there automatically.",
+        "License": "GPL-2.0+",
+        "EnabledByDefault": false
+    },
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js"
+}

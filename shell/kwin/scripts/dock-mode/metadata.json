@@ -1,0 +1,12 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Id": "dock-mode",
+        "Name": "Dock mode",
+        "Description": "Docked with an external monitor: windows stay on the external screen, the built-in screen only shows the dashboard. Enabled by tabletd.",
+        "License": "GPL-2.0+",
+        "EnabledByDefault": false
+    },
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js"
+}

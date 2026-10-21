@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Settings
+Name[ru]=Настройки
+GenericName=Tablet and system settings
+GenericName[ru]=Настройки планшета и системы
+Comment=All settings: modes, gestures, home screen, typewriter and the standard KDE settings
+Comment[ru]=Все настройки: режимы, жесты, домашний экран, печатная машинка и стандартные настройки KDE
+Exec=@HOME@/.local/bin/tablet-settings %U
+Icon=preferences-system
+Categories=Qt;KDE;Settings;
+Keywords=settings;configuration;system settings;настройки;параметры;
+StartupWMClass=tablet-settings
+X-KDE-Shortcuts=Tools

@@ -1,0 +1,11 @@
+[Unit]
+Description=Tablet control center and back gesture (org.ipad.TabletShell)
+PartOf=graphical-session.target plasma-plasmashell.service
+After=plasma-plasmashell.service
+
+[Service]
+ExecStart=%h/.local/bin/tabletshell control
+Restart=on-failure
+
+[Install]
+WantedBy=graphical-session.target

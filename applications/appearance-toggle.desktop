@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Dark theme
+Name[ru]=Тёмная тема
+Comment=Switch between light and dark theme
+Comment[ru]=Переключить светлую и тёмную тему
+Exec=@HOME@/.local/bin/appearance toggle
+Icon=weather-clear-night
+NoDisplay=true

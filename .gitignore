@@ -1,0 +1,4 @@
+src/**/Tr.js
+shell/**/Tr.js
+build/
+__pycache__/

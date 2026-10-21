@@ -1,0 +1,15 @@
+{
+    "KPackageStructure": "Plasma/Wallpaper",
+    "KPlugin": {
+        "Authors": [{ "Name": "ThinkPad 10 setup" }],
+        "Description": "Light and dark wallpaper that cross-fade with the sun",
+        "Description[ru]": "Светлые и тёмные обои плавно сменяются вслед за солнцем",
+        "Icon": "preferences-desktop-wallpaper",
+        "Id": "org.ipad.daynight",
+        "License": "GPL-2.0-or-later",
+        "Name": "Live day and night",
+        "Name[ru]": "Живые обои: день и ночь",
+        "Version": "1.0"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

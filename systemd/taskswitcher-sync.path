@@ -1,0 +1,8 @@
+[Unit]
+Description=Rebuild the task switcher copy when plasma-mobile is updated
+
+[Path]
+PathChanged=/usr/share/kwin/effects/mobiletaskswitcher/contents/ui/TaskSwitcher.qml
+
+[Install]
+WantedBy=default.target

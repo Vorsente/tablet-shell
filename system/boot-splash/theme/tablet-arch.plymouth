@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Tablet Arch
+Description=Pulsing Arch Linux logo with the device name
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/tablet-arch
+ScriptFile=/usr/share/plymouth/themes/tablet-arch/tablet-arch.script

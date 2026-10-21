@@ -1,0 +1,12 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Id": "slide-over",
+        "Name": "Slide Over",
+        "Description": "iPadOS-like Slide Over: a narrow floating window above full-screen apps (Meta+O); Quick Note opens Rnote in it.",
+        "License": "GPL-2.0+",
+        "EnabledByDefault": false
+    },
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js"
+}

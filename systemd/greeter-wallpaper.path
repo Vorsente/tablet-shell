@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch theme and lock screen wallpaper changes
+
+[Path]
+PathChanged=%h/.config/kdeglobals
+PathChanged=%h/.config/kscreenlockerrc
+
+[Install]
+WantedBy=default.target

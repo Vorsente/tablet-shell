@@ -1,0 +1,32 @@
+# Pulsing Arch Linux logo in the middle, the device name near the bottom.
+Window.SetBackgroundTopColor(0, 0, 0);
+Window.SetBackgroundBottomColor(0, 0, 0);
+
+logo.image = Image("logo.png");
+logo.sprite = Sprite(logo.image);
+caption.image = Image("caption.png");
+caption.sprite = Sprite(caption.image);
+
+fun layout() {
+    w = Window.GetWidth();
+    h = Window.GetHeight();
+    logo.sprite.SetX(Window.GetX() + w / 2 - logo.image.GetWidth() / 2);
+    logo.sprite.SetY(Window.GetY() + h / 2 - logo.image.GetHeight() / 2 - h / 20);
+    caption.sprite.SetX(Window.GetX() + w / 2 - caption.image.GetWidth() / 2);
+    caption.sprite.SetY(Window.GetY() + h - h / 8 - caption.image.GetHeight() / 2);
+}
+layout();
+
+t = 0;
+fun refresh() {
+    t++;
+    # ~2 s breathing cycle at 50 Hz, opacity between 0.25 and 1
+    logo.sprite.SetOpacity(0.625 + 0.375 * Math.Cos(t * 0.063));
+    caption.sprite.SetOpacity(0.85);
+}
+Plymouth.SetRefreshFunction(refresh);
+
+# Nothing else on screen: boot/shutdown messages and prompts are not drawn
+fun ignore(text) {}
+Plymouth.SetMessageFunction(ignore);
+Plymouth.SetUpdateStatusFunction(ignore);

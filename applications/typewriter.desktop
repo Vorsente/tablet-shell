@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Name=Typewriter
+Name[ru]=Печатная машинка
+GenericName=Screenplays in Markdown
+GenericName[ru]=Сценарии в Markdown
+Comment=Full-screen screenplay editor
+Comment[ru]=Полноэкранный редактор сценариев
+Exec=@HOME@/.local/bin/typewriter
+Icon=accessories-text-editor
+Categories=Office;WordProcessor;
+Actions=new;
+
+[Desktop Action new]
+Name=New screenplay
+Name[ru]=Новый сценарий
+Exec=@HOME@/.local/bin/typewriter new

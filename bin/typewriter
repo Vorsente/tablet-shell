@@ -1,0 +1,105 @@
+#!/bin/bash
+# Typewriter mode: open the latest screenplay (or a new one from the template) in ghostwriter
+# with a black-and-white theme, and save power while writing: dimmer screen, power-saver profile,
+# no blur, with a battery/clock pill in the corner. Everything is restored when ghostwriter closes.
+# UI text in Russian or English, like the rest of the tablet shell
+case "${LANGUAGE:-${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}}" in ru*) RU=1 ;; *) RU= ;; esac
+t() { if [ -n "$RU" ]; then printf '%s' "$1"; else printf '%s' "$2"; fi; }
+# the screenplays folder (typewriterrc [General] folder): chosen once, ~/Сценарии or ~/Screenplays
+dir=$(kreadconfig6 --file typewriterrc --group General --key folder)
+if [ -z "$dir" ]; then
+    if [ -d "$HOME/Сценарии" ] || [ -n "$RU" ]; then dir="$HOME/Сценарии"; else dir="$HOME/Screenplays"; fi
+    kwriteconfig6 --file typewriterrc --group General --key folder "$dir"
+fi
+mkdir -p "$dir"
+if ! command -v ghostwriter >/dev/null; then
+    notify-send -a "$(t "Печатная машинка" "Typewriter")" -i dialog-error "$(t "Ghostwriter не установлен" "Ghostwriter is not installed")" "sudo pacman -S ghostwriter"
+    exit 1
+fi
+pgrep -x ghostwriter >/dev/null && exit 0
+# mode change animation (tabletshell): it covers the screen while ghostwriter opens
+modeanim() { qdbus6 org.ipad.TabletShell / org.ipad.TabletShell.ModeTransition "$1" "$2" >/dev/null 2>&1; }
+modeanim "" typewriter
+if [ "$1" = new ] || ! file=$(ls -t "$dir"/*.md 2>/dev/null | head -1) || [ -z "$file" ]; then
+    file="$dir/Сценарий $(date +%F_%H-%M).md"
+    tpl="$HOME/.local/share/typewriter/template.md"
+    [ -z "$RU" ] && [ -f "$HOME/.local/share/typewriter/template.en.md" ] && tpl="$HOME/.local/share/typewriter/template.en.md"
+    sed "s/DATE/$(date +%d.%m.%Y)/" "$tpl" > "$file"
+fi
+
+# Versions: ~/Сценарии is a git repository; the open screenplay is committed when the session
+# starts, every 5 minutes while it changes and when it ends (history and restore: the pill's panel)
+git -C "$dir" rev-parse --git-dir >/dev/null 2>&1 || {
+    git -C "$dir" init -q
+    git -C "$dir" config user.name "Печатная машинка"
+    git -C "$dir" config user.email "typewriter@localhost"
+    printf 'Экспорт/\n' > "$dir/.gitignore"
+}
+snapshot() {
+    git -C "$dir" add -- "$file" 2>/dev/null
+    git -C "$dir" diff --cached --quiet -- "$file" 2>/dev/null || git -C "$dir" commit -q -m "$1" -- "$file"
+}
+snapshot "$(t "до сессии" "before session")"
+
+# the built-in screen (eDP-1, DSI-1, ...)
+out=$("$HOME/.local/bin/tablet-tools" hardware | grep -o '"internalOutput":"[^"]*"' | cut -d'"' -f4)
+out=${out:-eDP-1}
+# settings (~/.config/typewriterrc, edited in the tablet-settings app)
+tw() { kreadconfig6 --file typewriterrc --group General --key "$1" --default "$2"; }
+cap=$(tw brightness 45)
+saver=$(tw powerSaver true)
+bw=$(tw blackWhite true)
+focus=$(tw focus true)
+brightness=$(kscreen-doctor -j 2>/dev/null | sed -n 's/.*"brightness": *\([0-9.]*\).*/\1/p' | head -1 | awk '{ printf "%d", $1 * 100 + 0.5 }')
+profile=$(powerprofilesctl get 2>/dev/null)
+restore() {
+    modeanim typewriter ""
+    [ -n "$pill" ] && kill "$pill" 2>/dev/null
+    [ -n "$autosave" ] && kill "$autosave" 2>/dev/null
+    if [ -n "$baseline" ] && [ -f "$file" ]; then
+        added=$(( $(wc -w < "$file") - baseline ))
+        [ "$added" -gt 0 ] && echo $(( $(cat "$daily" 2>/dev/null || echo 0) + added )) > "$daily"
+        snapshot "$(t "сессия" "session"): $([ "$added" -gt 0 ] && echo "+$added" || echo "$added") $(t "слов" "words")"
+    fi
+    rm -f "${XDG_RUNTIME_DIR:-/tmp}/typewriter-live"
+    [ -n "$brightness" ] && kscreen-doctor "output.$out.brightness.$brightness" >/dev/null 2>&1
+    [ -n "$profile" ] && powerprofilesctl set "$profile" 2>/dev/null
+    for e in blur contrast; do qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.loadEffect "$e" >/dev/null; done
+}
+trap restore EXIT
+
+# ghostwriter.conf is a QSettings file: kwriteconfig6 would re-escape its backslashes (and break
+# the window geometry), so only the theme line is edited
+gwconf="$HOME/.config/kde.org/ghostwriter.conf"
+if [ "$bw" = true ]; then
+    if grep -q '^theme=' "$gwconf" 2>/dev/null; then
+        sed -i 's/^theme=.*/theme=Ч-Б/' "$gwconf"
+    elif grep -q '^\[Style\]' "$gwconf" 2>/dev/null; then
+        sed -i '/^\[Style\]/a theme=Ч-Б' "$gwconf"
+    else
+        printf '\n[Style]\ntheme=Ч-Б\n' >> "$gwconf"
+    fi
+else
+    sed -i '/^theme=/d' "$gwconf" 2>/dev/null
+fi
+[ -n "$brightness" ] && [ "$brightness" -gt "$cap" ] && kscreen-doctor "output.$out.brightness.$cap" >/dev/null 2>&1
+[ "$saver" = true ] && powerprofilesctl set power-saver 2>/dev/null
+for e in blur contrast; do qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.unloadEffect "$e" >/dev/null; done
+
+# Daily word goal (~/.config/typewriterrc: dailyGoal, sounds): words written today are kept in
+# ~/.local/share/typewriter/words-YYYY-MM-DD and grow by what this session adds to the file.
+daily="$HOME/.local/share/typewriter/words-$(date +%F)"
+baseline=$(wc -w < "$file")
+goal=$(kreadconfig6 --file typewriterrc --group General --key dailyGoal --default 500)
+sound=$([ "$(kreadconfig6 --file typewriterrc --group General --key sounds --default true)" = true ] && echo 1 || echo 0)
+
+# pill in the corner above the fullscreen editor: words today/goal, battery, clock, key sounds;
+# while it runs notifications are held back (focus)
+TYPEWRITER_FILE="$file" TYPEWRITER_BASELINE="$baseline" TYPEWRITER_TODAY="$(cat "$daily" 2>/dev/null || echo 0)" \
+TYPEWRITER_GOAL="$goal" TYPEWRITER_DIR="$dir" TYPEWRITER_SOUND="$sound" TYPEWRITER_FOCUS="$focus" "$HOME/.local/bin/tabletshell" pill >/dev/null 2>&1 &
+pill=$!
+( while sleep 300; do snapshot "$(t "автосохранение" "autosave")"; done ) &
+autosave=$!
+
+# accessibility on: the pill's scene list moves the cursor through AT-SPI
+QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1 ghostwriter "$file"

@@ -1,0 +1,54 @@
+#!/bin/bash
+# Reading mode: reading-mode on|off|toggle|status
+# Active window full screen, warm screen colour, dimmer brightness, Do Not Disturb, and Firefox's
+# Reader View when Firefox is in front. "off" restores everything.
+state="${XDG_RUNTIME_DIR:-/tmp}/reading-mode"
+# the built-in screen (eDP-1, DSI-1, ...)
+out=$("$HOME/.local/bin/tablet-tools" hardware | grep -o '"internalOutput":"[^"]*"' | cut -d'"' -f4)
+out=${out:-eDP-1}
+# mode change animation (tabletshell)
+modeanim() { qdbus6 org.ipad.TabletShell / org.ipad.TabletShell.ModeTransition "$1" "$2" >/dev/null 2>&1; }
+kwin_key() { qdbus6 org.kde.kglobalaccel /component/kwin invokeShortcut "$1" >/dev/null; }
+night() { kreadconfig6 --file kwinrc --group NightColor --key "$1"; }
+set_night() { kwriteconfig6 --file kwinrc --group NightColor --key "$1" --notify "$2"; }
+brightness() {
+    kscreen-doctor -j 2>/dev/null | sed -n 's/.*"brightness": *\([0-9.]*\).*/\1/p' | head -1 | awk '{ printf "%d", $1 * 100 + 0.5 }'
+}
+
+on() {
+    [ -d "$state" ] && return
+    mkdir -p "$state"
+    modeanim "" reading
+    printf '%s\n%s\n%s\n' "$(night Active)" "$(night Mode)" "$(night NightTemperature)" > "$state/night"
+    brightness > "$state/brightness"
+    # settings (~/.config/tabletrc [Reading], edited in the tablet-settings app)
+    temp=$(kreadconfig6 --file tabletrc --group Reading --key temperature --default 3400)
+    cap=$(kreadconfig6 --file tabletrc --group Reading --key brightness --default 50)
+    set_night Mode Constant; set_night NightTemperature "$temp"; set_night Active true
+    b=$(cat "$state/brightness"); [ -n "$b" ] && [ "$b" -gt "$cap" ] && kscreen-doctor "output.$out.brightness.$cap" >/dev/null 2>&1
+    kde-inhibit --notifications sleep infinity >/dev/null 2>&1 &
+    echo $! > "$state/inhibit"
+    kwin_key "Window Fullscreen"
+    if [ "$1" = firefox ]; then
+        qdbus6 org.ipad.TabletShell / org.ipad.TabletShell.Key "ctrl+alt+r" >/dev/null 2>&1
+    fi
+}
+
+off() {
+    [ -d "$state" ] || return
+    modeanim reading ""
+    { read -r active; read -r mode; read -r temp; } < "$state/night"
+    set_night NightTemperature "${temp:-4500}"; set_night Mode "${mode:-DarkLight}"; set_night Active "${active:-false}"
+    b=$(cat "$state/brightness"); [ -n "$b" ] && kscreen-doctor "output.$out.brightness.$b" >/dev/null 2>&1
+    kill "$(cat "$state/inhibit")" 2>/dev/null
+    kwin_key "Window Fullscreen"
+    rm -rf "$state"
+}
+
+case "$1" in
+    on) on "$2" ;;
+    off) off ;;
+    toggle) if [ -d "$state" ]; then off; else on "$2"; fi ;;
+    status|"") [ -d "$state" ] && echo on || echo off ;;
+    *) echo "usage: reading-mode on|off|toggle|status [firefox]" >&2; exit 1 ;;
+esac

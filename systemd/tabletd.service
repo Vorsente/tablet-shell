@@ -1,0 +1,12 @@
+[Unit]
+Description=Tablet daemon: tablet/PC mode switching, power button, pen palm rejection
+PartOf=graphical-session.target
+After=plasma-kwin_wayland.service
+
+[Service]
+ExecStart=%h/.local/bin/tabletd
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

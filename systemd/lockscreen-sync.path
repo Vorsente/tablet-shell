@@ -1,0 +1,10 @@
+[Unit]
+Description=Rebuild the lock screen when Plasma or its settings change
+
+[Path]
+PathChanged=/usr/share/plasma/shells/org.kde.plasma.desktop/metadata.json
+PathChanged=%h/.config/tablet-lockrc
+PathChanged=%h/.local/share/tablet-greeter/LockSurface.qml
+
+[Install]
+WantedBy=default.target

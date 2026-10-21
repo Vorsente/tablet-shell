@@ -1,0 +1,4 @@
+#!/bin/bash
+# Quick Note (like iPadOS): Rnote as a Slide Over panel on the right, above whatever is open.
+qdbus6 org.kde.kglobalaccel /component/kwin invokeShortcut "Slide Over Quick Note" >/dev/null
+pgrep -x rnote >/dev/null || { command -v rnote >/dev/null && setsid rnote >/dev/null 2>&1 & }

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0">
+  <kcfgfile name=""/>
+  <group name="General">
+    <!-- all set from Настройки -> Сводка -->
+    <entry name="sampleInterval" type="Int"><default>3</default></entry>
+    <entry name="clock24" type="Bool"><default>true</default></entry>
+    <entry name="showNotifications" type="Bool"><default>true</default></entry>
+    <entry name="showBattery" type="Bool"><default>true</default></entry>
+    <entry name="weatherCity" type="String"><default></default></entry>
+    <!-- widgets, in this order -->
+    <entry name="w_cpu" type="Bool"><default>true</default></entry>
+    <entry name="w_memory" type="Bool"><default>true</default></entry>
+    <entry name="w_temperature" type="Bool"><default>true</default></entry>
+    <entry name="w_claude" type="Bool"><default>true</default></entry>
+    <entry name="w_youtube" type="Bool"><default>true</default></entry>
+    <entry name="w_network" type="Bool"><default>true</default></entry>
+    <entry name="w_weather" type="Bool"><default>false</default></entry>
+    <entry name="w_media" type="Bool"><default>false</default></entry>
+    <entry name="w_battery" type="Bool"><default>false</default></entry>
+    <entry name="w_calendar" type="Bool"><default>false</default></entry>
+    <entry name="w_screentime" type="Bool"><default>false</default></entry>
+    <entry name="w_typewriter" type="Bool"><default>false</default></entry>
+    <entry name="w_system" type="Bool"><default>false</default></entry>
+  </group>
+</kcfg>

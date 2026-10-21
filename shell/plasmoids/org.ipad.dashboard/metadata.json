@@ -1,0 +1,15 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [{ "Name": "vorsente" }],
+        "Category": "Containments",
+        "Description": "System overview for the built-in screen while docked",
+        "Icon": "utilities-system-monitor",
+        "Id": "org.ipad.dashboard",
+        "License": "GPL-2.0+",
+        "Name": "Dashboard (dock)",
+        "Name[ru]": "Сводка (док-станция)"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-ContainmentType": "Desktop"
+}

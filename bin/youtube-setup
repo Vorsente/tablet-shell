@@ -1,0 +1,89 @@
+#!/bin/bash
+# One-time setup of exact YouTube subscriber numbers for the dock dashboard (YouTube Analytics API,
+# the numbers YouTube Studio shows). Opens the Google Cloud pages one by one, picks up the
+# downloaded OAuth client file, signs in, and makes sure both APIs are enabled in the project the
+# client belongs to. Safe to re-run: finished steps are skipped.
+set -u
+CLIENT=~/.config/tablet-dashboard/google-client.json
+TOKEN=~/.local/share/tablet-dashboard/google-token.json
+TOOLS=~/.local/bin/tablet-tools
+START=$(date +%s)
+# UI text in Russian or English, like the rest of the tablet shell
+case "${LANGUAGE:-${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}}" in ru*) RU=1 ;; *) RU= ;; esac
+t() { if [ -n "$RU" ]; then printf '%s' "$1"; else printf '%s' "$2"; fi; }
+step() { printf '\n\e[1m%s\e[0m\n' "$1"; }
+open() { xdg-open "$1" >/dev/null 2>&1 & }
+wait_enter() { read -r -p "  $(t "Готово? Нажмите Enter…" "Done? Press Enter…") " _; }
+project() { grep -o '"project_id": *"[^"]*"' "$CLIENT" | cut -d'"' -f4; }
+youtube() { "$TOOLS" dashboard --force | grep -o '"youtube":{[^}]*}'; }
+
+if [ ! -s "$CLIENT" ]; then
+    step "1/4  $(t "Проект Google Cloud" "Google Cloud project")"
+    echo "  $(t "Создайте проект (любое имя, например «Tablet dashboard») и выберите его вверху страницы." "Create a project (any name, e.g. \"Tablet dashboard\") and select it at the top of the page.")"
+    open "https://console.cloud.google.com/projectcreate"
+    wait_enter
+
+    step "2/4  $(t "Экран согласия" "Consent screen")"
+    echo "  $(t "Branding: имя приложения и ваша почта.  Audience: External, затем «Publish app»" "Branding: app name and your email.  Audience: External, then \"Publish app\"")"
+    echo "  $(t "(иначе Google сбрасывает вход каждые 7 дней). «Не проверено» — нормально, приложение только ваше." "(otherwise Google drops the sign-in every 7 days). \"Unverified\" is fine: the app is only yours.")"
+    open "https://console.cloud.google.com/auth/branding"
+    wait_enter
+    open "https://console.cloud.google.com/auth/audience"
+    wait_enter
+
+    step "3/4  $(t "Ключ входа" "Sign-in key")"
+    echo "  $(t "Application type: Desktop app → Create → Download JSON. Я сам найду файл в Загрузках." "Application type: Desktop app → Create → Download JSON. The file is picked up from Downloads.")"
+    open "https://console.cloud.google.com/auth/clients/create"
+    found=""
+    while [ -z "$found" ]; do
+        found=$(find ~/Downloads ~/Загрузки -maxdepth 1 -name 'client_secret*.json' -newermt "@$START" 2>/dev/null | head -1)
+        [ -z "$found" ] && sleep 2
+    done
+    mkdir -p "$(dirname "$CLIENT")"
+    install -m 600 "$found" "$CLIENT" && rm -f "$found"
+    echo "  $(t "Ключ сохранён." "Key saved.")"
+fi
+
+PROJECT=$(project)
+
+if [ ! -s "$TOKEN" ]; then
+    step "$(t "Вход в Google" "Google sign-in")"
+    echo "  $(t "Выберите аккаунт канала и отметьте оба доступа (YouTube и YouTube Analytics)." "Choose the channel's account and tick both permissions (YouTube and YouTube Analytics).")"
+    echo "  «Google hasn't verified this app» → «Advanced» → «Go to …»."
+    "$TOOLS" youtube-login >/dev/null || { t "Вход не удался. Запустите youtube-setup ещё раз." "Sign-in failed. Run youtube-setup again."; echo; read -r _; exit 1; }
+fi
+
+step "$(t "Проверка доступа к каналу" "Checking access to the channel")"
+for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    yt=$(youtube)
+    if echo "$yt" | grep -q '"subscribers"'; then
+        subs=$(echo "$yt" | grep -o '"subscribers":[0-9-]*' | cut -d: -f2)
+        title=$(echo "$yt" | grep -o '"title":"[^"]*"' | cut -d'"' -f4)
+        step "$(t "Готово: ${title:-канал} — ${subs} подписчиков. Сводка обновится сама." "Done: ${title:-channel}, ${subs} subscribers. The dashboard updates by itself.")"
+        read -r -p "$(t "Enter — закрыть" "Enter: close")" _
+        exit 0
+    fi
+    if echo "$yt" | grep -q 'enable-apis'; then
+        if [ "$attempt" = 1 ]; then
+            echo "  $(t "В проекте ${PROJECT} не включены API. Открываю обе страницы — нажмите «Enable» на каждой." "The APIs are not enabled in project ${PROJECT}. Opening both pages: press \"Enable\" on each.")"
+            open "https://console.cloud.google.com/apis/library/youtube.googleapis.com?project=${PROJECT}"
+            sleep 1
+            open "https://console.cloud.google.com/apis/library/youtubeanalytics.googleapis.com?project=${PROJECT}"
+            wait_enter
+        else
+            echo "  $(t "Google ещё применяет изменение, жду 20 с…" "Google is still applying the change, waiting 20 s…") (${attempt}/10)"
+            sleep 20
+        fi
+        continue
+    fi
+    if echo "$yt" | grep -qE 'вход истёк|не подключено|sign-in expired|not connected'; then
+        rm -f "$TOKEN"
+        "$TOOLS" youtube-login >/dev/null || break
+        continue
+    fi
+    echo "  $(t "Ошибка" "Error"): $(echo "$yt" | grep -o '"error":"[^"]*"' | cut -d'"' -f4)"
+    break
+done
+t "Не получилось. Запустите youtube-setup ещё раз или напишите мне текст ошибки." "That did not work. Run youtube-setup again or send me the error text."; echo
+read -r -p "$(t "Enter — закрыть" "Enter: close")" _
+exit 1

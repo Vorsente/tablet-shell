@@ -1,0 +1,22 @@
+#!/bin/bash
+# Light/dark appearance: appearance dark|light|auto|toggle|status
+# auto = Plasma switches the iPad light/dark themes by time of day.
+get() { kreadconfig6 --file kdeglobals --group KDE --key "$1"; }
+status() {
+    if [ "$(get AutomaticLookAndFeel)" = true ]; then echo auto
+    elif [ "$(get LookAndFeelPackage)" = org.ipad.light ]; then echo light
+    else echo dark; fi
+}
+set_fixed() {
+    kwriteconfig6 --file kdeglobals --group KDE --key AutomaticLookAndFeel false
+    plasma-apply-lookandfeel -a "org.ipad.$1" >/dev/null 2>&1
+}
+case "$1" in
+    dark|light) set_fixed "$1" ;;
+    auto) kwriteconfig6 --file kdeglobals --group KDE --key AutomaticLookAndFeel --notify true ;;
+    toggle) if [ "$(get LookAndFeelPackage)" = org.ipad.light ]; then set_fixed dark; else set_fixed light; fi ;;
+    status|"") status ;;
+    *) echo "usage: appearance dark|light|auto|toggle|status" >&2; exit 1 ;;
+esac
+# the login screen copy of the wallpaper follows the light/dark variant
+case "$1" in dark|light|auto|toggle) "$HOME/.local/bin/wallpaper" sync ;; esac

@@ -1,0 +1,37 @@
+#!/bin/bash
+# User copy of Plasma Mobile's task switcher effect (bottom-edge home / app switcher gesture)
+# with a minimum travel for flicks: the stock effect decides "flick" by speed alone, so a quick
+# tap near the bottom edge (dock, on-screen keyboard) with a few px of jitter went home or
+# opened the switcher. Rebuilt at login and when plasma-mobile changes; if the patch no longer
+# applies the copy is removed and KWin falls back to the stock effect.
+# Undo: systemctl --user disable --now taskswitcher-sync.path; rm -rf ~/.local/share/kwin/effects/mobiletaskswitcher
+set -e
+SYS=/usr/share/kwin/effects/mobiletaskswitcher
+DST="$HOME/.local/share/kwin/effects/mobiletaskswitcher"
+QML="$DST/contents/ui/TaskSwitcher.qml"
+STAMP="$DST/.source-stamp"
+stamp=$(stat -c %Y "$SYS/contents/ui/TaskSwitcher.qml" 2>/dev/null || echo none)
+[ -f "$STAMP" ] && [ "$(cat "$STAMP")" = "$stamp" ] && exit 0
+
+rm -rf "$DST"
+[ -d "$SYS" ] || exit 0
+mkdir -p "$(dirname "$DST")"
+cp -r "$SYS" "$DST"
+anchor='            if (root.state.totalSquaredVelocity > root.state.flickVelocityThreshold) {'
+if [ "$(grep -cF "$anchor" "$QML")" != 1 ]; then
+    echo "taskswitcher-sync: patch anchor not found, using the stock effect" >&2
+    rm -rf "$DST"
+    exit 0
+fi
+python3 -I - "$QML" "$anchor" <<'PY'
+import sys
+path, anchor = sys.argv[1], sys.argv[2]
+s = open(path).read()
+s = s.replace(anchor, '''            // a flick only counts after the finger really travelled (tablet tweak, see taskswitcher-sync)
+            const flickTravel = Math.sqrt(root.state.touchXPosition * root.state.touchXPosition
+                                          + root.state.touchYPosition * root.state.touchYPosition);
+            if (root.state.totalSquaredVelocity > root.state.flickVelocityThreshold
+                    && flickTravel > Kirigami.Units.gridUnit * 3) {''')
+open(path, 'w').write(s)
+PY
+echo "$stamp" > "$STAMP"

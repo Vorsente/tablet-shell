@@ -1,0 +1,12 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Id": "tablet-gestures",
+        "Name": "Tablet gestures",
+        "Description": "Swipe down from the top: control center. From the left: back. From the right: notifications.",
+        "License": "GPL-2.0+",
+        "EnabledByDefault": false
+    },
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js"
+}

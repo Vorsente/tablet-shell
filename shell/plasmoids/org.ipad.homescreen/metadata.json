@@ -1,0 +1,15 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [{ "Name": "vorsente" }],
+        "Category": "Containments",
+        "Description": "iPadOS/Android-style paged app grid",
+        "Icon": "view-app-grid-symbolic",
+        "Id": "org.ipad.homescreen",
+        "License": "GPL-2.0+",
+        "Name": "Home Screen (iPad)",
+        "Name[ru]": "Домашний экран (iPad)"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-ContainmentType": "Desktop"
+}

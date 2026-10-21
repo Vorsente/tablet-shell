@@ -1,0 +1,40 @@
+#!/bin/bash
+# Lock screen = the login screen's look: a user copy of the Plasma desktop shell package whose
+# lockscreen/ is our shared lock surface (~/.local/share/tablet-greeter: LockSurface.qml,
+# Keyboard.qml, KeyFace.qml, lockscreen/LockScreen.qml).
+# Settings: ~/.config/tablet-lockrc (Настройки -> Экран блокировки / Экран входа) become
+# lockscreen/LockConfig.js ([Lock]) and a copy for the login screen ([Login]) in
+# /var/lib/tablet-greeter/lock.conf.
+# Rebuilt at login, when Plasma is updated and when the settings change (lockscreen-sync.path).
+# Undo: rm -rf ~/.local/share/plasma/shells/org.kde.plasma.desktop
+set -e
+SYS=/usr/share/plasma/shells
+SRC="$HOME/.local/share/tablet-greeter"
+DST="$HOME/.local/share/plasma/shells/org.kde.plasma.desktop"
+CONF="$HOME/.config/tablet-lockrc"
+mkdir -p "$DST/contents/lockscreen"
+rsync -a --delete --exclude contents/lockscreen "$SYS/org.kde.plasma.desktop/" "$DST/"
+# every new screen starts with the home screen instead of the folder view
+sed -i '/^\[Desktop\]$/,/^\[/ s/^Containment=.*/Containment=org.ipad.homescreen/' "$DST/contents/defaults"
+LS="$DST/contents/lockscreen"
+rsync -a --delete "$SRC/lockscreen/" "$LS/"
+cp "$SRC/LockSurface.qml" "$SRC/Keyboard.qml" "$SRC/KeyFace.qml" "$SRC/Tr.js" "$LS/"
+
+# settings -> JS object (all values as strings; LockSurface converts)
+{
+    printf 'var config = {\n'
+    if [ -f "$CONF" ]; then
+        awk -F= '/^\[/{g=$0; next} g=="[Lock]" && NF>=2 {
+            k=$1; v=substr($0, index($0, "=")+1); gsub(/\\/, "\\\\", v); gsub(/"/, "\\\"", v);
+            printf "    \"%s\": \"%s\",\n", k, v }' "$CONF"
+    fi
+    printf '};\n'
+} > "$LS/LockConfig.js"
+
+# the login screen reads the same look (file owned by the user, created by system/greeter.sh)
+if [ -w /var/lib/tablet-greeter/lock.conf ] && [ -f "$CONF" ]; then
+    cat "$CONF" > /var/lib/tablet-greeter/lock.conf
+fi
+
+# login screen wallpaper = home/lock wallpaper in the current light/dark variant
+"$HOME/.local/bin/wallpaper" sync || true

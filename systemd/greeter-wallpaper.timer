@@ -1,0 +1,9 @@
+[Unit]
+Description=Login screen wallpaper follows the live wallpaper's day and night
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=20min
+
+[Install]
+WantedBy=timers.target

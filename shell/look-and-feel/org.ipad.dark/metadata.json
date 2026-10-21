@@ -1,0 +1,1 @@
+{"KPlugin": {"Id": "org.ipad.dark", "Name": "iPad (тёмная)", "Description": "iPadOS-style theme for KDE Plasma tablets", "License": "GPL-3.0", "Authors": [{"Name": "vorsente"}]}, "KPackageStructure": "Plasma/LookAndFeel", "X-Plasma-APIVersion": "2"}

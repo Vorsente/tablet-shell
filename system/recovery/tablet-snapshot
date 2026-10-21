@@ -1,0 +1,70 @@
+#!/bin/bash
+# System snapshots (btrfs root subvolume @, home stays untouched).
+#   tablet-snapshot create [reason]   read-only snapshot of @ into @snapshots/<date>_<reason>;
+#                                     with reason "update" also refreshes the bootable copy @rescue
+#   tablet-snapshot list              snapshot names, newest first
+#   tablet-snapshot restore NAME      after the next reboot the system is that snapshot; the current
+#                                     system is kept as @before-restore (one level of undo)
+#   tablet-snapshot delete NAME
+# Snapshots are visible read-only in /.snapshots. Runs as root (pacman hook, pkexec from Settings).
+set -euo pipefail
+KEEP=10
+DEV=$(findmnt -no SOURCE / | sed 's/\[.*//')
+TOP=/run/tablet-btrfs
+
+die() { echo "tablet-snapshot: $*" >&2; exit 1; }
+[ "$(id -u)" = 0 ] || die "must run as root"
+
+mount_top() {
+    mkdir -p "$TOP"
+    mountpoint -q "$TOP" || mount -o subvolid=5 "$DEV" "$TOP"
+    trap 'umount "$TOP" 2>/dev/null || true' EXIT
+    [ -d "$TOP/@snapshots" ] || btrfs subvolume create "$TOP/@snapshots" >/dev/null
+}
+
+valid_name() { [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}_[a-z-]+$ ]] || die "bad snapshot name: $1"; }
+
+case "${1:-}" in
+create)
+    reason=$(echo "${2:-manual}" | tr -cd 'a-z-')
+    mount_top
+    name="$(date +%Y-%m-%d_%H-%M-%S)_${reason:-manual}"
+    btrfs subvolume snapshot -r "$TOP/@" "$TOP/@snapshots/$name" >/dev/null
+    echo "snapshot: $name"
+    if [ "$reason" = update ]; then
+        # bootable copy of the system as it was before this update (menu entry "до последнего обновления")
+        [ -d "$TOP/@rescue" ] && btrfs subvolume delete "$TOP/@rescue" >/dev/null
+        btrfs subvolume snapshot "$TOP/@" "$TOP/@rescue" >/dev/null
+        sed -i 's#subvol=/@\([[:space:],]\)#subvol=/@rescue\1#' "$TOP/@rescue/etc/fstab"
+        # and the boot image that matches it (an update may replace the kernel)
+        uki=$(sed -n 's/^default_uki="\(.*\)"/\1/p' /etc/mkinitcpio.d/*.preset 2>/dev/null | head -1)
+        [ -f "$uki" ] && cp "$uki" /boot/EFI/Linux/arch-linux-rescue.efi
+    fi
+    # keep the newest $KEEP snapshots
+    ls -1 "$TOP/@snapshots" | sort -r | tail -n +$((KEEP + 1)) | while read -r old; do
+        btrfs subvolume delete "$TOP/@snapshots/$old" >/dev/null
+    done
+    ;;
+list)
+    ls -1 /.snapshots 2>/dev/null | sort -r
+    ;;
+restore)
+    name="${2:-}"; valid_name "$name"
+    mount_top
+    [ -d "$TOP/@snapshots/$name" ] || die "no such snapshot: $name"
+    [ -d "$TOP/@before-restore" ] && btrfs subvolume delete "$TOP/@before-restore" >/dev/null
+    # the running system keeps working from the renamed subvolume until the reboot
+    mv "$TOP/@" "$TOP/@before-restore"
+    btrfs subvolume snapshot "$TOP/@snapshots/$name" "$TOP/@" >/dev/null
+    echo "restored $name: reboot to use it (the previous system is kept as @before-restore)"
+    ;;
+delete)
+    name="${2:-}"; valid_name "$name"
+    mount_top
+    btrfs subvolume delete "$TOP/@snapshots/$name" >/dev/null
+    ;;
+*)
+    echo "usage: tablet-snapshot create [reason] | list | restore NAME | delete NAME" >&2
+    exit 2
+    ;;
+esac

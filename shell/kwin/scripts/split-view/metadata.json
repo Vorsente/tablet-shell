@@ -1,0 +1,12 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Id": "split-view",
+        "Name": "Split View",
+        "Description": "iPadOS-like Split View: the active window and the previous one side by side (Meta+S toggles).",
+        "License": "GPL-2.0+",
+        "EnabledByDefault": false
+    },
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js"
+}

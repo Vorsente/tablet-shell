@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0">
+  <kcfgfile name=""/>
+  <group name="General">
+    <entry name="dockSpace" type="Int"><default>88</default></entry>
+    <!-- set by ~/.local/bin/tablet-mode-switch: keyboard/dock attached -->
+    <entry name="pcMode" type="Bool"><default>false</default></entry>
+    <!-- red unread badges on app icons (tablet-settings app) -->
+    <entry name="showBadges" type="Bool"><default>true</default></entry>
+    <!-- the wallpaper by the current weather (WeatherEffects.qml); with live wallpapers (tabletrc
+         [Appearance] liveWallpaper, mirrored here by tablet-settings) it moves: rain runs, snow falls -->
+    <entry name="weatherOnWallpaper" type="Bool"><default>true</default></entry>
+    <entry name="liveWallpaper" type="Bool"><default>true</default></entry>
+    <!-- JSON list: "app.desktop", {"folder": "Name", "apps": ["a.desktop", ...]} or
+         {"widget": "weather|calendar|clock|typewriter|screentime|battery", "size": "small|wide"} -->
+    <entry name="layout" type="String"><default></default></entry>
+    <!-- city of the weather widget (Open-Meteo geocoding, like the dashboard) -->
+    <entry name="weatherCity" type="String"><default></default></entry>
+    <!-- Today page: widgets in order (JSON list of kinds; "note" = the quick note) -->
+    <entry name="todayWidgets" type="String"><default>["weather","calendar","youtube","typewriter","weekly","linux","russia","note","rates","sky","onthisday","claude","screentime","battery"]</default></entry>
+    <!-- the two starter widgets were put on the first page once -->
+    <entry name="widgetsSeeded" type="Bool"><default>false</default></entry>
+  </group>
+</kcfg>
