@@ -90,9 +90,9 @@ def recent_changes(sha, installed, limit=12):
             break
         commit = item.get('commit') or {}
         title = str(commit.get('message') or '').strip().splitlines()[0:1]
-        date = str((commit.get('committer') or {}).get('date') or '')[:10]
+        when = str((commit.get('committer') or {}).get('date') or '')
         if title:
-            changes.append({'title': title[0][:160], 'date': date, 'sha': commit_sha[:7]})
+            changes.append({'title': title[0][:160], 'date': when[:10], 'time': when, 'sha': commit_sha[:7]})
     return changes
 
 
@@ -147,7 +147,16 @@ def check(home):
     except OSError:
         installed_date = ''
     remote_date = changes[0]['date'] if changes else ''
-    older = bool(remote_date and installed_date and remote_date < installed_date and not local)
+    # GitHub gives UTC times and the file age is local: compare instants, not calendar dates, and
+    # warn only when the installed files are more than a day newer than GitHub's head (a ZIP of
+    # the same commit installed later must not look newer).
+    older = False
+    if changes and installed_date and not local:
+        try:
+            remote_time = datetime.datetime.fromisoformat(changes[0]['time'].replace('Z', '+00:00')).timestamp()
+            older = stamp - remote_time > 86400
+        except (KeyError, ValueError):
+            older = False
     return {**remote, 'installed': local or 'local',
             'changes': changes, 'remoteDate': remote_date, 'installedDate': installed_date,
             'older': older,
