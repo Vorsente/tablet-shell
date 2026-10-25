@@ -12,13 +12,43 @@ SYS=/usr/share/plasma/shells
 SRC="$HOME/.local/share/tablet-greeter"
 DST="$HOME/.local/share/plasma/shells/org.kde.plasma.desktop"
 CONF="$HOME/.config/tablet-lockrc"
+STYLE=$(kreadconfig6 --file tabletrc --group Appearance --key shellStyle 2>/dev/null || true)
+[ "$STYLE" = pixel ] || STYLE=apple
+# Plasma 6's locker uses the *active Plasma shell package*, not a standalone
+# look-and-feel/lockscreen directory. Do not change a third-party shell package.
+[ -f "$SYS/org.kde.plasma.desktop/metadata.json" ] || {
+    echo "Missing system Plasma shell package: $SYS/org.kde.plasma.desktop" >&2; exit 1;
+}
+[ -f "$SRC/lockscreen/LockScreen.qml" ] && [ -f "$SRC/LockSurface.qml" ] || {
+    echo "Missing installed tablet-shell lock screen QML; reinstall tablet-shell." >&2; exit 1;
+}
+active=$(kreadconfig6 --file plasmashellrc --group Shell --key ShellPackage 2>/dev/null || true)
+case "$active" in
+    ''|org.kde.plasma.desktop) ;;
+    *) echo "Active Plasma shell '$active' is not the tablet-shell desktop; refusing to overwrite its lock screen." >&2; exit 1 ;;
+esac
 mkdir -p "$DST/contents/lockscreen"
-rsync -a --delete --exclude contents/lockscreen "$SYS/org.kde.plasma.desktop/" "$DST/"
+rsync -a --delete --exclude /contents/lockscreen/ "$SYS/org.kde.plasma.desktop/" "$DST/"
 # every new screen starts with the home screen instead of the folder view
 sed -i '/^\[Desktop\]$/,/^\[/ s/^Containment=.*/Containment=org.ipad.homescreen/' "$DST/contents/defaults"
 LS="$DST/contents/lockscreen"
 rsync -a --delete "$SRC/lockscreen/" "$LS/"
 cp "$SRC/LockSurface.qml" "$SRC/Keyboard.qml" "$SRC/KeyFace.qml" "$SRC/Tr.js" "$LS/"
+# A previous global theme can leave a Greeter Theme override that defeats the
+# user-level shell package. Clear only the known defaults/our former themes;
+# preserve other third-party lockscreen configuration.
+greeter_theme=$(kreadconfig6 --file kscreenlockerrc --group Greeter --key Theme 2>/dev/null || true)
+case "$greeter_theme" in
+    ''|org.kde.breeze.desktop|org.ipad.light|org.ipad.dark|org.tabletshell.pixel.light|org.tabletshell.pixel.dark)
+        kwriteconfig6 --file kscreenlockerrc --group Greeter --key Theme --delete ;;
+    *) echo "Custom kscreenlocker theme '$greeter_theme' left untouched." >&2 ;;
+esac
+# Explicitly select the matching user-level shell in case Plasma cached another package.
+kwriteconfig6 --file plasmashellrc --group Shell --key ShellPackage org.kde.plasma.desktop
+cmp -s "$SRC/LockSurface.qml" "$LS/LockSurface.qml" &&
+    cmp -s "$SRC/lockscreen/LockScreen.qml" "$LS/LockScreen.qml" || {
+        echo 'Lock screen files were not installed correctly' >&2; exit 1;
+    }
 
 # settings -> JS object (all values as strings; LockSurface converts)
 {
@@ -28,13 +58,22 @@ cp "$SRC/LockSurface.qml" "$SRC/Keyboard.qml" "$SRC/KeyFace.qml" "$SRC/Tr.js" "$
             k=$1; v=substr($0, index($0, "=")+1); gsub(/\\/, "\\\\", v); gsub(/"/, "\\\"", v);
             printf "    \"%s\": \"%s\",\n", k, v }' "$CONF"
     fi
+    printf '    "shellStyle": "%s"\n' "$STYLE"
     printf '};\n'
 } > "$LS/LockConfig.js"
 
 # the login screen reads the same look (file owned by the user, created by system/greeter.sh)
-if [ -w /var/lib/tablet-greeter/lock.conf ] && [ -f "$CONF" ]; then
-    cat "$CONF" > /var/lib/tablet-greeter/lock.conf
+if [ -w /var/lib/tablet-greeter/lock.conf ]; then
+    [ ! -f "$CONF" ] || cat "$CONF" > /var/lib/tablet-greeter/lock.conf
+    # QSettings reads the login theme from [Login], even if no user look settings exist.
+    kwriteconfig6 --file /var/lib/tablet-greeter/lock.conf --group Login --key shellStyle "$STYLE"
 fi
 
+# Keep a marker so the next lock has a fresh QML import even if KPackage cached the
+# old directory mtime; do not restart kscreenlocker or interrupt an active PAM prompt.
+if [ -f "$LS/LockSurface.qml" ]; then touch "$LS/LockSurface.qml"; fi
 # login screen wallpaper = home/lock wallpaper in the current light/dark variant
-"$HOME/.local/bin/wallpaper" sync || true
+if [ -x "$HOME/.local/bin/wallpaper" ]; then
+    "$HOME/.local/bin/wallpaper" sync ||
+        echo 'Could not sync the login wallpaper; the lock screen QML was installed.' >&2
+fi

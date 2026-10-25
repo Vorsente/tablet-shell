@@ -1,14 +1,19 @@
 // Minimal web app window: webapp-runner <id> <name> <url>
 // The id becomes the Wayland app id, so the dock and task switcher show the app's own icon.
 #include <QGuiApplication>
+#include <cstdio>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QtWebEngineQuick/QtWebEngineQuick>
+#include <QtCore/qlogging.h>
 
 int main(int argc, char *argv[])
 {
+    // Keep Qt diagnostics silent without an app-local helper declaration.
+    // TABLET_SHELL_DEBUG=1 keeps Qt/QML messages for troubleshooting
+    if (!qEnvironmentVariableIsSet("TABLET_SHELL_DEBUG")) qInstallMessageHandler([](QtMsgType, const QMessageLogContext &, const QString &) {});
     if (argc < 4) {
-        qWarning("usage: webapp-runner <id> <name> <url>");
+        std::fputs("usage: webapp-runner <id> <name> <url>\n", stderr);
         return 1;
     }
     QtWebEngineQuick::initialize();

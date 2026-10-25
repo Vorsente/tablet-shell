@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# A distraction-reduced coding session, with the same lifecycle as typewriter:
+# transition -> editor -> restore power, brightness, effects and notifications.
+# No logs, no automatic commits, no edits to existing projects.
+set -u
+case "${LANGUAGE:-${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}}" in ru*) RU=1 ;; *) RU= ;; esac
+trmsg() { if [[ -n "$RU" ]]; then printf '%s' "$1"; else printf '%s' "$2"; fi; }
+notify_error() { command -v notify-send >/dev/null && notify-send -a "tablet-shell" -i dialog-error "$(trmsg 'Режим кодинга' 'Coding mode')" "$1" || printf '%s\n' "$1" >&2; }
+config() { kreadconfig6 --file codingrc --group General --key "$1" --default "$2"; }
+modeanim() { qdbus6 org.ipad.TabletShell / org.ipad.TabletShell.ModeTransition "$1" "$2" >/dev/null 2>&1 || true; }
+ready() { qdbus6 org.ipad.TabletShell / org.ipad.TabletShell.ModeReady >/dev/null 2>&1 || true; }
+
+command -v kreadconfig6 >/dev/null || { notify_error "KConfig is not installed"; exit 1; }
+# LazyVim is launched through an independent Neovim config. The installer
+# provisions its plugins and terminal; never switch the user's default nvim setup.
+for cmd in konsole nvim; do
+    command -v "$cmd" >/dev/null || { notify_error "$(trmsg 'Не установлен:' 'Missing:') $cmd — ./install.sh"; exit 1; }
+done
+config_root=${XDG_CONFIG_HOME:-$HOME/.config}
+if [[ ! -f "$config_root/tablet-shell-lazyvim/init.lua" ]]; then
+    notify_error "$(trmsg 'LazyVim не установлен. Запустите ./install.sh' 'LazyVim is not installed. Run ./install.sh')"
+    exit 1
+fi
+
+folder=$(config folder "")
+if [[ -z "$folder" ]]; then
+    folder="$HOME/$(trmsg 'Проекты' 'Projects')"
+    kwriteconfig6 --file codingrc --group General --key folder "$folder"
+fi
+# Only absolute paths in HOME, no running this launcher as root.
+if (( EUID == 0 )) || [[ "$folder" != /* ]] || [[ "$folder" == /root || "$folder" == /root/* ]]; then
+    notify_error "$(trmsg 'Недопустимый каталог проектов' 'Invalid projects folder')"
+    exit 1
+fi
+mkdir -p -- "$folder" || exit 1
+folder=$(cd -- "$folder" && pwd -P) || exit 1
+
+state="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}"
+# Serialize sessions for correct restoration of global display/power state.
+exec {mode_lock}>"$state/tablet-shell-coding-$(id -u).lock" || exit 1
+flock -n "$mode_lock" || exit 0
+
+focus=$(config focus true)
+power_saver=$(config powerSaver true)
+reduce_effects=$(config reduceEffects true)
+cap=$(config brightness 55)
+[[ "$cap" =~ ^[0-9]+$ ]] || cap=55
+(( cap >= 10 && cap <= 100 )) || cap=55
+
+orig_profile=""; orig_brightness=""; output=""; focus_pid=""; ready_pid=""
+declare -a effects=()
+if command -v powerprofilesctl >/dev/null; then
+    orig_profile=$(powerprofilesctl get 2>/dev/null || true)
+fi
+# Read only the brightness of the built-in panel, not a secondary monitor.
+if command -v kscreen-doctor >/dev/null && command -v python3 >/dev/null; then
+    mapfile -t display < <(kscreen-doctor -j 2>/dev/null | python3 -c '
+import json,sys
+try:
+ for o in json.load(sys.stdin).get("outputs",[]):
+  name=str(o.get("name",""))
+  if name.startswith(("eDP", "DSI", "LVDS")) and isinstance(o.get("brightness"), (int,float)):
+   print(name); print(round(o["brightness"]*100)); break
+except (ValueError,TypeError,KeyError): pass
+' 2>/dev/null)
+    if (( ${#display[@]} == 2 )) && [[ "${display[1]}" =~ ^[0-9]+$ ]]; then
+        output=${display[0]}
+        orig_brightness=${display[1]}
+    fi
+fi
+
+restore() {
+    trap - EXIT HUP INT TERM
+    [[ -n "$ready_pid" ]] && kill "$ready_pid" 2>/dev/null || true
+    [[ -n "$focus_pid" ]] && kill "$focus_pid" 2>/dev/null || true
+    if [[ -n "$output" && -n "$orig_brightness" ]]; then
+        kscreen-doctor "output.$output.brightness.$orig_brightness" >/dev/null 2>&1 || true
+    fi
+    if [[ -n "$orig_profile" ]]; then
+        powerprofilesctl set "$orig_profile" >/dev/null 2>&1 || true
+    fi
+    for effect in "${effects[@]}"; do
+        qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.loadEffect "$effect" >/dev/null 2>&1 || true
+    done
+    modeanim coding ""
+}
+trap restore EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# An old Konsole window must not prematurely signal ModeReady.
+qdbus6 org.ipad.TabletShell / org.ipad.TabletShell.WindowActivated "" >/dev/null 2>&1 || true
+modeanim "" coding
+if command -v notify-send >/dev/null; then
+    notify-send -a "tablet-shell" -i applications-development         "$(trmsg 'Режим кодинга' 'Coding mode')"         "$(trmsg 'Режим кодинга включён. Открывается LazyVim.' 'Coding mode is on. LazyVim is opening.')" >/dev/null 2>&1 || true
+fi
+if [[ "$focus" == true ]]; then
+    # Inhibitor is tied to this process' DBus connection and released on exit.
+    "$HOME/.local/bin/tabletshell" codingfocus >/dev/null 2>&1 &
+    focus_pid=$!
+fi
+if [[ "$power_saver" == true ]] && command -v powerprofilesctl >/dev/null; then
+    powerprofilesctl set power-saver >/dev/null 2>&1 || true
+fi
+if [[ -n "$output" && -n "$orig_brightness" ]] && ((orig_brightness > cap)); then
+    kscreen-doctor "output.$output.brightness.$cap" >/dev/null 2>&1 || true
+fi
+if [[ "$reduce_effects" == true ]]; then
+    for effect in blur contrast; do
+        loaded=$(qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.isEffectLoaded "$effect" 2>/dev/null || true)
+        if [[ "$loaded" == true ]]; then
+            if qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.unloadEffect "$effect" >/dev/null 2>&1; then
+                effects+=("$effect")
+            fi
+        fi
+    done
+fi
+
+# The full-screen animation remains in place until the new terminal window is
+# visible. ModeTransition has an additional safety timeout if the DBus connection
+# is unavailable. Do not confuse another already-open Konsole with this launch:
+# WindowActivated was reset before starting this session.
+(
+    for _ in {1..48}; do
+        active=$(qdbus6 org.ipad.TabletShell / org.ipad.TabletShell.CurrentApp 2>/dev/null || true)
+        [[ "${active,,}" == *konsole* ]] && break
+        sleep 0.25
+    done
+    ready
+) >/dev/null 2>&1 &
+ready_pid=$!
+
+# --nofork keeps the process attached to the coding session, so closing Konsole
+# restores power, display, KWin effects and notifications. -e must be LAST.
+# The project directory is opened in LazyVim without touching existing files.
+konsole --nofork --fullscreen --hide-menubar --hide-tabbar --profile TabletShellCoding \
+    --workdir "$folder" -e env NVIM_APPNAME=tablet-shell-lazyvim nvim .

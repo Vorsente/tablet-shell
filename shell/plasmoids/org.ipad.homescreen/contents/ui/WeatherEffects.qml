@@ -44,7 +44,10 @@ Item {
     // still snow = snow lying on the mountains
     readonly property real mode: kind[0] === 2 && !animated ? 4 : kind[0]
     readonly property bool active: kind[0] > 0 && wallpaper !== null && shown
-    readonly property real scale: animated ? 0.5 : 1
+    // The old full-screen shader used TWO render targets, one at native resolution.
+    // At 2560x1600 this was a sizeable GPU bandwidth penalty during swipes/zoom.
+    // Sampling the wallpaper directly is sufficient for both still and animated effects.
+    readonly property real textureFactor: animated ? 0.5 : 0.75
     readonly property bool storm: allowed && code >= 95
     visible: active
 
@@ -52,16 +55,17 @@ Item {
         id: wall
         sourceItem: fx.active ? fx.wallpaper : null
         hideSource: false
-        mipmap: true
-        textureSize: Qt.size(Math.max(1, fx.width * fx.scale), Math.max(1, fx.height * fx.scale))
+        mipmap: false
+        live: fx.active && fx.animated
+        textureSize: Qt.size(Math.max(1, Math.round(fx.width * fx.textureFactor)), Math.max(1, Math.round(fx.height * fx.textureFactor)))
         visible: false
     }
 
     Item {
         anchors.fill: parent
-        layer.enabled: fx.active
-        layer.smooth: true
-        layer.textureSize: Qt.size(Math.max(1, width * fx.scale), Math.max(1, height * fx.scale))
+        // Do not render the shader a second time through Item.layer. The effect
+        // already samples the downscaled source texture.
+        layer.enabled: false
 
         ShaderEffect {
             id: shader
@@ -79,7 +83,7 @@ Item {
     }
 
     Timer {
-        interval: 33
+        interval: 50
         repeat: true
         running: fx.active && fx.visible && fx.animated
         onTriggered: shader.time = (shader.time + 0.033) % 3600

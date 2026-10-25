@@ -1,0 +1,10 @@
+{
+  "KPlugin": {
+    "Id": "tablet-pixel-light",
+    "Name": "Tablet Pixel Light",
+    "Description": "Opaque Material surfaces for Tablet Shell",
+    "Version": "1.0",
+    "License": "GPL-3.0-or-later"
+  },
+  "X-Plasma-API": "5.0"
+}

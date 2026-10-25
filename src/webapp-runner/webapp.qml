@@ -24,6 +24,19 @@ Window {
         }
         settings.touchIconsEnabled: true
         settings.scrollAnimatorEnabled: true
+        settings.fullScreenSupportEnabled: true
+
+        // the site's own fullscreen (YouTube's ⛶ button, double tap on a video): the window follows
+        property int windowedVisibility: Window.Windowed
+        onFullScreenRequested: request => {
+            if (request.toggleOn) {
+                windowedVisibility = win.visibility === Window.FullScreen ? Window.Windowed : win.visibility;
+                win.showFullScreen();
+            } else {
+                win.visibility = windowedVisibility;
+            }
+            request.accept();
+        }
 
         onNewWindowRequested: request => Qt.openUrlExternally(request.requestedUrl)
         onPermissionRequested: permission => {
@@ -40,5 +53,6 @@ Window {
     Shortcut { sequences: ["Alt+Left", "Back"]; onActivated: view.goBack() }
     Shortcut { sequences: ["Alt+Right", "Forward"]; onActivated: view.goForward() }
     Shortcut { sequences: ["F5", "Ctrl+R"]; onActivated: view.reload() }
+    Shortcut { sequence: "Escape"; enabled: view.isFullScreen; onActivated: view.fullScreenCancelled() }
     Shortcut { sequence: "F11"; onActivated: win.visibility = win.visibility === Window.FullScreen ? Window.Windowed : Window.FullScreen }
 }

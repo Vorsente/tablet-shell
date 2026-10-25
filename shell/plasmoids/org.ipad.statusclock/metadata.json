@@ -1,0 +1,14 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [{ "Name": "vorsente" }],
+        "Category": "Date and Time",
+        "Description": "iPadOS status bar clock: time and date in one line",
+        "Icon": "preferences-system-time",
+        "Id": "org.ipad.statusclock",
+        "License": "GPL-2.0+",
+        "Name": "Status bar clock",
+        "Name[ru]": "Часы строки состояния"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

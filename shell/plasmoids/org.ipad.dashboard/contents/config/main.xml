@@ -2,6 +2,8 @@
 <kcfg xmlns="http://www.kde.org/standards/kcfg/1.0">
   <kcfgfile name=""/>
   <group name="General">
+    <!-- Whole-shell visual family; mirrored from tabletrc [Appearance] -->
+    <entry name="shellStyle" type="String"><default>apple</default></entry>
     <!-- all set from Настройки -> Сводка -->
     <entry name="sampleInterval" type="Int"><default>3</default></entry>
     <entry name="clock24" type="Bool"><default>true</default></entry>

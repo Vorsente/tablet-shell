@@ -16,11 +16,17 @@ Rectangle {
     readonly property var d: home.homeData
     readonly property real u: Math.min(width / (wide ? 2 : 1), height) / 12   // text unit
 
-    radius: Math.min(width, height) * 0.13
-    color: home.pal.card
+    // Material: a tonal container in the widget's own hue (home.tone), large fixed corners
+    radius: home.pixel ? Math.min(30, Math.min(width, height) * 0.16) : Math.min(width, height) * 0.13
+    color: home.pixel ? home.tone(kind).container : home.pal.card
     border.color: home.pal.cardBorder
-    border.width: 1
+    border.width: home.pixel ? 0 : 1
     clip: true
+
+    GlassSheen {
+        home: card.home
+        visible: !card.home.pixel
+    }
 
     readonly property color text: home.pal.text
     readonly property color secondary: home.pal.secondary
@@ -63,7 +69,7 @@ Rectangle {
     component Big: Text {
         color: card.text
         font.pixelSize: card.u * 3.4
-        font.weight: Font.Light
+        font.weight: card.home.pixel ? Font.Medium : Font.Light
     }
     component Ring: Canvas {
         property real value: 0
@@ -92,13 +98,24 @@ Rectangle {
 
     Loader {
         anchors.fill: parent
-        anchors.margins: card.u * 1.3
-        sourceComponent: ({
+        anchors.margins: card.home.pixel ? Math.min(22, card.u * 1.4) : card.u * 1.3
+        // Entirely different Material content rather than painting iPad cards purple.
+        sourceComponent: card.home.pixel ? pixelContent : ({
             clock: clockView, weather: weatherView, calendar: calendarView,
             battery: batteryView, typewriter: typewriterView, screentime: screentimeView,
             youtube: youtubeView, linux: newsView, russia: newsView, rates: ratesView,
             claude: claudeView, onthisday: onThisDayView, sky: skyView, weekly: weeklyView,
         })[card.kind] || null
+    }
+
+    Component {
+        id: pixelContent
+        PixelWidgetContent {
+            home: card.home
+            kind: card.kind
+            wide: card.wide
+            d: card.d
+        }
     }
 
     // ---- clock ----
@@ -112,7 +129,7 @@ Rectangle {
                 text: Qt.formatTime(card.d.now, "HH:mm")
                 color: card.text
                 font.pixelSize: card.u * (card.wide ? 5.6 : 3.5)
-                font.weight: Font.Light
+                font.weight: card.home.pixel ? Font.Medium : Font.Light
             }
             Caption { text: card.d.now.toLocaleDateString(card.ru, "d MMMM yyyy") }
         }
@@ -168,7 +185,7 @@ Rectangle {
                     text: card.d.now.getDate()
                     color: card.text
                     font.pixelSize: card.u * 5
-                    font.weight: Font.Light
+                    font.weight: card.home.pixel ? Font.Medium : Font.Light
                 }
                 Item { Layout.fillHeight: true }
                 Caption { text: card.ru.standaloneMonthName(card.d.now.getMonth()) + " " + card.d.now.getFullYear() }
@@ -343,7 +360,7 @@ Rectangle {
                 text: card.d.duration(s.total || 0)
                 color: card.text
                 font.pixelSize: card.u * 2.6
-                font.weight: Font.Light
+                font.weight: card.home.pixel ? Font.Medium : Font.Light
             }
             Item { Layout.fillHeight: true }
             Repeater {
@@ -418,7 +435,7 @@ Rectangle {
                             text: row.value
                             color: card.text
                             font.pixelSize: card.u * 1.45
-                            font.weight: Font.Light
+                            font.weight: card.home.pixel ? Font.Medium : Font.Light
                             elide: Text.ElideRight
                             Layout.maximumWidth: row.width - bars.width - card.u * 3.5
                         }
@@ -490,7 +507,7 @@ Rectangle {
                         text: parent.parent.b ? parent.parent.b.health.toLocaleString(card.ru, "f", 1) + "%" : "—"
                         color: card.text
                         font.pixelSize: card.u * 1.45
-                        font.weight: Font.Light
+                        font.weight: card.home.pixel ? Font.Medium : Font.Light
                     }
                     Caption {
                         Layout.fillWidth: true

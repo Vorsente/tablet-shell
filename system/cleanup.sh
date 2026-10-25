@@ -40,7 +40,6 @@ ORPHANS=$(pacman -Qdtq || true)
 # package cache: only the installed versions (btrfs snapshots cover rollbacks)
 pacman -Sc --noconfirm >/dev/null
 rm -f /var/lib/systemd/coredump/*
-journalctl --vacuum-time=7d >/dev/null
 echo
 df -h / | tail -1
 t "Готово." "Done."; echo

@@ -26,6 +26,8 @@
 #include <QRegion>
 #include <QScreen>
 #include <QSettings>
+#include "../common/ui-style.h"
+#include <QtCore/qlogging.h>
 #include <QTimer>
 
 // ---- input panel: our window as a zwp_input_panel_surface_v1 --------------------------------
@@ -364,6 +366,9 @@ static QScreen *panelScreen()
 
 int main(int argc, char *argv[])
 {
+    // Keep Qt diagnostics silent without an app-local helper declaration.
+    // TABLET_SHELL_DEBUG=1 keeps Qt/QML messages for troubleshooting
+    if (!qEnvironmentVariableIsSet("TABLET_SHELL_DEBUG")) qInstallMessageHandler([](QtMsgType, const QMessageLogContext &, const QString &) {});
     // input panels must not take focus away from the text field
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("tablet-keyboard"));
@@ -382,13 +387,14 @@ int main(int argc, char *argv[])
     if (!demo) {
         auto *w = dynamic_cast<QtWaylandClient::QWaylandWindow *>(view.handle());
         if (!shell.start() || !w) {
-            qWarning("tablet-keyboard: no zwp_input_panel_v1 (not started by KWin as its input method?)");
             return 1;
         }
         w->setShellIntegration(&shell);
     }
 
     Keyboard keyboard(&view);
+    UiStyle uiStyle;
+    view.rootContext()->setContextProperty(QStringLiteral("uiStyle"), &uiStyle);
     view.rootContext()->setContextProperty(QStringLiteral("keyboard"), &keyboard);
     view.rootContext()->setContextProperty(QStringLiteral("demoMode"), qEnvironmentVariable("TABLET_KEYBOARD_DEMO"));
     const QString dir = qEnvironmentVariable("TABLET_KEYBOARD_QML", QStringLiteral(KEYBOARD_QML_DIR));

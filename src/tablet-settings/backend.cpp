@@ -12,6 +12,7 @@
 #include <QDBusReply>
 #include <QDBusVariant>
 #include <QJsonObject>
+#include <QJsonDocument>
 #include <QQmlEngine>
 #include <QDir>
 #include <QFile>
@@ -19,6 +20,7 @@
 #include <QStandardPaths>
 #include <QStorageInfo>
 #include <QCoreApplication>
+#include <algorithm>
 #include <QSysInfo>
 
 #include "tr.h"
@@ -437,7 +439,6 @@ QObject *Backend::loadModule(const QString &id)
     }
     const auto result = KQuickConfigModuleLoader::loadModule(md, this, {}, m_engine);
     if (!result) {
-        qWarning() << "tablet-settings: cannot load" << id << result.errorText;
         return nullptr;
     }
     KQuickConfigModule *module = result.plugin;
@@ -450,4 +451,119 @@ void Backend::openModuleWindow(const QString &id) const
 {
     // the real one: /usr/local/bin/kcmshell6 may forward to this app
     QProcess::startDetached(QStringLiteral("/usr/bin/kcmshell6"), {id});
+}
+
+// GitHub update runs outside the GUI thread. Do not use Backend::run() here: builds
+// can take minutes. The helper emits small JSON-lines status packets, never log files.
+void Backend::launchUpdater(const QStringList &args)
+{
+    if (m_updateProcess) {
+        return;
+    }
+    auto *proc = new QProcess(this);
+    m_updateProcess = proc;
+    m_updateBuffer.clear();
+    proc->setProgram(home() + QStringLiteral("/.local/bin/tablet-shell-github-update"));
+    proc->setArguments(args);
+    proc->setStandardErrorFile(QProcess::nullDevice());
+    connect(proc, &QProcess::readyReadStandardOutput, this, [this] { consumeUpdaterOutput(); });
+    connect(proc, &QProcess::finished, this, [this, proc](int code, QProcess::ExitStatus status) {
+        consumeUpdaterOutput();
+        if (status != QProcess::NormalExit || code != 0) {
+            if (m_updateInfo.value(QStringLiteral("stage")) != QLatin1String("error") &&
+                m_updateInfo.value(QStringLiteral("stage")) != QLatin1String("cancelled")) {
+                m_updateInfo[QStringLiteral("stage")] = QStringLiteral("error");
+                m_updateInfo[QStringLiteral("message")] = QStringLiteral("Не удалось обновить оболочку. Проверьте соединение и повторите попытку.");
+                Q_EMIT updateInfoChanged();
+            }
+        }
+        m_updateProcess = nullptr;
+        proc->deleteLater();
+    });
+    connect(proc, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) {
+            m_updateInfo[QStringLiteral("stage")] = QStringLiteral("error");
+            m_updateInfo[QStringLiteral("message")] = QStringLiteral("Не найден компонент обновления. Переустановите tablet-shell из архива.");
+            Q_EMIT updateInfoChanged();
+        }
+    });
+    m_updateInfo[QStringLiteral("stage")] = QStringLiteral("checking");
+    m_updateInfo.remove(QStringLiteral("message"));
+    m_updateInfo.remove(QStringLiteral("progress"));
+    Q_EMIT updateInfoChanged();
+    proc->start();
+}
+
+void Backend::consumeUpdaterOutput()
+{
+    if (!m_updateProcess) {
+        return;
+    }
+    m_updateBuffer += m_updateProcess->readAllStandardOutput();
+    // A malicious/buggy helper cannot grow the UI process's buffer indefinitely.
+    if (m_updateBuffer.size() > 32 * 1024) {
+        m_updateBuffer.clear();
+        m_updateInfo[QStringLiteral("stage")] = QStringLiteral("error");
+        m_updateInfo[QStringLiteral("message")] = QStringLiteral("Некорректный ответ обновляющего компонента.");
+        Q_EMIT updateInfoChanged();
+        m_updateProcess->kill();
+        return;
+    }
+    int newline;
+    while ((newline = m_updateBuffer.indexOf('\n')) >= 0) {
+        const QByteArray line = m_updateBuffer.left(newline);
+        m_updateBuffer.remove(0, newline + 1);
+        const auto doc = QJsonDocument::fromJson(line);
+        if (!doc.isObject()) {
+            continue;
+        }
+        const auto obj = doc.object().toVariantMap();
+        for (auto it = obj.constBegin(); it != obj.constEnd(); ++it) {
+            m_updateInfo.insert(it.key(), it.value());
+        }
+        Q_EMIT updateInfoChanged();
+    }
+}
+
+void Backend::checkForUpdates()
+{
+    if (!m_updateProcess) {
+        // Never keep stale SHA as a valid install target during a new check.
+        m_updateInfo.clear();
+        m_updateInfo[QStringLiteral("stage")] = QStringLiteral("idle");
+        launchUpdater({QStringLiteral("check")});
+    }
+}
+
+void Backend::installGitHubUpdate()
+{
+    if (m_updateProcess) {
+        return;
+    }
+    const QString sha = m_updateInfo.value(QStringLiteral("sha")).toString();
+    if (sha.size() != 40 || !std::all_of(sha.cbegin(), sha.cend(), [](QChar c) {
+            return c.isDigit() || (c >= QLatin1Char('a') && c <= QLatin1Char('f'));
+        })) {
+        m_updateInfo[QStringLiteral("stage")] = QStringLiteral("error");
+        m_updateInfo[QStringLiteral("message")] = QStringLiteral("Сначала проверьте наличие обновлений.");
+        Q_EMIT updateInfoChanged();
+        return;
+    }
+    launchUpdater({QStringLiteral("install"), QStringLiteral("--sha"), sha});
+}
+
+void Backend::cancelUpdate()
+{
+    if (!m_updateProcess) {
+        return;
+    }
+    const QString stage = m_updateInfo.value(QStringLiteral("stage")).toString();
+    // Never terminate build/install in the middle of copying binaries and services.
+    if (stage == QLatin1String("installing")) {
+        return;
+    }
+    m_updateProcess->kill();
+    m_updateInfo[QStringLiteral("stage")] = QStringLiteral("cancelled");
+    m_updateInfo[QStringLiteral("message")] = QStringLiteral("Обновление отменено.");
+    Q_EMIT updateInfoChanged();
 }

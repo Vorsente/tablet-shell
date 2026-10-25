@@ -1,7 +1,8 @@
 // tablet-keyboard: iPad-style keyboard for the ThinkPad 10. English / Russian (with ё and ъ),
 // digits & symbols, emoji, a numeric pad for number fields, split mode (pinch apart / together,
 // or the globe menu), light/dark following the system.
-// Gestures: flick a key down = its grey symbol; hold = alternates (е → ё, ь → ъ, accents, «»);
+// Gestures: flick a key down = its grey symbol; hold = a menu with the grey symbol first, then the
+// alternates (е → ё, ь → ъ, accents, «»; the first one is shown in the key's corner);
 // hold space = trackpad (move the cursor); swipe across space = switch language; double space
 // = ". "; double-tap shift = caps lock (green LED); hold the globe = menu.
 import QtQuick
@@ -12,6 +13,8 @@ import "Tr.js" as Tr
 
 Item {
     id: root
+
+    readonly property bool pixel: uiStyle.pixel
 
     // ---- options (Настройки -> Клавиатура, ~/.config/tablet-keyboardrc, applied live) ----
     function opt(key, def) {
@@ -26,7 +29,7 @@ Item {
     readonly property bool trackpadOn: flag("spaceTrackpad", true)
     readonly property bool spaceSwipeOn: flag("spaceSwipe", true)
     readonly property bool spaceLabelOn: flag("spaceLabel", true)
-    readonly property bool roundKeys: opt("keyShape", "thinkpad") === "rounded"
+    readonly property bool roundKeys: root.pixel || opt("keyShape", "thinkpad") === "rounded"
     readonly property bool soundOn: flag("sound", false)
     readonly property real soundVolume: Number(opt("soundVolume", 50)) / 100
     readonly property var languages: ["en", "ru"].filter(l => flag(l === "en" ? "layoutEn" : "layoutRu", true))
@@ -45,17 +48,17 @@ Item {
                                : Application.styleHints.colorScheme === Qt.ColorScheme.Dark
     QtObject {
         id: pal
-        readonly property color bg: root.dark ? "#1C1C1E" : "#D3D6DD"
-        readonly property color hairline: root.dark ? "#2C2C2E" : "#BFC3CB"
-        readonly property color key: root.dark ? "#56565B" : "#FFFFFF"
-        readonly property color keyDown: root.dark ? "#3A3A3E" : "#C9CCD3"
-        readonly property color special: root.dark ? "#353539" : "#AEB4BF"
-        readonly property color shadow: root.dark ? Qt.rgba(0, 0, 0, 0.55) : Qt.rgba(0.35, 0.37, 0.42, 0.55)
-        readonly property color text: root.dark ? "#FFFFFF" : "#0B0B0C"
+        readonly property color bg: root.pixel ? (root.dark ? "#201D26" : "#F3EDF7") : root.dark ? "#1C1C1E" : "#D3D6DD"
+        readonly property color hairline: root.pixel ? (root.dark ? "#49454F" : "#CAC4D0") : root.dark ? "#2C2C2E" : "#BFC3CB"
+        readonly property color key: root.pixel ? (root.dark ? "#49454F" : "#FFFFFF") : root.dark ? "#56565B" : "#FFFFFF"
+        readonly property color keyDown: root.pixel ? (root.dark ? "#6750A4" : "#D0BCFF") : root.dark ? "#3A3A3E" : "#C9CCD3"
+        readonly property color special: root.pixel ? (root.dark ? "#625B71" : "#E6E0E9") : root.dark ? "#353539" : "#AEB4BF"
+        readonly property color shadow: root.pixel ? "transparent" : root.dark ? Qt.rgba(0, 0, 0, 0.55) : Qt.rgba(0.35, 0.37, 0.42, 0.55)
+        readonly property color text: root.pixel ? (root.dark ? "#E6E0E9" : "#1D1B20") : root.dark ? "#FFFFFF" : "#0B0B0C"
         readonly property color subText: root.dark ? "#A1A1A8" : "#7C818B"
         readonly property color ledOff: root.dark ? "#2A2A2D" : "#9097A3"
-        readonly property color popup: root.dark ? "#6A6A70" : "#FFFFFF"
-        readonly property color accent: "#0A84FF"
+        readonly property color popup: root.pixel ? (root.dark ? "#605D68" : "#EADDFF") : root.dark ? "#6A6A70" : "#FFFFFF"
+        readonly property color accent: root.pixel ? (root.dark ? "#D0BCFF" : "#6750A4") : "#0A84FF"
     }
 
     // ---- key clicks (sounds/make-sounds.py): letters, backspace, the rest ----
@@ -82,6 +85,7 @@ Item {
     property var lastSpace: 0
     property var lastShiftTap: 0
     property var pressed: ({})                  // key index -> true
+    property var flicks: ({})                   // key index -> 0..1 while pulled down
 
     readonly property bool padMode: [2, 3, 4].indexOf(keyboard.purpose) !== -1   // digits, number, phone
     readonly property var layout: padMode ? L.numpad
@@ -220,6 +224,29 @@ Item {
         return shift > 0 && page === "letters" ? ch.toUpperCase() : ch;
     }
 
+    // long press menu of a letter key: the grey (flick) symbol, then its alternates
+    function holdOptions(spec) {
+        const out = [];
+        const add = ch => {
+            const t = letter(ch);
+            if (t !== "" && out.indexOf(t) === -1) out.push(t);
+        };
+        add(spec[2]);
+        (spec[4] || []).forEach(add);
+        return out;
+    }
+    // corner hint: the first alternate that is not the key itself
+    function hintFor(spec) {
+        const alts = (spec[4] || []).filter(a => a !== spec[1]);
+        return alts.length ? letter(alts[0]) : "";
+    }
+    function setFlick(i, v) {
+        if ((flicks[i] || 0) === v) return;
+        const f = Object.assign({}, flicks);
+        if (v > 0) f[i] = v; else delete f[i];
+        flicks = f;
+    }
+
     function typeKey(k, st) {
         const t = k.spec[0];
         if (t === "c") {
@@ -307,6 +334,8 @@ Item {
                 down: !!root.pressed[index]
                 blank: root.trackpad
                 showSecondary: root.flicksOn
+                flick: root.flicks[index] || 0
+                hint: modelData.spec[0] === "c" ? root.hintFor(modelData.spec) : ""
                 smileFactor: root.roundKeys ? 0 : 1
                 label: modelData.spec[0] === "c" ? root.letter(modelData.spec[1])
                      : modelData.spec[0] === "spc" ? (root.layout.letters && root.spaceLabelOn ? root.layout.name : "")
@@ -374,8 +403,13 @@ Item {
                     while (st.lastX - tp.x > step) { keyboard.key("Left"); st.lastX -= step; }
                     while (tp.y - st.lastY > step * 2) { keyboard.key("Down"); st.lastY += step * 2; }
                     while (st.lastY - tp.y > step * 2) { keyboard.key("Up"); st.lastY -= step * 2; }
-                } else if (root.flicksOn && k.spec[0] === "c" && k.spec[2] !== "" && dy > root.keyH * 0.4) {
-                    st.flick = true;
+                } else if (root.flicksOn && k.spec[0] === "c" && k.spec[2] !== "" && !st.held && dy > root.keyH * 0.08) {
+                    // the grey symbol follows the finger; past 40 % of a key it is the one typed
+                    root.setFlick(st.i, Math.min(1, dy / (root.keyH * 0.4)));
+                    st.flick = dy > root.keyH * 0.4;
+                } else if (st.flick || root.flicks[st.i]) {
+                    root.setFlick(st.i, 0);
+                    st.flick = false;
                 } else if (root.spaceSwipeOn && root.languages.length > 1 && k.spec[0] === "spc" && Math.abs(dx) > root.keyH * 1.4 && Date.now() - st.t0 < 450) {
                     st.swipe = true;
                 }
@@ -396,6 +430,7 @@ Item {
                 delete root.touches[tp.pointId];
                 if (!st || st.i < 0) continue;
                 setPressed(st.i, false);
+                root.setFlick(st.i, 0);
                 if (st.done) continue;
                 const k = root.keys[st.i];
                 if (root.popup && root.popup.id === tp.pointId) {
@@ -419,7 +454,7 @@ Item {
             for (const tp of points) {
                 const st = root.touches[tp.pointId];
                 delete root.touches[tp.pointId];
-                if (st && st.i >= 0) setPressed(st.i, false);
+                if (st && st.i >= 0) { setPressed(st.i, false); root.setFlick(st.i, 0); }
             }
             root.popup = null;
             root.trackpad = false;
@@ -429,6 +464,7 @@ Item {
                 root.touches[id].done = true;
             }
             root.pressed = {};
+            root.flicks = {};
             root.popup = null;
         }
     }
@@ -443,7 +479,7 @@ Item {
             const now = Date.now();
             for (const id in root.touches) {
                 const st = root.touches[id];
-                if (st.done || st.i < 0 || st.flick || st.swipe) continue;
+                if (st.done || st.i < 0 || st.flick || st.swipe || root.flicks[st.i]) continue;
                 const k = root.keys[st.i];
                 const held = now - st.t0;
                 if (k.spec[0] === "bs") {
@@ -454,8 +490,8 @@ Item {
                     if (k.spec[0] === "spc" && root.trackpadOn) {
                         st.trackpad = true;
                         root.trackpad = true;
-                    } else if (k.spec[0] === "c" && k.spec[4]) {
-                        root.openPopup(id, k, k.spec[4].map(s => root.letter(s)), null);
+                    } else if (k.spec[0] === "c" && root.holdOptions(k.spec).length) {
+                        root.openPopup(id, k, root.holdOptions(k.spec), null);
                     } else if (k.spec[0] === "glb") {
                         root.openPopup(id, k, [root.split ? Tr.t("Объединить") : Tr.t("Разделить"), Tr.t("Эмодзи"), Tr.t("Скрыть")],
                                        [() => root.split = !root.split, () => root.page = "emoji", () => keyboard.hide()]);
@@ -468,36 +504,78 @@ Item {
         const cell = Math.max(keyH * 0.95, actions ? keyH * 2.3 : 0);
         const w = cell * options.length;
         const x = Math.max(side, Math.min(width - side - w, k.x + k.w / 2 - (actions ? w / 2 : cell / 2)));
-        popup = { id: Number(id), options: options, actions: actions, selected: 0, cell: cell, x: x, y: k.y - keyH * 1.15 };
+        popup = { id: Number(id), options: options, actions: actions, selected: 0, cell: cell, x: x, y: k.y - keyH * 1.1,
+                  key: Qt.rect(k.x + hGap / 2, k.y, k.w - hGap, keyH) };
     }
 
-    // alternates / globe menu popup
-    Rectangle {
+    // alternates / globe menu: an iOS callout, the bubble grows out of the held key
+    Item {
+        id: callout
         visible: !!root.popup
-        x: root.popup ? root.popup.x : 0
-        y: root.popup ? Math.max(0, root.popup.y) : 0
-        width: root.popup ? root.popup.cell * root.popup.options.length : 0
-        height: root.keyH * 1.05
-        radius: root.keyH * 0.22
-        color: pal.popup
-        border.color: Qt.rgba(0, 0, 0, 0.15)
-        Row {
+        anchors.fill: parent
+        readonly property rect keyRect: root.popup ? root.popup.key : Qt.rect(0, 0, 0, 0)
+        readonly property real bubbleY: root.popup ? Math.max(0, root.popup.y) : 0
+        readonly property real bubbleH: root.keyH * 1.05
+        readonly property real bubbleW: root.popup ? root.popup.cell * root.popup.options.length : 0
+
+        component CalloutShape: Item {
+            property color fill
             anchors.fill: parent
+            // the held key
+            Rectangle {
+                x: callout.keyRect.x; y: callout.keyRect.y
+                width: callout.keyRect.width; height: callout.keyRect.height
+                radius: root.keyH * 0.16
+                color: parent.fill
+            }
+            // neck between key and bubble
+            Rectangle {
+                x: callout.keyRect.x
+                y: callout.bubbleY + callout.bubbleH - radius
+                width: callout.keyRect.width
+                height: Math.max(0, callout.keyRect.y - y + radius)
+                color: parent.fill
+                radius: 0
+            }
+            // the bubble
+            Rectangle {
+                x: root.popup ? root.popup.x : 0
+                y: callout.bubbleY
+                width: callout.bubbleW
+                height: callout.bubbleH
+                radius: root.keyH * 0.24
+                color: parent.fill
+            }
+        }
+        CalloutShape { fill: pal.shadow; anchors.topMargin: 2; anchors.bottomMargin: -2; opacity: 0.6 }
+        CalloutShape { fill: pal.popup }
+
+        Row {
+            x: root.popup ? root.popup.x : 0
+            y: callout.bubbleY
+            height: callout.bubbleH
             Repeater {
                 model: root.popup ? root.popup.options : []
-                delegate: Rectangle {
+                delegate: Item {
                     required property string modelData
                     required property int index
+                    readonly property bool current: index === root.popup.selected
                     width: root.popup.cell
-                    height: parent.height
-                    radius: root.keyH * 0.2
-                    color: index === root.popup.selected ? pal.accent : "transparent"
+                    height: callout.bubbleH
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: root.keyH * 0.08
+                        radius: root.keyH * 0.18
+                        color: pal.accent
+                        opacity: parent.current ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: 90 } }
+                    }
                     Text {
                         anchors.centerIn: parent
                         text: modelData
-                        color: index === root.popup.selected ? "white" : pal.text
+                        color: parent.current ? "white" : pal.text
                         font.family: "Inter"
-                        font.pixelSize: root.popup.actions ? root.keyH * 0.3 : root.keyH * 0.42
+                        font.pixelSize: root.popup.actions ? root.keyH * 0.3 : root.keyH * 0.46
                     }
                 }
             }

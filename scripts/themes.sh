@@ -3,7 +3,8 @@
 # installed for the user, then adjusted for the shell:
 #   - WhiteSurLiquid plasma themes: KPlugin Id = directory name (upstream says "WhiteSur", so Plasma
 #     cannot tell the variants apart), iPad glass panel and dock (make-glass-panel.py)
-#   - icons (WhiteSur, -light, -dark)
+#   - icons (WhiteSur, -light, -dark) and the MacTahoe icon theme (macOS 26 style, used by the iPad
+#     looks), plus MacTahoe-style icons for the apps it has no icon for (tablet-tools app-icons)
 #   - wallpaper packages Sonoma-iPad / Monterey-iPad / Ventura-iPad with light and dark images,
 #     which the day/night wallpaper fades between
 # Usage: scripts/themes.sh    (re-run safely; downloads go to ~/.cache/tablet-shell)
@@ -14,6 +15,7 @@ SHARE=$HOME/.local/share
 KDE_REV=cf4df59ce91004f7ea39358b1b8ff917d5c329f7
 ICONS_REV=73d8040da51a9ed74e47c7366e7e9ff437601a5c
 WALL_REV=5c1d7ca20b8de0a7efe443792c19e49277262e02
+TAHOE_REV=839848b9a8a38a92a6936e30c4abe35cc6f2546d
 mkdir -p "$CACHE"
 
 fetch() {   # fetch REPO REV
@@ -49,6 +51,15 @@ if [ ! -f "$SHARE/icons/WhiteSur/index.theme" ] || [ "$(cat "$SHARE/icons/.white
     (cd "$src" && ./install.sh -d "$SHARE/icons" >/dev/null)
     echo $ICONS_REV > "$SHARE/icons/.whitesur-rev"
 fi
+
+echo "  MacTahoe icons"
+if [ ! -f "$SHARE/icons/MacTahoe/index.theme" ] || [ "$(cat "$SHARE/icons/.mactahoe-rev" 2>/dev/null)" != $TAHOE_REV ]; then
+    src=$(fetch MacTahoe-icon-theme $TAHOE_REV)
+    (cd "$src" && ./install.sh -d "$SHARE/icons" -t default >/dev/null)
+    echo $TAHOE_REV > "$SHARE/icons/.mactahoe-rev"
+fi
+# apps the theme has no icon for (installing the theme again removed the earlier ones)
+[ -x "$HOME/.local/bin/app-icons-refresh" ] && "$HOME/.local/bin/app-icons-refresh" || true
 
 echo "  wallpapers"
 src=$(fetch WhiteSur-wallpapers $WALL_REV)

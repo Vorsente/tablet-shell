@@ -1,10 +1,13 @@
 #!/bin/bash
 # Installs the tablet shell for the current user on Arch Linux + KDE Plasma 6 (Wayland).
-#   ./install.sh                 everything for the user (no sudo): build, files, themes, settings
+#   ./install.sh                 build, files, themes, settings; sudo for packages and installed greeter
 #   ./install.sh --city Berlin   weather city (default: the time zone's city)
 #   ./install.sh --no-themes     keep the current themes/icons/wallpapers
+#   ./install.sh --update-only  update installed files/services without resetting KDE settings
 #   ./install.sh --no-build      reuse build/ (after an earlier ./build.sh)
 #   ./install.sh --containments  only switch the screens to the home screen / dashboard again
+#   ./install.sh --no-greeter-update  skip refreshing an installed tablet-shell login screen
+#   ./install.sh --install-greeter  explicitly replace the system display manager with tablet greeter
 # System parts (login screen, device access, snapshots, boot splash, language, Android) are
 # separate sudo scripts in system/; the end of the run lists them.
 set -e
@@ -16,12 +19,24 @@ CITY=
 THEMES=1
 BUILD=1
 ONLY_CONTAINMENTS=
+GREETER_UPDATE=1
+GREETER_INSTALL=
+UPDATE_ONLY=
+PROTECT_INPUT_LOCK=
+SKIP_FAILED_BUILDS=${TABLET_SHELL_SKIP_FAILED_BUILDS:-0}
 while [ $# -gt 0 ]; do
     case "$1" in
-        --city) CITY=$2; shift ;;
+        --city)
+            [ "$#" -ge 2 ] && [ -n "$2" ] && [[ "$2" != --* ]] || { echo "--city requires a city name" >&2; exit 1; }
+            CITY=$2; shift ;;
         --no-themes) THEMES= ;;
         --no-build) BUILD= ;;
         --containments) ONLY_CONTAINMENTS=1 ;;
+        --no-greeter-update) GREETER_UPDATE= ;;
+        --install-greeter) GREETER_INSTALL=1 ;;
+        --update-only) UPDATE_ONLY=1; PROTECT_INPUT_LOCK=1; GREETER_UPDATE=; THEMES= ;;
+        --skip-failed-builds) SKIP_FAILED_BUILDS=1 ;;
+        --require-all) SKIP_FAILED_BUILDS=0 ;;
         -h|--help) sed -n '2,9p' "$0"; exit 0 ;;
         *) echo "unknown option: $1"; exit 1 ;;
     esac
@@ -77,6 +92,9 @@ if check:
 open(p, "w").write("\n".join(lines))
 PY
 }
+if [ -n "$UPDATE_ONLY" ] && [ -n "$GREETER_INSTALL" ]; then
+    die "Нельзя устанавливать экран входа в режиме обновления." "Cannot install a new login manager in update-only mode."
+fi
 if [ -n "$ONLY_CONTAINMENTS" ]; then
     containments
     exit 0
@@ -89,9 +107,9 @@ PLASMA=$(plasmashell --version 2>/dev/null | grep -o '[0-9]\+' | head -1)
 [ "${PLASMA:-0}" -ge 6 ] || die "Нужна KDE Plasma 6." "Needs KDE Plasma 6."
 [ "${XDG_SESSION_TYPE:-}" = wayland ] || echo "  $(t "Внимание: оболочка рассчитана на сеанс Wayland." "Note: the shell is made for a Wayland session.")"
 NEED=(base-devel git curl rsync python qt6-base qt6-declarative qt6-wayland qt6-multimedia qt6-multimedia-ffmpeg
-      qt6-webengine qt6-shadertools qt6-tools wayland wayland-protocols kirigami kcmutils kconfig kcoreaddons
+      qt6-webengine qt6-shadertools qt6-tools wayland wayland-protocols kirigami kcmutils kconfig kcoreaddons kwindowsystem
       plasma-workspace plasma5support plasma-pa plasma-mobile libksysguard ksystemstats layer-shell-qt libkscreen
-      spectacle ghostwriter hunspell-en_us librsvg libpulse upower wl-clipboard at-spi2-core inter-font ttf-croscore)
+      spectacle ghostwriter krita power-profiles-daemon neovim konsole ripgrep fd fzf lazygit tree-sitter-cli ttf-jetbrains-mono-nerd hunspell-en_us librsvg libpulse upower wl-clipboard at-spi2-core inter-font ttf-croscore)
 MISSING=()
 for p in "${NEED[@]}"; do
     # fonts installed by hand count too
@@ -104,13 +122,78 @@ done
 if [ ${#MISSING[@]} -gt 0 ]; then
     echo "  $(t "Не хватает пакетов:" "Missing packages:") ${MISSING[*]}"
     echo "  sudo pacman -S --needed ${MISSING[*]}"
-    sudo pacman -S --needed "${MISSING[@]}" || die "Установите пакеты и запустите снова." "Install the packages and run again."
+    if ! sudo pacman -S --needed "${MISSING[@]}"; then
+        if [ "$SKIP_FAILED_BUILDS" = 1 ]; then
+            echo '  WARNING: missing dependencies; installed components will be preserved if rebuilding fails.' >&2
+        else
+            die "Установите пакеты и запустите снова." "Install the packages and run again."
+        fi
+    fi
+fi
+
+# ---- 1b. isolated LazyVim installation ---------------------------------------------------------
+say "Среда программирования LazyVim" "LazyVim development environment"
+if ! bash ./scripts/install-lazyvim.sh; then
+    if [ "$SKIP_FAILED_BUILDS" = 1 ]; then
+        echo '  WARNING: LazyVim setup skipped; existing settings are untouched.' >&2
+    else
+        die "Не удалось установить LazyVim." "Failed to set up LazyVim."
+    fi
 fi
 
 # ---- 2. build ----------------------------------------------------------------------------------
-if [ -n "$BUILD" ] || [ ! -x build/tabletd ]; then
-    say "Сборка (на медленном планшете до 10 минут)" "Building (up to 10 minutes on a slow tablet)"
-    PREFIX=$SHARE ./build.sh
+if [ -n "$BUILD" ]; then
+    say "Сборка компонентов" "Building components"
+    PREFIX="$SHARE" TABLET_SHELL_SKIP_FAILED_BUILDS="$SKIP_FAILED_BUILDS" \
+        TABLET_SHELL_EXCLUDE_INPUT_LOCK="$([ -n "$PROTECT_INPUT_LOCK" ] && echo 1 || echo 0)" bash ./build.sh
+fi
+# Validate every artifact before deploying anything. A skipped target must have a working
+# installed version. Otherwise we stop before any program or QML is replaced.
+SKIPPED_COMPONENTS=()
+component_target() {
+    case "$1" in
+      tabletd|tablet-tools) printf '%s/tabletd/%s' "$SHARE" "$1" ;;
+      tabletshell|tablet-settings|tablet-keyboard|tablet-greeter) printf '%s/%s/%s' "$SHARE" "$1" "$1" ;;
+      webapp-runner) printf '%s/webapps/runner/webapp-runner' "$SHARE" ;;
+      translations) printf '%s/tablet-i18n/en.json' "$SHARE" ;;
+      shaders) printf '%s/plasma/plasmoids/org.ipad.homescreen/contents/ui/shaders/weather.frag.qsb' "$SHARE" ;;
+      sounds-shell) printf '%s/tabletshell/sounds' "$SHARE" ;;
+      sounds-keyboard) printf '%s/tablet-keyboard/sounds' "$SHARE" ;;
+    esac
+}
+component_build() {
+    case "$1" in
+      translations) printf 'build/en.json' ;;
+      shaders) printf 'build/weather.frag.qsb' ;;
+      sounds-shell) printf 'build/sounds/shell' ;;
+      sounds-keyboard) printf 'build/sounds/keyboard' ;;
+      *) printf 'build/%s' "$1" ;;
+    esac
+}
+skipped() { [ -f "build/.skipped/$1" ]; }
+# Intentional exclusions are not build failures and do not mark updates partial.
+protected() {
+    [ -n "$PROTECT_INPUT_LOCK" ] || return 1
+    case "$1" in tablet-keyboard|tablet-greeter|sounds-keyboard) return 0 ;; esac
+    return 1
+}
+
+for component in translations tabletd tablet-tools tabletshell tablet-settings tablet-keyboard tablet-greeter webapp-runner shaders sounds-shell sounds-keyboard; do
+    protected "$component" && continue
+    if skipped "$component"; then
+        [ "$SKIP_FAILED_BUILDS" = 1 ] || die "Неожиданный пропуск: $component" "Unexpected skipped build: $component"
+        [ -e "$(component_target "$component")" ] || die "Нет установленной версии: $component" "No installed fallback: $component"
+        SKIPPED_COMPONENTS+=("$component")
+    else
+        artifact=$(component_build "$component")
+        [ -e "$artifact" ] || die "Отсутствует результат сборки: $component" "Missing build artifact: $component"
+        if [ -f "$artifact" ]; then
+            [ -s "$artifact" ] || die "Пустой результат сборки: $component" "Empty build artifact: $component"
+        fi
+    fi
+done
+if ((${#SKIPPED_COMPONENTS[@]})); then
+    printf '  Partial build / Частичная сборка — preserved: %s\n' "${SKIPPED_COMPONENTS[*]}" >&2
 fi
 
 # ---- 3. files ----------------------------------------------------------------------------------
@@ -118,47 +201,105 @@ say "Файлы" "Files"
 # SRC DST: DST becomes a copy of SRC (backups *.bak* / *.orig and local state files are kept)
 sync_dir() {
     mkdir -p "$2"
-    rsync -a --delete --filter='P *.bak*' --filter='P *.orig' --filter='P previous-input-method.txt' "$1/" "$2/"
+    # Obsolete files are deleted by managed-files.py ONLY if recorded and unchanged.
+    rsync -a --filter='P *.bak*' --filter='P *.orig' --filter='P previous-input-method.txt' "$1/" "$2/"
 }
 # programs with their QML
-sync_dir src/tabletshell "$SHARE/tabletshell"
-sync_dir src/tablet-settings "$SHARE/tablet-settings"
-sync_dir src/tablet-keyboard "$SHARE/tablet-keyboard"
-mkdir -p "$SHARE/tablet-greeter"
-rsync -a src/tablet-greeter/ "$SHARE/tablet-greeter/"
+skipped tabletshell || sync_dir src/tabletshell "$SHARE/tabletshell"
+skipped tablet-settings || sync_dir src/tablet-settings "$SHARE/tablet-settings"
+if ! protected tablet-keyboard && ! skipped tablet-keyboard; then sync_dir src/tablet-keyboard "$SHARE/tablet-keyboard"; fi
+if ! protected tablet-greeter && ! skipped tablet-greeter; then sync_dir src/tablet-greeter "$SHARE/tablet-greeter"; fi
 mkdir -p "$SHARE/tabletd" "$SHARE/webapps/runner"
-install -m755 build/tabletd build/tablet-tools "$SHARE/tabletd/"
-install -m755 build/tabletshell "$SHARE/tabletshell/"
-install -m755 build/tablet-settings "$SHARE/tablet-settings/"
-install -m755 build/tablet-keyboard "$SHARE/tablet-keyboard/"
-install -m755 build/tablet-greeter "$SHARE/tablet-greeter/"
-install -m755 build/webapp-runner "$SHARE/webapps/runner/"
-install -m644 src/webapp-runner/webapp.qml "$SHARE/webapps/runner/"
-mkdir -p "$SHARE/tabletshell/sounds" "$SHARE/tablet-keyboard/sounds"
-cp build/sounds/shell/*.wav "$SHARE/tabletshell/sounds/"
-cp build/sounds/keyboard/*.wav "$SHARE/tablet-keyboard/sounds/"
-install -Dm644 build/en.json "$SHARE/tablet-i18n/en.json"
+for component in tabletd tablet-tools tabletshell tablet-settings tablet-keyboard tablet-greeter webapp-runner; do
+    if ! protected "$component" && ! skipped "$component"; then
+        install -m755 "build/$component" "$(component_target "$component")"
+    fi
+done
+skipped webapp-runner || install -m644 src/webapp-runner/webapp.qml "$SHARE/webapps/runner/"
+mkdir -p "$SHARE/tabletshell/sounds"
+if ! protected sounds-keyboard; then mkdir -p "$SHARE/tablet-keyboard/sounds"; fi
+if ! skipped sounds-shell && ! skipped tabletshell; then cp build/sounds/shell/*.wav "$SHARE/tabletshell/sounds/"; fi
+if ! protected sounds-keyboard && ! skipped sounds-keyboard && ! skipped tablet-keyboard; then cp build/sounds/keyboard/*.wav "$SHARE/tablet-keyboard/sounds/"; fi
+skipped translations || install -Dm644 build/en.json "$SHARE/tablet-i18n/en.json"
 # Plasma: home screen, dashboard, day/night wallpaper, iPad global themes, KWin scripts
-for p in shell/plasmoids/*; do sync_dir "$p" "$SHARE/plasma/plasmoids/$(basename "$p")"; done
-install -Dm644 build/weather.frag.qsb "$SHARE/plasma/plasmoids/org.ipad.homescreen/contents/ui/shaders/weather.frag.qsb"
+for p in shell/plasmoids/*; do
+    [ "$(basename "$p")" = org.ipad.homescreen ] && skipped shaders && continue
+    sync_dir "$p" "$SHARE/plasma/plasmoids/$(basename "$p")"
+done
+skipped shaders || install -Dm644 build/weather.frag.qsb "$SHARE/plasma/plasmoids/org.ipad.homescreen/contents/ui/shaders/weather.frag.qsb"
 sync_dir shell/wallpapers/org.ipad.daynight "$SHARE/plasma/wallpapers/org.ipad.daynight"
+# bundled wallpaper packages: Apple-like and Material-specific day/night packs
+if [ -d shell/wallpaper-packs ]; then
+    for p in shell/wallpaper-packs/*; do
+        [ -d "$p" ] || continue
+        sync_dir "$p" "$SHARE/wallpapers/$(basename "$p")"
+    done
+fi
+for p in shell/desktoptheme/*; do sync_dir "$p" "$SHARE/plasma/desktoptheme/$(basename "$p")"; done
+sync_dir shell/color-schemes "$SHARE/color-schemes"
+# Pixel uses its own symbols for panels and shell actions; unknown app icons
+# inherit Colloid/Breeze. Apple's original MacTahoe theme is left unchanged.
+if [ -d shell/icons ]; then
+    for icon_pack in shell/icons/*; do
+        [ -d "$icon_pack" ] || continue
+        if [ "$(basename "$icon_pack")" = TabletPixel ]; then
+            # keep locally-generated /apps/scalable drawings on updates
+            mkdir -p "$SHARE/icons/TabletPixel"
+            rsync -a --filter='P /apps/scalable/***' --filter='P /symbolic/***' "$icon_pack/" "$SHARE/icons/TabletPixel/"
+            python3 -I scripts/pixel-symbolic-icons.py "$SHARE/icons" src shell || true
+        else
+            sync_dir "$icon_pack" "$SHARE/icons/$(basename "$icon_pack")"
+        fi
+    done
+fi
 for p in shell/look-and-feel/*; do sync_dir "$p" "$SHARE/plasma/look-and-feel/$(basename "$p")"; done
 for p in shell/kwin/scripts/*; do sync_dir "$p" "$SHARE/kwin/scripts/$(basename "$p")"; done
 sync_dir shell/tablet-mode "$SHARE/tablet-mode"
+# Upgrade the active bundled Pixel surfaces even when --update-only preserves other preferences.
+# Do not call shell-style here: that would also change the user's current wallpaper.
+if [ -n "$UPDATE_ONLY" ] && [ "$(kreadconfig6 --file tabletrc --group Appearance --key shellStyle 2>/dev/null)" = pixel ]; then
+    pixel_variant=light
+    case "$(kreadconfig6 --file kdeglobals --group KDE --key LookAndFeelPackage 2>/dev/null)" in
+        *dark*|*Dark*) pixel_variant=dark ;;
+    esac
+    kw --file kdeglobals --group Icons --key Theme "TabletPixel${pixel_variant^}"
+    if command -v plasma-apply-desktoptheme >/dev/null; then
+        plasma-apply-desktoptheme "tablet-pixel-$pixel_variant" || true
+    fi
+    if command -v plasma-apply-colorscheme >/dev/null; then
+        if [ "$pixel_variant" = dark ]; then pixel_colors=TabletPixelDark; else pixel_colors=TabletPixelLight; fi
+        plasma-apply-colorscheme "$pixel_colors" || true
+    fi
+fi
 # commands
 mkdir -p "$BIN"
-for f in bin/*; do install -m755 "$f" "$BIN/"; done
-ln -sf "$SHARE/tabletd/tabletd" "$BIN/tabletd"
-ln -sf "$SHARE/tabletshell/tabletshell" "$BIN/tabletshell"
-ln -sf "$SHARE/tablet-settings/tablet-settings" "$BIN/tablet-settings"
-ln -sf "$SHARE/tablet-keyboard/tablet-keyboard" "$BIN/tablet-keyboard"
-ln -sf "$SHARE/webapps/runner/webapp-runner" "$BIN/webapp-runner"
-for l in tablet-tools wallpaper webapp-create screentime-apps; do ln -sf "$SHARE/tabletd/tablet-tools" "$BIN/$l"; done
+for f in bin/*; do
+    # lockscreen-sync is bundled but not changed by the normal updater.
+    if [ -n "$PROTECT_INPUT_LOCK" ] && [ "$(basename "$f")" = lockscreen-sync ]; then continue; fi
+    install -m755 "$f" "$BIN/"
+done
+# Bundled icons always work offline; fetching complete Material app logos is optional.
+if [ -z "$UPDATE_ONLY" ] || [ "${TABLET_SHELL_DOWNLOAD_ICONS:-0}" = 1 ]; then
+    bash scripts/install-material-icons.sh || echo '  Material icon download unavailable; bundled fallback retained.'
+fi
+skipped tabletd || ln -sf "$SHARE/tabletd/tabletd" "$BIN/tabletd"
+skipped tabletshell || ln -sf "$SHARE/tabletshell/tabletshell" "$BIN/tabletshell"
+skipped tablet-settings || ln -sf "$SHARE/tablet-settings/tablet-settings" "$BIN/tablet-settings"
+if ! protected tablet-keyboard && ! skipped tablet-keyboard; then
+    ln -sf "$SHARE/tablet-keyboard/tablet-keyboard" "$BIN/tablet-keyboard"
+fi
+skipped webapp-runner || ln -sf "$SHARE/webapps/runner/webapp-runner" "$BIN/webapp-runner"
+if ! skipped tablet-tools; then
+    for l in tablet-tools wallpaper webapp-create screentime-apps; do ln -sf "$SHARE/tabletd/tablet-tools" "$BIN/$l"; done
+fi
 # app entries, data
 mkdir -p "$SHARE/applications"
 for f in applications/*.desktop; do
+    if [ -n "$PROTECT_INPUT_LOCK" ] && [ "$(basename "$f")" = tablet-keyboard.desktop ]; then continue; fi
     sed "s|@HOME@|$HOME|g" "$f" > "$SHARE/applications/$(basename "$f")"
 done
+# Fill missing icons for BOTH families after new .desktop entries have been installed.
+"$BIN/app-icons-refresh" || true
 mkdir -p "$SHARE/typewriter/sounds" "$SHARE/ghostwriter/themes"
 cp -n data/typewriter/template.md data/typewriter/template.en.md "$SHARE/typewriter/" 2>/dev/null || true
 cp data/typewriter/sounds/*.wav "$SHARE/typewriter/sounds/"
@@ -176,14 +317,48 @@ for ini in "$HOME/.mozilla/firefox/profiles.ini" "$HOME/.config/mozilla/firefox/
         { echo "// tablet-shell begin"; cat data/firefox/user.js; echo "// tablet-shell end"; } >> "$js"
     done
 done
-# the system scripts, where the settings app points to them
-sync_dir system "$SHARE/tablet-shell/system"
-git rev-parse --short HEAD > "$SHARE/tablet-shell/version" 2>/dev/null || true
+# The system scripts and updater are accessible from Settings even when the
+# original project directory came from a ZIP and no Git checkout exists.
+if [ -n "$PROTECT_INPUT_LOCK" ]; then
+    # System greeter launcher/scripts remain at their installed versions as well.
+    mkdir -p "$SHARE/tablet-shell/system"
+    rsync -a --exclude='/greeter.sh' --exclude='/greeter-launch.sh' --exclude='/refresh-greetd.py' \
+        system/ "$SHARE/tablet-shell/system/"
+else
+    sync_dir system "$SHARE/tablet-shell/system"
+fi
+install -m755 update.sh "$SHARE/tablet-shell/update.sh"
 
+# Reinstall refreshes the installed tablet-shell greetd screen, if present.
+# It will NEVER replace an unrelated SDDM/Plasma Login configuration.
+GREETER_PENDING="$HOME/.local/state/tablet-shell/greeter-refresh-needed"
+if [ -n "$GREETER_INSTALL" ]; then
+    say "Установка экрана входа" "Installing login screen"
+    sudo "$REPO/system/greeter.sh"
+elif [ -n "$GREETER_UPDATE" ] && [ -r /etc/greetd/config.toml ] &&
+     grep -Eq 'tablet-greeter|tablet-shell-greeter' /etc/greetd/config.toml; then
+    say "Обновление экрана входа" "Updating login screen"
+    refreshed=
+    if sudo -n bash "$REPO/system/greeter.sh" --refresh; then
+        refreshed=1
+    elif [ -t 0 ] && sudo bash "$REPO/system/greeter.sh" --refresh; then
+        refreshed=1
+    fi
+    if [ -n "$refreshed" ]; then
+        rm -f "$GREETER_PENDING"
+    else
+        mkdir -p "$(dirname "$GREETER_PENDING")"
+        printf 'Login screen refresh requires administrator permission.\n' > "$GREETER_PENDING"
+        echo "  $(t 'Сеанс обновлён, но экран входа требует отдельного подтверждения sudo:' 'Session updated; login manager still needs sudo approval:')" >&2
+        echo "  sudo '$SHARE/tablet-shell/system/greeter.sh' --refresh" >&2
+    fi
+fi
+
+if [ -z "$UPDATE_ONLY" ]; then
 # ---- 4. themes ---------------------------------------------------------------------------------
 if [ -n "$THEMES" ]; then
     say "Темы WhiteSur (загрузка)" "WhiteSur themes (download)"
-    scripts/themes.sh
+    bash scripts/themes.sh
 fi
 
 # ---- 5. hardware -------------------------------------------------------------------------------
@@ -213,8 +388,10 @@ kw --file kwinrc --group ModifierOnlyShortcuts --key Meta "org.ipad.TabletD,/,or
 kw --file kwinrc --group org.kde.kdecoration2 --key ButtonsOnLeft XIA
 kw --file kwinrc --group org.kde.kdecoration2 --key ButtonsOnRight ""
 # light/dark iPad themes by time of day, Inter font, a bit faster animations
-kw --file kdeglobals --group KDE --key DefaultLightLookAndFeel org.ipad.light
-kw --file kdeglobals --group KDE --key DefaultDarkLookAndFeel org.ipad.dark
+STYLE=$(kreadconfig6 --file tabletrc --group Appearance --key shellStyle 2>/dev/null || true)
+if [ "$STYLE" = pixel ]; then STYLEPKG=org.tabletshell.pixel; else STYLEPKG=org.ipad; STYLE=apple; fi
+kw --file kdeglobals --group KDE --key DefaultLightLookAndFeel "$STYLEPKG.light"
+kw --file kdeglobals --group KDE --key DefaultDarkLookAndFeel "$STYLEPKG.dark"
 kw --file kdeglobals --group KDE --key AnimationDurationFactor 0.75
 for k in font menuFont toolBarFont; do kw --file kdeglobals --group General --key $k "Inter,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"; done
 kw --file kdeglobals --group General --key smallestReadableFont "Inter,8,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
@@ -246,54 +423,160 @@ LON=$(echo "$GEO" | grep -o '"longitude":[-0-9.]*' | head -1 | cut -d: -f2)
 CITYNAME=$(echo "$GEO" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
 [ -n "$CITYNAME" ] && CITY=$CITYNAME
 echo "  $(t "Город" "City"): ${CITY:-?} ${LAT:+($LAT, $LON)}"
-# the lock screen shows the same wallpaper package
-WP=$SHARE/wallpapers/Monterey-iPad
-[ -d "$WP" ] || WP=$(ls -d "$SHARE"/wallpapers/*-iPad 2>/dev/null | head -1)
+# the lock screen shows the same wallpaper package; default depends on the whole-shell style
+if [ "$STYLE" = pixel ]; then
+    WP=$SHARE/wallpapers/Material-Orbit
+    [ -d "$WP" ] || WP=$(ls -d "$SHARE"/wallpapers/Material-* 2>/dev/null | head -1)
+else
+    WP=$SHARE/wallpapers/Monterey-iPad
+    [ -d "$WP" ] || WP=$(ls -d "$SHARE"/wallpapers/*-iPad 2>/dev/null | head -1)
+fi
 if [ -n "$WP" ] && [ -z "$(kreadconfig6 --file kscreenlockerrc --group Greeter --group Wallpaper --group org.ipad.daynight --group General --key Image)" ]; then
     kw --file kscreenlockerrc --group Greeter --key WallpaperPlugin org.ipad.daynight
     kw --file kscreenlockerrc --group Greeter --group Wallpaper --group org.ipad.daynight --group General --key Image "file://$WP/"
 fi
 
+fi  # Existing settings, weather, themes and hardware preferences remain unchanged on update.
+
 # ---- 7. services -------------------------------------------------------------------------------
 say "Службы" "Services"
 mkdir -p "$HOME/.config/systemd/user"
-cp systemd/* "$HOME/.config/systemd/user/"
+for unit in systemd/*; do
+    case "$(basename "$unit")" in
+      lockscreen-sync.*|greeter-wallpaper.*)
+          if [ -n "$PROTECT_INPUT_LOCK" ]; then continue; fi ;;
+    esac
+    cp "$unit" "$HOME/.config/systemd/user/"
+done
 systemctl --user daemon-reload
-"$BIN/taskswitcher-sync" || true
-"$BIN/lockscreen-sync" || true
-systemctl --user enable tabletd.service tabletshell.service lockscreen-sync.service lockscreen-sync.path \
-    taskswitcher-sync.service taskswitcher-sync.path greeter-wallpaper.path greeter-wallpaper.timer >/dev/null 2>&1
+# Do not silently re-enable user-disabled services during an update.
+# Refresh the installed lock screen on updates too: QML and Pixel style are copied
+# without modifying the user's lock-screen preferences or resetting Plasma widgets.
+if [ -z "$PROTECT_INPUT_LOCK" ]; then
+    if ! bash "$BIN/lockscreen-sync"; then
+        echo "  $(t 'Не удалось обновить блокировку; проверьте активную тему Plasma.' 'Failed to update the lock screen; check the active Plasma shell.')" >&2
+        exit 1
+    fi
+fi
+if [ -z "$UPDATE_ONLY" ]; then
+    "$BIN/taskswitcher-sync" || true
+    systemctl --user enable tabletd.service tabletshell.service lockscreen-sync.service lockscreen-sync.path app-icons.path \
+        taskswitcher-sync.service taskswitcher-sync.path greeter-wallpaper.path greeter-wallpaper.timer >/dev/null 2>&1
+fi
 
 # ---- 8. apply ----------------------------------------------------------------------------------
 say "Применение" "Applying"
+if [ -z "$UPDATE_ONLY" ]; then
 FIRST=
 [ "$(kreadconfig6 --file kdeglobals --group KDE --key LookAndFeelPackage)" = org.ipad.light ] || \
-    [ "$(kreadconfig6 --file kdeglobals --group KDE --key LookAndFeelPackage)" = org.ipad.dark ] || FIRST=1
+    [ "$(kreadconfig6 --file kdeglobals --group KDE --key LookAndFeelPackage)" = org.ipad.dark ] || \
+    [ "$(kreadconfig6 --file kdeglobals --group KDE --key LookAndFeelPackage)" = org.tabletshell.pixel.light ] || \
+    [ "$(kreadconfig6 --file kdeglobals --group KDE --key LookAndFeelPackage)" = org.tabletshell.pixel.dark ] || FIRST=1
 if [ -n "$FIRST" ]; then
-    plasma-apply-lookandfeel -a org.ipad.light >/dev/null 2>&1 || true
+    plasma-apply-lookandfeel -a "$STYLEPKG.light" >/dev/null 2>&1 || true
     kw --file kdeglobals --group KDE --key AutomaticLookAndFeel true
 fi
 containments
 # weather city on the home screen and the dashboard, coordinates for the day/night wallpaper
-sleep 8
+# Avoid a fixed delay on subsequent installs; poll for Plasma's D-Bus endpoint.
+for ((i=0; i<8; i++)); do
+    qdbus6 org.kde.plasmashell /PlasmaShell org.freedesktop.DBus.Introspectable.Introspect >/dev/null 2>&1 && break
+    sleep 1
+done
+# Quote free-form city and wallpaper strings as JavaScript string literals.
+CITY_JS=$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1],ensure_ascii=True))' "$CITY")
+WP_JS=$(python3 -c 'import json,sys;print(json.dumps(sys.argv[1],ensure_ascii=True))' "file://$WP/")
 qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "
 desktops().forEach(function (d) {
     d.currentConfigGroup = ['General'];
-    if (!d.readConfig('weatherCity', '')) d.writeConfig('weatherCity', '$CITY');
+    d.writeConfig('shellStyle', '$STYLE');
+    if (!d.readConfig('weatherCity', '')) d.writeConfig('weatherCity', $CITY_JS);
     if ('$LAT' !== '') {
         d.wallpaperPlugin = 'org.ipad.daynight';
         d.currentConfigGroup = ['Wallpaper', 'org.ipad.daynight', 'General'];
         d.writeConfig('Latitude', $LAT + 0); d.writeConfig('Longitude', $LON + 0);
-        if (!d.readConfig('Image', '')) d.writeConfig('Image', 'file://$WP/');
+        if (!d.readConfig('Image', '')) d.writeConfig('Image', $WP_JS);
     }
     d.reloadConfig();
 });" >/dev/null 2>&1 || true
-systemctl --user restart tabletd.service tabletshell.service
-pkill -u "$USER" -x tablet-keyboard 2>/dev/null || true    # KWin starts the new one
+fi
+# Enable alone defers path and timer units until the next login.
+if [ -z "$UPDATE_ONLY" ]; then
+    systemctl --user start lockscreen-sync.path app-icons.path taskswitcher-sync.path
+    systemctl --user start greeter-wallpaper.path greeter-wallpaper.timer
+    systemctl --user restart tabletd.service tabletshell.service
+else
+    # Restart only services whose executable was successfully rebuilt.
+    # A failed daemon build must not disturb its still-running previous version.
+    refresh_services=()
+    skipped tabletd || refresh_services+=(tabletd.service)
+    skipped tabletshell || refresh_services+=(tabletshell.service)
+    if ((${#refresh_services[@]})); then
+        systemctl --user try-restart "${refresh_services[@]}"
+    fi
+fi
+# Trigger an immediate panel repair after replacing the daemon.
+# Startup retries remain responsible for Plasma sessions still loading.
+qdbus6 org.ipad.TabletD / org.ipad.TabletD.Reapply >/dev/null 2>&1 || true
+# KWin owns the input method. Killing its client can leave no keyboard until next
+# login; keep the running instance and load the updated binary on next login.
+if ! protected tablet-keyboard && ! skipped tablet-keyboard; then
+    # Do not silently change a user-selected third-party input method.
+    current_im=$(kreadconfig6 --file kwinrc --group Wayland --key InputMethod 2>/dev/null || true)
+    case "$current_im" in
+        *tablet-keyboard.desktop)
+            kw --file kwinrc --group Wayland --key InputMethod "$SHARE/applications/tablet-keyboard.desktop" ;;
+    esac
+    echo "  $(t 'Клавиатура обновлена на диске; активируется при следующем входе в сеанс.' 'Keyboard updated on disk; it will activate after the next login.')"
+fi
 qdbus6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
+
+# Remove only stale, previously recorded, unchanged tablet-shell files. Unknown and
+# locally modified files are preserved. The first run establishes the ownership list;
+# previously unknown legacy files are not guessed or deleted.
+MANAGED_ARGS=()
+if [ -n "$PROTECT_INPUT_LOCK" ]; then
+    MANAGED_ARGS+=(--reuse-component tablet-keyboard --reuse-component tablet-greeter
+                   --reuse-component input-lock-assets)
+fi
+for component in "${SKIPPED_COMPONENTS[@]}"; do MANAGED_ARGS+=(--reuse-component "$component"); done
+python3 -I scripts/managed-files.py --source "$REPO" --home "$HOME" "${MANAGED_ARGS[@]}" || \
+    echo "  $(t "Очистка пропущена (ошибка безопасной проверки)." "Safe obsolete-file cleanup was skipped.")" >&2
+
+# A partial update is not advertised as a complete GitHub revision.
+if ((${#SKIPPED_COMPONENTS[@]})); then
+    mkdir -p "$SHARE/tablet-shell"
+    printf '%s\n' "${SKIPPED_COMPONENTS[@]}" > "$SHARE/tablet-shell/last-skipped-components"
+else
+    rm -f "$SHARE/tablet-shell/last-skipped-components"
+fi
+
+# The version marker is written only after a successful installation, never
+# halfway through the update. A local ZIP build stays "local", rather than
+# pretending to be an old remote commit left behind from a previous install.
+VERSION_SHA=${TABLET_SHELL_SOURCE_COMMIT:-}
+if [[ ! "$VERSION_SHA" =~ ^[a-f0-9]{40}$ ]] && [ -d "$REPO/.git" ]; then
+    VERSION_SHA=$(git -C "$REPO" rev-parse HEAD 2>/dev/null || true)
+fi
+if ((${#SKIPPED_COMPONENTS[@]})); then
+    printf 'partial\n' > "$SHARE/tablet-shell/version"
+elif [[ "$VERSION_SHA" =~ ^[a-f0-9]{40}$ ]]; then
+    printf '%s\n' "$VERSION_SHA" > "$SHARE/tablet-shell/version"
+else
+    printf 'local\n' > "$SHARE/tablet-shell/version"
+fi
 
 # ---- 9. what is left -----------------------------------------------------------------------------
 say "Готово" "Done"
+if [ -n "$UPDATE_ONLY" ]; then
+    echo "  $(t 'Клавиатура, блокировка и экран входа сохранены без изменений.' 'Keyboard, lock screen and login screen were left unchanged.')"
+    if ((${#SKIPPED_COMPONENTS[@]})); then
+        echo "  PARTIAL UPDATE / ЧАСТИЧНО: ${SKIPPED_COMPONENTS[*]}" >&2
+    else
+        echo "  $(t "Обновление выполнено. Для полного применения изменений интерфейса выйдите и войдите снова." "Update applied. Log out and back in to reload the full interface.")"
+    fi
+    exit 0
+fi
 t "Оболочка установлена. Полностью она включится после выхода из сеанса и входа снова.
 Системные части (по желанию, через sudo):" "The shell is installed. Log out and back in for everything to take effect.
 System parts (optional, with sudo):"; echo

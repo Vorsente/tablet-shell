@@ -95,7 +95,31 @@ Item {
             width: today.twoColumns ? today.columnWidth * 2 + today.gap : today.columnWidth
             spacing: today.gap
 
+            // Material: a quiet title row (the date and weather are in the glance line above)
+            RowLayout {
+                visible: today.home.pixel
+                width: parent.width
+                Text {
+                    Layout.fillWidth: true
+                    text: today.greeting()
+                    color: "white"
+                    font.family: today.home.fontFamily
+                    font.pixelSize: Kirigami.Units.gridUnit * 1.5
+                    font.weight: Font.Medium
+                    style: Text.Raised
+                    styleColor: Qt.rgba(0, 0, 0, 0.25)
+                }
+                GlassButton {
+                    home: today.home
+                    prominent: today.editing
+                    text: today.editing ? Tr.t("Готово") : Tr.t("Изменить")
+                    iconName: today.editing ? "dialog-ok-apply-symbolic" : "document-edit-symbolic"
+                    onClicked: today.editing = !today.editing
+                }
+            }
+
             Item {
+                visible: !today.home.pixel
                 width: parent.width
                 height: header.height
                 Column {
@@ -117,10 +141,12 @@ Item {
                         styleColor: Qt.rgba(0, 0, 0, 0.3)
                     }
                 }
-                PC3.Button {
+                GlassButton {
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom
+                    home: today.home
                     visible: today.editing
+                    prominent: true
                     text: Tr.t("Готово")
                     onClicked: today.editing = false
                 }
@@ -235,13 +261,14 @@ Item {
                             width: chip.implicitWidth + Kirigami.Units.gridUnit * 1.6
                             height: Kirigami.Units.gridUnit * 2.4
                             radius: height / 2
-                            color: today.home.pal.card
-                            border.color: today.home.pal.cardBorder
+                            color: today.home.pixel ? today.home.tone(modelData).container : today.home.pal.card
+                            border.color: today.home.pixel ? "transparent" : today.home.pal.cardBorder
                             Text {
                                 id: chip
                                 anchors.centerIn: parent
                                 text: "+ " + today.names[modelData]
-                                color: today.home.pal.text
+                                color: today.home.pixel ? today.home.tone(modelData).on : today.home.pal.text
+                                font.family: today.home.fontFamily
                                 font.pixelSize: Kirigami.Units.gridUnit * 0.9
                             }
                             MouseArea {
@@ -253,11 +280,12 @@ Item {
                 }
             }
 
-            PC3.Button {
+            GlassButton {
                 anchors.horizontalCenter: parent.horizontalCenter
-                visible: !today.editing
+                home: today.home
+                visible: !today.editing && !today.home.pixel
                 text: Tr.t("Изменить")
-                icon.name: "document-edit"
+                iconName: "document-edit-symbolic"
                 onClicked: today.editing = true
             }
         }
@@ -267,17 +295,18 @@ Item {
     Component {
         id: noteCard
         Rectangle {
-            radius: Math.min(width, height) * 0.13
-            color: today.home.pal.card
+            radius: today.home.pixel ? Math.min(30, Math.min(width, height) * 0.16) : Math.min(width, height) * 0.13
+            color: today.home.pixel ? today.home.tone("note").container : today.home.pal.card
             border.color: today.home.pal.cardBorder
-            border.width: 1
+            border.width: today.home.pixel ? 0 : 1
             Text {
                 id: noteTitle
                 anchors.left: parent.left
                 anchors.top: parent.top
                 anchors.margins: Kirigami.Units.gridUnit
                 text: Tr.t("Заметка")
-                color: today.home.pal.yellow
+                color: today.home.pixel ? today.home.tone("note").on : today.home.pal.yellow
+                font.family: today.home.fontFamily
                 font.pixelSize: Kirigami.Units.gridUnit * 0.95
                 font.weight: Font.DemiBold
             }
@@ -289,7 +318,8 @@ Item {
                 anchors.margins: Kirigami.Units.gridUnit * 0.6
                 QQC2.TextArea {
                     background: null
-                    color: today.home.pal.text
+                    color: today.home.pixel ? today.home.tone("note").on : today.home.pal.text
+                    font.family: today.home.fontFamily
                     wrapMode: TextEdit.Wrap
                     placeholderText: Tr.t("Мысль, список, что угодно…")
                     placeholderTextColor: today.home.pal.tertiary

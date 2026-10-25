@@ -78,7 +78,7 @@ Window {
         radius: 28
         x: -width + Math.min(strip.reach * 0.8, width + 24)
         y: strip.fingerY - height / 2
-        color: strip.armed ? "#ffffff" : Qt.rgba(0.1, 0.1, 0.11, 0.85)
+        color: uiStyle.pixel ? (strip.armed ? "#D0BCFF" : "#49454F") : strip.armed ? "#ffffff" : Qt.rgba(0.1, 0.1, 0.11, 0.85)
         border.color: Qt.rgba(1, 1, 1, 0.3)
         border.width: strip.armed ? 0 : 1
         scale: strip.armed ? 1.08 : 1

@@ -18,10 +18,11 @@ Item {
     property bool ledVisible: false
     property bool blank: false          // space-bar trackpad: legends fade out
 
-    readonly property real r: Math.min(width, height) * 0.16
+    property bool pixel: false
+    readonly property real r: Math.min(width, height) * (pixel ? 0.28 : 0.16)
     property bool showSecondary: true
     property real smileFactor: 1        // 0: plain rounded keys instead of the ThinkPad smile
-    readonly property real smile: height * 0.07 * smileFactor
+    readonly property real smile: pixel ? 0 : height * 0.07 * smileFactor
 
     // shadow, then face: same island path, the shadow shifted down
     Shape {
@@ -55,7 +56,7 @@ Item {
         y: key.height * 0.08
         text: key.spec[2]
         color: key.theme.subText
-        font.family: "Inter"
+        font.family: key.pixel ? "Noto Sans" : "Inter"
         font.pixelSize: key.height * 0.2
     }
     Text {
@@ -64,7 +65,7 @@ Item {
         visible: !key.blank && key.iconName === ""
         text: key.icon !== "" ? key.icon : key.label
         color: key.theme.text
-        font.family: "Inter"
+        font.family: key.pixel ? "Noto Sans" : "Inter"
         font.pixelSize: key.icon !== "" ? key.height * 0.36
                        : (key.label.length > 1 ? key.height * 0.27 : key.height * 0.4)
         font.weight: key.label.length > 1 ? Font.Medium : Font.Normal

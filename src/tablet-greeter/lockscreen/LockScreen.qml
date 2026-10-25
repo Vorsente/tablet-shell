@@ -2,6 +2,7 @@
 // screen) with kscreenlocker's authenticator. lockscreen-sync copies this directory into the user
 // copy of the desktop shell and writes LockConfig.js from /var/lib/tablet-greeter/lock.conf.
 import QtQuick
+import org.kde.kirigami as Kirigami
 import org.kde.notificationmanager as Notifications
 import org.kde.plasma.private.mpris as Mpris
 import "LockConfig.js" as LockConfig
@@ -87,6 +88,8 @@ Item {
             property bool busy: false
             // grace period after locking / no password set: a swipe unlocks
             readonly property bool passwordless: authenticator.unlocked
+            // KWin tablet mode (tabletd: on when no keyboard is attached): the on-screen keyboard by touch
+            readonly property bool touchFirst: Kirigami.Settings.tabletMode
             signal failed(string message)
             signal succeeded()
             function login(password) {

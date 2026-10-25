@@ -30,13 +30,16 @@ Item {
         anchors.centerIn: parent
         width: cols * overlay.home.cellWidth + Kirigami.Units.gridUnit * 2
         height: content.implicitHeight + Kirigami.Units.gridUnit * 2
-        radius: Kirigami.Units.gridUnit * 1.6
-        color: Qt.alpha(overlay.home.pal.sheet, 0.78)
+        radius: overlay.home.pixel ? Kirigami.Units.gridUnit * 2.2 : Kirigami.Units.gridUnit * 1.6
+        color: overlay.home.pixel ? overlay.home.pal.sheet : Qt.alpha(overlay.home.pal.sheet, 0.78)
         border.color: overlay.home.pal.sheetBorder
-        border.width: 1
+        border.width: overlay.home.pixel ? 0 : 1
         scale: overlay.opacity > 0 ? 1 : 0.9
         Behavior on scale { NumberAnimation { duration: Kirigami.Units.shortDuration } }
 
+        GlassSheen {
+            home: overlay.home
+        }
         MouseArea { anchors.fill: parent }  // swallow taps so the backdrop does not close the folder
 
         ColumnLayout {

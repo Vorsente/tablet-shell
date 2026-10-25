@@ -1,0 +1,13 @@
+{
+    "KPlugin": {
+        "Id": "Material-Horizon",
+        "Name": "Horizon Material",
+        "Name[ru]": "Horizon Material",
+        "License": "CC0-1.0",
+        "Authors": [
+            {
+                "Name": "OpenAI"
+            }
+        ]
+    }
+}

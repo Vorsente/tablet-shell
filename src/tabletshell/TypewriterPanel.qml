@@ -119,10 +119,10 @@ Window {
     // ---- view ----
     Rectangle {
         anchors.fill: parent
-        radius: 18
-        color: Qt.rgba(0.08, 0.08, 0.09, 0.94)
+        radius: uiStyle.pixel ? 28 : 18
+        color: uiStyle.pixel ? "#2B2932" : Qt.rgba(0.08, 0.08, 0.09, 0.94)
         border.color: Qt.rgba(1, 1, 1, 0.18)
-        border.width: 1
+        border.width: uiStyle.pixel ? 0 : 1
 
         Row {
             id: tabs
@@ -137,7 +137,7 @@ Window {
                     width: 98
                     height: 34
                     radius: 17
-                    color: panel.tab === modelData[0] ? "#ffffff" : Qt.rgba(1, 1, 1, 0.1)
+                    color: uiStyle.pixel ? (panel.tab === modelData[0] ? "#D0BCFF" : "#49454F") : panel.tab === modelData[0] ? "#ffffff" : Qt.rgba(1, 1, 1, 0.1)
                     Text {
                         anchors.centerIn: parent
                         text: modelData[1]

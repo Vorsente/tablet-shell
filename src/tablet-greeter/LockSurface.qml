@@ -5,6 +5,7 @@
 //
 // auth: adapter object of the wrapper with
 //   fullName, avatar, busy, passwordless, mode ("login" | "lock"),
+//   touchFirst (optional: false = a hardware keyboard is there, the on-screen one stays down),
 //   login(password), unlockNow(), powerOff(), reboot(), suspend(), signals failed(msg), succeeded()
 import QtQuick
 import QtQuick.Effects
@@ -23,6 +24,9 @@ Item {
     readonly property bool showPlayer: auth.mode === "lock" && !!player && !!player.track
                                        && String(opt("showMedia", true)) === "true"
 
+    readonly property bool pixel: String(opt("shellStyle", "apple")) === "pixel"
+    readonly property color pixelSurface: "#312E3A"
+    readonly property color pixelOnSurface: "#F1EBF5"
     function opt(key, def) {
         const v = cfg[key];
         return v === undefined || v === "" ? def : v;
@@ -56,6 +60,9 @@ Item {
         if (!root.unlocking) {
             root.reveal(false);
         }
+        if (root.osk !== "always") {
+            root.touchKeyboard = false;
+        }
         if (event.key === Qt.Key_Escape) {
             root.unlocking = false;
             root.password = "";
@@ -77,7 +84,7 @@ Item {
             return;
         }
         unlocking = true;
-        if (byTouch && osk === "auto") {
+        if (byTouch && osk === "auto" && auth.touchFirst !== false) {
             touchKeyboard = true;
         }
     }
@@ -155,18 +162,23 @@ Item {
             visible: root.showDate
             text: root.now.toLocaleDateString(Tr.locale(), "dddd, d MMMM")
             color: "white"
-            font.family: "Inter"
+            font.family: root.pixel ? "Noto Sans" : "Inter"
             font.pixelSize: root.u * 1.4 * root.clockScale
             font.weight: Font.DemiBold
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: root.clock24 ? Qt.formatTime(root.now, "HH:mm") : Qt.formatTime(root.now, "h:mm")
+            text: {
+                const time = Qt.formatTime(root.now, root.clock24 ? "HH:mm" : "h:mm");
+                return root.pixel && !root.unlocking && root.height > root.width ? time.replace(":", "\n") : time;
+            }
+            horizontalAlignment: Text.AlignHCenter
+            lineHeight: 0.85
             color: "white"
-            font.family: "Inter"
-            font.pixelSize: root.u * 8 * root.clockScale
-            font.weight: root.clockBold ? Font.Bold : Font.Light
-            font.letterSpacing: -root.u * 0.15
+            font.family: root.pixel ? "Noto Sans" : "Inter"
+            font.pixelSize: root.u * (root.pixel ? 6.5 : 8) * root.clockScale
+            font.weight: root.pixel ? Font.Medium : (root.clockBold ? Font.Bold : Font.Light)
+            font.letterSpacing: root.pixel ? 0 : -root.u * 0.15
             font.features: { "tnum": 1 }
         }
     }
@@ -179,8 +191,8 @@ Item {
         width: Math.min(root.width * 0.5, root.u * 26)
         height: root.showPlayer ? root.u * 4.4 : 0
         visible: root.showPlayer && !root.unlocking
-        radius: root.u * 0.9
-        color: Qt.rgba(1, 1, 1, 0.2)
+        radius: root.pixel ? root.u * 2.2 : root.u * 0.9
+        color: root.pixel ? root.pixelSurface : Qt.rgba(1, 1, 1, 0.2)
 
         Rectangle {    // cover
             id: cover
@@ -216,7 +228,7 @@ Item {
                 text: root.player ? root.player.track : ""
                 color: "white"
                 elide: Text.ElideRight
-                font.family: "Inter"
+                font.family: root.pixel ? "Noto Sans" : "Inter"
                 font.pixelSize: root.u * 0.8
                 font.weight: Font.DemiBold
             }
@@ -225,7 +237,7 @@ Item {
                 text: root.player ? (root.player.artist || root.player.identity || "") : ""
                 color: Qt.rgba(1, 1, 1, 0.7)
                 elide: Text.ElideRight
-                font.family: "Inter"
+                font.family: root.pixel ? "Noto Sans" : "Inter"
                 font.pixelSize: root.u * 0.7
             }
         }
@@ -277,8 +289,8 @@ Item {
                 visible: index < 3
                 width: parent.width
                 height: visible ? noteColumn.implicitHeight + root.u * 1.0 : 0
-                radius: root.u * 0.9
-                color: Qt.rgba(1, 1, 1, 0.2)
+                radius: root.pixel ? root.u * 1.5 : root.u * 0.9
+                color: root.pixel ? "#34313D" : Qt.rgba(1, 1, 1, 0.2)
                 Column {
                     id: noteColumn
                     anchors.left: parent.left
@@ -290,7 +302,7 @@ Item {
                         text: model.applicationName || ""
                         color: Qt.rgba(1, 1, 1, 0.75)
                         elide: Text.ElideRight
-                        font.family: "Inter"
+                        font.family: root.pixel ? "Noto Sans" : "Inter"
                         font.pixelSize: root.u * 0.65
                         font.weight: Font.DemiBold
                         font.capitalization: Font.AllUppercase
@@ -300,7 +312,7 @@ Item {
                         text: root.notificationText ? (model.summary || "") : Tr.t("Новое уведомление")
                         color: "white"
                         elide: Text.ElideRight
-                        font.family: "Inter"
+                        font.family: root.pixel ? "Noto Sans" : "Inter"
                         font.pixelSize: root.u * 0.85
                         font.weight: Font.DemiBold
                     }
@@ -329,7 +341,7 @@ Item {
             visible: root.showHint
             text: root.auth.passwordless ? Tr.t("Проведите вверх, чтобы открыть") : Tr.t("Проведите вверх, чтобы войти")
             color: "white"
-            font.family: "Inter"
+            font.family: root.pixel ? "Noto Sans" : "Inter"
             font.pixelSize: root.u * 0.75
         }
         Rectangle {
@@ -372,7 +384,7 @@ Item {
                 visible: root.auth.avatar.length === 0
                 text: root.auth.fullName.charAt(0).toUpperCase()
                 color: "white"
-                font.family: "Inter"
+                font.family: root.pixel ? "Noto Sans" : "Inter"
                 font.pixelSize: parent.width * 0.42
                 font.weight: Font.DemiBold
             }
@@ -382,7 +394,7 @@ Item {
             visible: root.showUser
             text: root.auth.fullName
             color: "white"
-            font.family: "Inter"
+            font.family: root.pixel ? "Noto Sans" : "Inter"
             font.pixelSize: root.u * 1.1
             font.weight: Font.DemiBold
         }
@@ -391,8 +403,8 @@ Item {
             Layout.alignment: Qt.AlignHCenter
             implicitWidth: root.u * 15
             implicitHeight: root.u * 2.4
-            radius: height / 2
-            color: Qt.rgba(1, 1, 1, 0.18)
+            radius: root.pixel ? height / 2 : height / 2
+            color: root.pixel ? root.pixelSurface : Qt.rgba(1, 1, 1, 0.18)
             border.color: Qt.rgba(1, 1, 1, 0.3)
             border.width: 1
             transform: Translate { id: shakeX }
@@ -404,15 +416,45 @@ Item {
                 NumberAnimation { target: shakeX; property: "x"; to: 0; duration: 50 }
             }
             Text {
+                id: entry
                 anchors.centerIn: parent
                 width: parent.width - root.u * 4
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideLeft
                 text: root.password.length ? "●".repeat(root.password.length) : (root.auth.busy ? "" : Tr.t("Пароль"))
                 color: root.password.length ? "white" : Qt.rgba(1, 1, 1, 0.6)
-                font.family: "Inter"
+                font.family: root.pixel ? "Noto Sans" : "Inter"
                 font.pixelSize: root.password.length ? root.u * 0.8 : root.u * 0.9
                 font.letterSpacing: root.password.length ? root.u * 0.15 : 0
+            }
+            // text cursor: after the dots, or in front of the "Пароль" hint while empty
+            Rectangle {
+                id: caret
+                readonly property real gap: root.u * 0.25
+                x: root.password.length
+                   ? entry.x + (entry.width + Math.min(entry.contentWidth, entry.width)) / 2 + gap
+                   : entry.x + (entry.width - entry.contentWidth) / 2 - gap - width
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.max(2, Math.round(root.u * 0.1))
+                height: root.u * 1.1
+                radius: width / 2
+                color: "white"
+                visible: root.unlocking && !root.leaving && !root.auth.busy
+                SequentialAnimation on opacity {
+                    id: blink
+                    running: caret.visible
+                    loops: Animation.Infinite
+                    PropertyAction { value: 1 }
+                    PauseAnimation { duration: 550 }
+                    NumberAnimation { to: 0; duration: 120 }
+                    PauseAnimation { duration: 330 }
+                    NumberAnimation { to: 1; duration: 120 }
+                }
+                // solid while typing
+                Connections {
+                    target: root
+                    function onPasswordChanged() { blink.restart(); }
+                }
             }
             Rectangle {
                 anchors.right: parent.right
@@ -437,7 +479,12 @@ Item {
             MouseArea {
                 anchors.fill: parent
                 anchors.rightMargin: parent.height
-                onClicked: root.touchKeyboard = true
+                onClicked: {
+                    root.forceActiveFocus();
+                    if (root.auth.touchFirst !== false || root.osk === "always") {
+                        root.touchKeyboard = true;
+                    }
+                }
             }
         }
         Text {
@@ -445,7 +492,7 @@ Item {
             text: root.message
             visible: text.length > 0
             color: "#FF6961"
-            font.family: "Inter"
+            font.family: root.pixel ? "Noto Sans" : "Inter"
             font.pixelSize: root.u * 0.8
             font.weight: Font.DemiBold
         }
@@ -472,7 +519,7 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
             text: parent.caption
             color: "white"
-            font.family: "Inter"
+            font.family: root.pixel ? "Noto Sans" : "Inter"
             font.pixelSize: root.u * 0.6
         }
         MouseArea {
@@ -504,6 +551,7 @@ Item {
     }
 
     Keyboard {
+        pixel: root.pixel
         id: keyboard
         anchors.left: parent.left
         anchors.right: parent.right

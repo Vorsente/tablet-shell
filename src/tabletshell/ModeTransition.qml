@@ -2,7 +2,7 @@
 // dock snaps onto the tablet (PC), comes off (tablet), a monitor gets plugged in (dock), the screen
 // turns into a sheet of paper (typewriter) or warms up (reading). It also covers the panels while
 // they are being reshaped behind it. Touches pass through.
-// D-Bus org.ipad.TabletShell ModeTransition(from, to): tablet|pc|dock|typewriter|reading, an empty
+// D-Bus org.ipad.TabletShell ModeTransition(from, to): tablet|pc|dock|typewriter|coding|reading, an empty
 // side means the current device mode (tabletd calls it, so do the typewriter and reading-mode scripts).
 // Sounds (tabletrc [Modes] transitionSound) are cues on the same timeline: sounds/make-sounds.py
 // makes them, the typewriter scene borrows the typewriter's own key and bell sounds.
@@ -42,11 +42,12 @@ Window {
     property real paper: 0    // typewriter page
     property real typed: 0    // lines typed on it
     property real warm: 0     // reading mode
+    property real code: 0     // coding mode: editor
     property string caption: ""
     property string subtitle: ""
 
     readonly property var props: ["scrim", "zoom", "kb", "lift", "bump", "glow", "mon", "cable", "monOn",
-                                  "home", "desk", "paper", "typed", "warm"]
+                                  "home", "desk", "paper", "typed", "warm", "code"]
 
     // ---- timeline: keyframes per property, evaluated from one clock ------------------------------
     property real t: 0
@@ -115,7 +116,7 @@ Window {
         return shell.tabletMode ? "tablet" : "pc";
     }
     function base(mode) {
-        const s = { kb: 0, mon: 0, cable: 0, monOn: 0, home: 1, desk: 0, paper: 0, typed: 0, warm: 0 };
+        const s = { kb: 0, mon: 0, cable: 0, monOn: 0, home: 1, desk: 0, paper: 0, typed: 0, warm: 0, code: 0 };
         const pc = { kb: 1, home: 0, desk: 1 };
         if (mode === "pc" || mode === "dock") {
             Object.assign(s, pc);
@@ -123,8 +124,9 @@ Window {
         if (mode === "dock") {
             Object.assign(s, { mon: 1, cable: 1, monOn: 1 });
         }
-        if (mode === "typewriter" || mode === "reading") {
-            Object.assign(s, base(deviceMode()), mode === "typewriter" ? { paper: 1, typed: 1 } : { warm: 1 });
+        if (mode === "typewriter" || mode === "reading" || mode === "coding") {
+            Object.assign(s, base(deviceMode()), mode === "typewriter" ? { paper: 1, typed: 1 }
+                                                    : mode === "coding" ? { code: 1 } : { warm: 1 });
         }
         return s;
     }
@@ -170,6 +172,10 @@ Window {
             key("paper", 0, c + 150, 400);
             c += 600;
         }
+        if (a.code > b.code) {
+            key("code", 0, c, 500);
+            c += 550;
+        }
         if (a.warm > b.warm) {
             key("warm", 0, c, 600);
             cueAt(c, "release");
@@ -211,17 +217,29 @@ Window {
             cueAt(c + 1620, "bell");
             c += 1650;
         }
+        if (a.code < b.code) {
+            key("code", 1, c, 1100, "inout");
+            cueAt(c, "key");
+            c += 1250;
+        }
         if (a.warm < b.warm) {
             key("warm", 1, c, 800);
             cueAt(c, "warm");
             c += 900;
         }
         holdEnd = c + 700;
-        key("zoom", 1, holdEnd, 850, "inout");
-        key("scrim", 0, holdEnd + 700, 400);
-        total = holdEnd + 1100;
-        // nobody reports readiness for the typewriter and reading mode
-        isReady = [from, to].some(m => m === "typewriter" || m === "reading");
+        key("zoom", 1, holdEnd, 420, "inout");
+        key("scrim", 0, holdEnd + 310, 260);
+        total = holdEnd + 570;
+        // ~/.local/bin/typewriter reports readiness once ghostwriter's window is up; nobody does
+        // for the reading mode and for leaving these two modes
+        // Only reading mode has no external window/panel readiness callback.
+        // Do not hold every keyboard dock/undock animation for the safety timer.
+        isReady = to === "reading" || from === "reading" ||
+                  ((from === "typewriter" || from === "coding") &&
+                   to !== "typewriter" && to !== "coding");
+        // ghostwriter takes a while to start on the Atom: wait longer for it
+        safety.interval = (to === "typewriter" || to === "coding") ? 12000 : 2500;
         waiting = false;
 
         cs.sort((x, y) => x.at - y.at);
@@ -260,7 +278,9 @@ Window {
         sfx("whoosh");
         const target = mode === "dock" ? monScreen : screen;
         zoomRect = target.mapToItem(camera, 0, 0, target.width, target.height);
-        run(t, total);
+        // t may still be in the middle of an earlier frame when ready() arrives.
+        // Always begin the exit keyframes from the defined hold point.
+        run(Math.max(t, holdEnd), total);
     }
     property string mode: ""
 
@@ -277,13 +297,15 @@ Window {
 
     function titleFor(to) {
         return { tablet: Tr.t("Режим планшета"), pc: Tr.t("Режим ПК"), dock: Tr.t("Режим док-станции"),
-                 typewriter: Tr.t("Печатная машинка"), reading: Tr.t("Режим чтения") }[to] || "";
+                 typewriter: Tr.t("Печатная машинка"), coding: Tr.t("Режим кодинга"), reading: Tr.t("Режим чтения") }[to] || "";
     }
     function subtitleFor(from, to) {
         if (to === "dock") return Tr.t("Рабочий стол — на внешнем мониторе");
         if (to === "typewriter") return Tr.t("Только текст, без уведомлений");
+        if (to === "coding") return Tr.t("Рабочее пространство готово. Открывается LazyVim.");
         if (to === "reading") return Tr.t("Тёплый экран, без уведомлений");
         if (from === "typewriter") return Tr.t("Печатная машинка закрыта");
+        if (from === "coding") return Tr.t("Режим кодинга выключен");
         if (from === "reading") return Tr.t("Режим чтения выключен");
         if (from === "dock" && to === "pc") return Tr.t("Внешний монитор отключён");
         return to === "tablet" ? Tr.t("Клавиатура отключена") : Tr.t("Клавиатура подключена");
@@ -333,17 +355,17 @@ Window {
         anchors.fill: parent
         opacity: win.scrim
         gradient: Gradient {
-            GradientStop { position: 0; color: "#101018" }
-            GradientStop { position: 1; color: "#1c1830" }
+            GradientStop { position: 0; color: uiStyle.pixel ? "#141218" : "#101018" }
+            GradientStop { position: 1; color: uiStyle.pixel ? "#211B2D" : "#1c1830" }
         }
     }
 
     // tablet screen wallpaper (also on the monitor)
     component Wallpaper: Rectangle {
         gradient: Gradient {
-            GradientStop { position: 0; color: "#2f6fd6" }
-            GradientStop { position: 0.55; color: "#6a4fd8" }
-            GradientStop { position: 1; color: "#c2569b" }
+            GradientStop { position: 0; color: uiStyle.pixel ? "#6750A4" : "#2f6fd6" }
+            GradientStop { position: 0.55; color: uiStyle.pixel ? "#9A82DB" : "#6a4fd8" }
+            GradientStop { position: 1; color: uiStyle.pixel ? "#EFB8C8" : "#c2569b" }
         }
     }
     // a desktop app window
@@ -378,19 +400,20 @@ Window {
     Item {
         id: camera
         anchors.fill: parent
-        transform: Matrix4x4 {
-            matrix: {
-                const r = win.zoomRect;
-                const S = Math.max(win.width / r.width, win.height / r.height);
-                const s = Math.pow(S, win.zoom);
-                const k = S > 1 ? (s - 1) / (S - 1) : 0;
-                const cx = r.x + r.width / 2, cy = r.y + r.height / 2;
-                return Qt.matrix4x4(s, 0, 0, cx * (1 - s) + (win.width / 2 - cx) * k,
-                                    0, s, 0, cy * (1 - s) + (win.height / 2 - cy) * k,
-                                    0, 0, 1, 0,
-                                    0, 0, 0, 1);
+        // Affine scaling uses a cheaper scenegraph transform than a 4x4 matrix.
+        readonly property real maxZoom: Math.max(1, win.width / Math.max(1, win.zoomRect.width),
+                                                      win.height / Math.max(1, win.zoomRect.height))
+        readonly property real s: Math.pow(maxZoom, win.zoom)
+        readonly property real blend: maxZoom > 1 ? (s - 1) / (maxZoom - 1) : 0
+        transform: [
+            Scale { origin.x: win.zoomRect.x + win.zoomRect.width / 2;
+                    origin.y: win.zoomRect.y + win.zoomRect.height / 2;
+                    xScale: camera.s; yScale: camera.s },
+            Translate {
+                x: (win.width / 2 - win.zoomRect.x - win.zoomRect.width / 2) * camera.blend
+                y: (win.height / 2 - win.zoomRect.y - win.zoomRect.height / 2) * camera.blend
             }
-        }
+        ]
 
         Item {
             id: stage
@@ -418,7 +441,7 @@ Window {
                     width: parent.width
                     height: 212
                     radius: 10
-                    color: "#1c1c1e"
+                    color: uiStyle.pixel ? "#2B2932" : "#1c1c1e"
                     border.color: "#48484a"
                     Rectangle {
                         id: monScreen
@@ -513,14 +536,14 @@ Window {
                                     spacing: 4
                                     Repeater {
                                         model: 13
-                                        Rectangle { width: 18; height: 16; radius: 3; color: "#38383c" }
+                                        Rectangle { width: 18; height: 16; radius: 3; color: uiStyle.pixel ? "#49454F" : "#38383c" }
                                     }
                                 }
                             }
                             Rectangle {   // space bar row
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 width: 120; height: 16; radius: 3
-                                color: "#38383c"
+                                color: uiStyle.pixel ? "#49454F" : "#38383c"
                             }
                         }
                         Rectangle {   // touchpad
@@ -528,7 +551,7 @@ Window {
                             anchors.bottom: parent.bottom
                             anchors.bottomMargin: 10
                             width: 96; height: 34; radius: 5
-                            color: "#2a2a2e"
+                            color: uiStyle.pixel ? "#36343B" : "#2a2a2e"
                             border.color: "#3a3a3d"
                         }
                     }
@@ -567,7 +590,7 @@ Window {
                                     model: ["#ff9f0a", "#30d158", "#0a84ff", "#ff375f", "#ffd60a", "#64d2ff", "#bf5af2",
                                             "#ff453a", "#5e5ce6", "#32d74b", "#ac8e68", "#66d4cf", "#ff9f0a", "#0a84ff",
                                             "#e5e5ea", "#30d158", "#ff375f"]
-                                    Rectangle { width: 24; height: 24; radius: 7; color: modelData }
+                                    Rectangle { width: 24; height: 24; radius: uiStyle.pixel ? 12 : 7; color: modelData }
                                 }
                             }
                             Rectangle {
@@ -575,13 +598,13 @@ Window {
                                 anchors.bottom: parent.bottom
                                 anchors.bottomMargin: 8
                                 width: 150; height: 30; radius: 10
-                                color: "#55ffffff"
+                                color: uiStyle.pixel ? "#49454F" : "#55ffffff"
                                 Row {
                                     anchors.centerIn: parent
                                     spacing: 8
                                     Repeater {
                                         model: ["#ff9f0a", "#0a84ff", "#30d158", "#8e8e93"]
-                                        Rectangle { width: 20; height: 20; radius: 6; color: modelData }
+                                        Rectangle { width: 20; height: 20; radius: uiStyle.pixel ? 10 : 6; color: modelData }
                                     }
                                 }
                             }
@@ -626,6 +649,46 @@ Window {
                                         radius: 1
                                         color: index === 0 ? "#1c1c1e" : "#55555a"
                                     }
+                                }
+                            }
+                        }
+
+                        // Coding mode: LazyVim terminal draws its code line by line during the transition.
+                        Rectangle {
+                            anchors.fill: parent
+                            color: "#161b27"
+                            opacity: win.code
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.margins: 10
+                                radius: 6
+                                color: "#202839"
+                                Rectangle { width: parent.width; height: 23; color: "#30394b"; radius: 5 }
+                                Text {
+                                    x: 12; y: 5
+                                    text: "❯  LazyVim  ·  Neovim"
+                                    color: "#a6df97"
+                                    font.pixelSize: 11
+                                    font.family: "monospace"
+                                }
+                                Column {
+                                    x: 15; y: 37; spacing: 9
+                                    Repeater {
+                                        model: [0.76, 0.48, 0.9, 0.7, 0.35, 0.82, 0.53, 0.95, 0.66]
+                                        Rectangle {
+                                            required property real modelData
+                                            required property int index
+                                            readonly property real drawn: Math.max(0, Math.min(1, win.code * 8 - index * 0.62))
+                                            width: 190 * modelData * drawn
+                                            height: 5; radius: 2
+                                            color: index % 3 === 0 ? "#83c8f1" : (index % 3 === 1 ? "#a6df97" : "#deb5ed")
+                                        }
+                                    }
+                                }
+                                Rectangle {
+                                    x: 14; y: parent.height - 20; height: 4
+                                    width: 105 * Math.max(0, Math.min(1, win.code * 3 - 1.5))
+                                    color: "#89b4fa"; radius: 2
                                 }
                             }
                         }

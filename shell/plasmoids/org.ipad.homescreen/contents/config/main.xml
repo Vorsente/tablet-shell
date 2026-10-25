@@ -2,7 +2,9 @@
 <kcfg xmlns="http://www.kde.org/standards/kcfg/1.0">
   <kcfgfile name=""/>
   <group name="General">
-    <entry name="dockSpace" type="Int"><default>88</default></entry>
+    <!-- Whole-shell visual family; mirrored from tabletrc [Appearance] -->
+    <entry name="shellStyle" type="String"><default>apple</default></entry>
+    <entry name="dockSpace" type="Int"><default>64</default></entry>
     <!-- set by ~/.local/bin/tablet-mode-switch: keyboard/dock attached -->
     <entry name="pcMode" type="Bool"><default>false</default></entry>
     <!-- red unread badges on app icons (tablet-settings app) -->
@@ -11,6 +13,7 @@
          [Appearance] liveWallpaper, mirrored here by tablet-settings) it moves: rain runs, snow falls -->
     <entry name="weatherOnWallpaper" type="Bool"><default>true</default></entry>
     <entry name="liveWallpaper" type="Bool"><default>true</default></entry>
+    <entry name="weatherAnimation" type="Bool"><default>false</default></entry>
     <!-- JSON list: "app.desktop", {"folder": "Name", "apps": ["a.desktop", ...]} or
          {"widget": "weather|calendar|clock|typewriter|screentime|battery", "size": "small|wide"} -->
     <entry name="layout" type="String"><default></default></entry>

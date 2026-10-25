@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# Whole-shell style switch (Apple ⇄ Material / Pixel). Also works after update.sh.
+set -euo pipefail
+style="${1:-status}"
+get() { kreadconfig6 --file kdeglobals --group KDE --key "$1" 2>/dev/null || true; }
+getstyle() {
+    local value
+    value=$(kreadconfig6 --file tabletrc --group Appearance --key shellStyle 2>/dev/null || true)
+    if [ "$value" = pixel ]; then echo pixel; else echo apple; fi
+}
+case "$style" in
+    status) getstyle; exit 0 ;;
+    apple|pixel) ;;
+    *) echo 'Usage: shell-style apple|pixel|status' >&2; exit 2 ;;
+esac
+# One switch at a time: a second tap must not open the first switch's curtain early.
+rt="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+[ -d "$rt" ] && [ -w "$rt" ] || rt="${TMPDIR:-/tmp}"
+if { exec 9>"$rt/tablet-style.lock"; } 2>/dev/null && command -v flock >/dev/null; then
+    flock -w 60 9 || true
+fi
+# Keep the user's separately chosen light/dark/auto mode.
+auto=$(get AutomaticLookAndFeel)
+current=$(get LookAndFeelPackage)
+mode=light
+case "$current" in *dark*|*Dark*) mode=dark ;; esac
+if [ "$style" = pixel ]; then
+    light=org.tabletshell.pixel.light; dark=org.tabletshell.pixel.dark
+else
+    light=org.ipad.light; dark=org.ipad.dark
+fi
+# Cover the screen before changing Plasma's colours/icons: the curtain writes "covered" once it is
+# opaque and stays until "ready" (written on exit, also on failure) so the restyling is never seen.
+# Waiting for it is capped, so the theme is applied even if the curtain cannot start.
+if [ "$(getstyle)" != "$style" ] && [ -x "$HOME/.local/bin/tabletshell" ] &&
+   [ "$(kreadconfig6 --file tabletrc --group Modes --key transitionAnimation 2>/dev/null || true)" != false ]; then
+    rm -f "$rt/tablet-style-covered" "$rt/tablet-style-ready"
+    trap 'echo 1 > "$rt/tablet-style-ready"' EXIT
+    TABLET_SHELL_THEME_TARGET="$style" "$HOME/.local/bin/tabletshell" theme-transition >/dev/null 2>&1 &
+    for _ in $(seq 25); do
+        [ -e "$rt/tablet-style-covered" ] && break
+        sleep 0.1
+    done
+fi
+kwriteconfig6 --file tabletrc --group Appearance --key shellStyle "$style"
+kwriteconfig6 --file kdeglobals --group KDE --key DefaultLightLookAndFeel "$light"
+kwriteconfig6 --file kdeglobals --group KDE --key DefaultDarkLookAndFeel "$dark"
+# Remember and switch to the wallpaper set that belongs to the style. Each style keeps its own
+# last chosen wallpaper; when none was chosen yet, use a bundled default.
+case "$style" in
+  pixel)
+    default_wp="$HOME/.local/share/wallpapers/Material-Orbit"
+    [ -d "$default_wp" ] || default_wp=$(find "$HOME/.local/share/wallpapers" -mindepth 1 -maxdepth 1 -type d -name "Material-*" -print -quit 2>/dev/null || true)
+    saved_wp=$(kreadconfig6 --file tabletrc --group Appearance --key pixelWallpaper 2>/dev/null || true)
+    ;;
+  apple)
+    default_wp="$HOME/.local/share/wallpapers/Monterey-iPad"
+    [ -d "$default_wp" ] || default_wp=$(find "$HOME/.local/share/wallpapers" -mindepth 1 -maxdepth 1 -type d -name "*-iPad" -print -quit 2>/dev/null || true)
+    saved_wp=$(kreadconfig6 --file tabletrc --group Appearance --key appleWallpaper 2>/dev/null || true)
+    ;;
+esac
+wallpaper_target=${saved_wp:-$default_wp}
+# Choose the corresponding KDE look without reconfiguring desktop containments or wallpapers.
+if command -v plasma-apply-lookandfeel >/dev/null; then
+    plasma-apply-lookandfeel -a "${!mode}" >/dev/null 2>&1 || true
+fi
+# Reapply after the look-and-feel action, which can override its own icon theme.
+if [ "$style" = pixel ]; then
+    kwriteconfig6 --file kdeglobals --group Icons --key Theme --notify "TabletPixel${mode^}"
+else
+    kwriteconfig6 --file kdeglobals --group Icons --key Theme --notify "MacTahoe-$mode"
+fi
+if [ "$auto" = true ]; then
+    kwriteconfig6 --file kdeglobals --group KDE --key AutomaticLookAndFeel --notify true
+else
+    kwriteconfig6 --file kdeglobals --group KDE --key AutomaticLookAndFeel false
+fi
+# Notify each Plasma containment (new values become reactive QML properties).
+if command -v qdbus6 >/dev/null; then
+  qdbus6 org.ipad.TabletD / org.ipad.TabletD.Reapply >/dev/null 2>&1 || true
+  qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "
+    // Desktop containment type is an enum, not the plasmoid plugin id.
+    // Write the shared setting to all desktops (including the dashboard).
+    desktops().forEach(function(d) {
+      d.currentConfigGroup = ['General'];
+      d.writeConfig('shellStyle', '$style');
+      d.reloadConfig();
+    });" >/dev/null 2>&1 || true
+fi
+# Apply the style-specific wallpaper before syncing dependent surfaces.
+if [ -n "${wallpaper_target:-}" ] && [ -e "$wallpaper_target" ] && [ -x "$HOME/.local/bin/wallpaper" ]; then
+    "$HOME/.local/bin/wallpaper" set "$wallpaper_target" >/dev/null 2>&1 || true
+fi
+# plasmashell reloads its config, colours and icons asynchronously: a script call is answered only
+# after the events queued before it, so it marks when the restyled desktop is being drawn.
+if command -v qdbus6 >/dev/null; then
+    timeout 15 qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "" >/dev/null 2>&1 || true
+fi
+# Everything visible is restyled: let the curtain open (the lock screen copy below is not seen).
+echo 1 > "$rt/tablet-style-ready" 2>/dev/null || true
+# Refresh the copy used by kscreenlocker and the login manager (if configured).
+if [ -x "$HOME/.local/bin/lockscreen-sync" ]; then
+    "$HOME/.local/bin/lockscreen-sync" >/dev/null 2>&1 || true
+fi

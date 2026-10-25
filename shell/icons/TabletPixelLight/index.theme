@@ -1,0 +1,12 @@
+[Icon Theme]
+Name=Tablet Pixel Light
+Comment=Material icons and contrast-aware light panel symbols
+Inherits=TabletPixel,Colloid-Light,Colloid,breeze
+Directories=scalable/actions
+
+[scalable/actions]
+Size=48
+Type=Scalable
+MinSize=16
+MaxSize=256
+Context=Actions

@@ -1,0 +1,9 @@
+[Unit]
+Description=Icons in the icon theme's style for newly installed apps (Waydroid, web apps, packages)
+
+[Path]
+PathChanged=%h/.local/share/applications
+PathChanged=/usr/share/applications
+
+[Install]
+WantedBy=default.target

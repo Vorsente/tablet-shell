@@ -102,6 +102,8 @@ Window {
         opacity: win.shown
         scale: 0.96 + 0.04 * win.shown
 
+        visible: !uiStyle.pixel
+
         // slide to power off
         Rectangle {
             id: track
@@ -110,7 +112,7 @@ Window {
             width: 440
             height: 76
             radius: height / 2
-            color: Qt.rgba(1, 1, 1, 0.16)
+            color: uiStyle.pixel ? "#49454F" : Qt.rgba(1, 1, 1, 0.16)
             border.color: Qt.rgba(1, 1, 1, 0.22)
 
             Text {
@@ -122,7 +124,7 @@ Window {
                 font.pixelSize: 20
                 // shimmer
                 SequentialAnimation on opacity {
-                    running: win.visible && knob.x === 0
+                    running: win.visible && !uiStyle.pixel && knob.x === 0
                     loops: Animation.Infinite
                     NumberAnimation { to: 0.45; duration: 900; easing.type: Easing.InOutSine }
                     NumberAnimation { to: 0.9; duration: 900; easing.type: Easing.InOutSine }
@@ -227,6 +229,70 @@ Window {
                 MouseArea { id: cancel; anchors.fill: parent; enabled: !win.leaving; onClicked: win.close() }
             }
             Text { anchors.horizontalCenter: parent.horizontalCenter; text: Tr.t("Отмена"); color: "white"; font.pixelSize: 16 }
+        }
+    }
+
+    Rectangle {
+        visible: uiStyle.pixel
+        anchors.centerIn: parent
+        width: Math.min(parent.width - 32, 420)
+        height: actions.implicitHeight + 64
+        radius: 28
+        color: "#2B2932"
+        opacity: win.shown
+        Column {
+            id: actions
+            anchors.centerIn: parent
+            width: parent.width - 48
+            spacing: 16
+            Text { text: Tr.t("Меню питания"); color: "#E6E0E9"; font.pixelSize: 24; font.family: "Noto Sans" }
+            Grid {
+                width: parent.width
+                columns: 2
+                spacing: 12
+                Repeater {
+                    model: [
+                        {what: "poweroff", icon: "system-shutdown-symbolic", label: Tr.t("Выключить")},
+                        {what: "reboot", icon: "system-reboot-symbolic", label: Tr.t("Перезагрузить")},
+                        {what: "suspend", icon: "system-suspend-symbolic", label: Tr.t("Сон")},
+                        {what: "logout", icon: "system-log-out-symbolic", label: Tr.t("Выйти")}
+                    ]
+                    Rectangle {
+                        required property var modelData
+                        width: (actions.width - 12) / 2
+                        height: 100
+                        radius: 24
+                        color: materialTap.pressed ? "#D0BCFF" : "#4A4458"
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: 10
+                            Kirigami.Icon {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: 28; height: 28
+                                source: modelData.icon
+                                isMask: true
+                                color: materialTap.pressed ? "#381E72" : "#E8DEF8"
+                            }
+                            Text {
+                                text: modelData.label
+                                color: materialTap.pressed ? "#381E72" : "#E8DEF8"
+                                font.pixelSize: 14
+                            }
+                        }
+                        MouseArea {
+                            id: materialTap
+                            anchors.fill: parent
+                            enabled: !win.leaving
+                            onClicked: win.shutdown(modelData.what)
+                        }
+                    }
+                }
+            }
+            Rectangle {
+                width: parent.width; height: 48; radius: 24; color: "#D0BCFF"
+                Text { anchors.centerIn: parent; text: Tr.t("Отмена"); color: "#381E72"; font.pixelSize: 16 }
+                MouseArea { anchors.fill: parent; enabled: !win.leaving; onClicked: win.close() }
+            }
         }
     }
 

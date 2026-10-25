@@ -1,5 +1,7 @@
 // One key: a ThinkPad-style island (flat top, gently curved "smile" bottom edge) with an Apple
-// keyboard finish: soft bottom shadow, lowercase legends, a small grey flick symbol on top.
+// keyboard finish: soft bottom shadow, lowercase legends, a small grey flick symbol on top and the
+// first long-press alternate in the top-right corner. Pulling the key down (flick) slides the grey
+// symbol into the middle, like on the iPad.
 import QtQuick
 import QtQuick.Shapes
 import org.kde.kirigami as Kirigami
@@ -17,11 +19,13 @@ Item {
     property bool led: false            // caps lock LED (shift key), like the ThinkPad Caps Lock
     property bool ledVisible: false
     property bool blank: false          // space-bar trackpad: legends fade out
+    property string hint: ""            // first long-press alternate, shown in the corner
+    property real flick: 0              // 0..1 while the key is pulled down
 
-    readonly property real r: Math.min(width, height) * 0.16
+    readonly property real r: Math.min(width, height) * (uiStyle.pixel ? 0.28 : 0.16)
     property bool showSecondary: true
     property real smileFactor: 1        // 0: plain rounded keys instead of the ThinkPad smile
-    readonly property real smile: height * 0.07 * smileFactor
+    readonly property real smile: uiStyle.pixel ? 0 : height * 0.07 * smileFactor
 
     // shadow, then face: same island path, the shadow shifted down
     Shape {
@@ -48,23 +52,37 @@ Item {
         }
     }
 
-    // flick symbol (top) and main legend
+    // flick symbol (top, sliding to the middle while pulled), main legend, long-press hint
+    readonly property bool hasSecondary: spec[2] !== "" && showSecondary
     Text {
-        visible: key.spec[2] !== "" && !key.blank && key.showSecondary
+        visible: key.hasSecondary && !key.blank
         anchors.horizontalCenter: parent.horizontalCenter
-        y: key.height * 0.08
+        y: key.height * (0.08 + 0.2 * key.flick)
         text: key.spec[2]
+        color: Qt.tint(key.theme.subText, Qt.rgba(key.theme.text.r, key.theme.text.g, key.theme.text.b, key.flick))
+        font.family: uiStyle.pixel ? "Noto Sans" : "Inter"
+        font.pixelSize: key.height * (0.2 + 0.2 * key.flick)
+    }
+    Text {
+        visible: key.hint !== "" && !key.blank
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.rightMargin: key.height * 0.1
+        anchors.topMargin: key.height * 0.06
+        opacity: 0.85 * (1 - key.flick)
+        text: key.hint
         color: key.theme.subText
-        font.family: "Inter"
-        font.pixelSize: key.height * 0.2
+        font.family: uiStyle.pixel ? "Noto Sans" : "Inter"
+        font.pixelSize: key.height * 0.17
     }
     Text {
         anchors.centerIn: parent
-        anchors.verticalCenterOffset: (key.spec[2] !== "" && key.showSecondary ? key.height * 0.08 : 0) - key.smile * 0.4
+        anchors.verticalCenterOffset: (key.hasSecondary ? key.height * (0.08 + 0.25 * key.flick) : 0) - key.smile * 0.4
+        opacity: 1 - key.flick
         visible: !key.blank && key.iconName === ""
         text: key.icon !== "" ? key.icon : key.label
         color: key.theme.text
-        font.family: "Inter"
+        font.family: uiStyle.pixel ? "Noto Sans" : "Inter"
         font.pixelSize: key.icon !== "" ? key.height * 0.36
                        : (key.label.length > 1 ? key.height * 0.27 : key.height * 0.4)
         font.weight: key.label.length > 1 ? Font.Medium : Font.Normal

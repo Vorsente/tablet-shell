@@ -1,0 +1,13 @@
+{
+    "KPlugin": {
+        "Id": "Material-Bloom",
+        "Name": "Bloom Material",
+        "Name[ru]": "Bloom Material",
+        "License": "CC0-1.0",
+        "Authors": [
+            {
+                "Name": "OpenAI"
+            }
+        ]
+    }
+}

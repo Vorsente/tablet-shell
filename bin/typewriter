@@ -19,6 +19,10 @@ fi
 pgrep -x ghostwriter >/dev/null && exit 0
 # mode change animation (tabletshell): it covers the screen while ghostwriter opens
 modeanim() { qdbus6 org.ipad.TabletShell / org.ipad.TabletShell.ModeTransition "$1" "$2" >/dev/null 2>&1; }
+shellcall() { qdbus6 org.ipad.TabletShell / "org.ipad.TabletShell.$1" "${@:2}" 2>/dev/null; }
+# the app in front is forgotten, so the wait for ghostwriter's window below cannot match a window
+# of an earlier session
+shellcall WindowActivated "" >/dev/null
 modeanim "" typewriter
 if [ "$1" = new ] || ! file=$(ls -t "$dir"/*.md 2>/dev/null | head -1) || [ -z "$file" ]; then
     file="$dir/Сценарий $(date +%F_%H-%M).md"
@@ -54,8 +58,10 @@ brightness=$(kscreen-doctor -j 2>/dev/null | sed -n 's/.*"brightness": *\([0-9.]
 profile=$(powerprofilesctl get 2>/dev/null)
 restore() {
     modeanim typewriter ""
-    [ -n "$pill" ] && kill "$pill" 2>/dev/null
+    [ -f "$pillfile" ] && kill "$(cat "$pillfile")" 2>/dev/null
+    rm -f "$pillfile"
     [ -n "$autosave" ] && kill "$autosave" 2>/dev/null
+    [ -n "$opened" ] && kill "$opened" 2>/dev/null
     if [ -n "$baseline" ] && [ -f "$file" ]; then
         added=$(( $(wc -w < "$file") - baseline ))
         [ "$added" -gt 0 ] && echo $(( $(cat "$daily" 2>/dev/null || echo 0) + added )) > "$daily"
@@ -94,12 +100,30 @@ goal=$(kreadconfig6 --file typewriterrc --group General --key dailyGoal --defaul
 sound=$([ "$(kreadconfig6 --file typewriterrc --group General --key sounds --default true)" = true ] && echo 1 || echo 0)
 
 # pill in the corner above the fullscreen editor: words today/goal, battery, clock, key sounds;
-# while it runs notifications are held back (focus)
-TYPEWRITER_FILE="$file" TYPEWRITER_BASELINE="$baseline" TYPEWRITER_TODAY="$(cat "$daily" 2>/dev/null || echo 0)" \
-TYPEWRITER_GOAL="$goal" TYPEWRITER_DIR="$dir" TYPEWRITER_SOUND="$sound" TYPEWRITER_FOCUS="$focus" "$HOME/.local/bin/tabletshell" pill >/dev/null 2>&1 &
-pill=$!
+# while it runs notifications are held back (focus). Started once the mode animation is over (below):
+# a surface opened during the animation lay on top of it.
+pillfile="${XDG_RUNTIME_DIR:-/tmp}/typewriter-pill.pid"
+startpill() {
+    TYPEWRITER_FILE="$file" TYPEWRITER_BASELINE="$baseline" TYPEWRITER_TODAY="$(cat "$daily" 2>/dev/null || echo 0)" \
+    TYPEWRITER_GOAL="$goal" TYPEWRITER_DIR="$dir" TYPEWRITER_SOUND="$sound" TYPEWRITER_FOCUS="$focus" "$HOME/.local/bin/tabletshell" pill >/dev/null 2>&1 &
+    echo $! > "$pillfile"
+}
 ( while sleep 300; do snapshot "$(t "автосохранение" "autosave")"; done ) &
 autosave=$!
+
+# The animation holds the screen until ghostwriter's window is in front (ModeReady), otherwise it
+# uncovered the old screen while the editor was still starting. Its own timer gives up after a while.
+(
+    for _ in $(seq 120); do
+        sleep 0.25
+        shellcall CurrentApp | grep -qi ghostwriter && break
+    done
+    sleep 0.4   # the window's first frame
+    shellcall ModeReady >/dev/null
+    sleep 1.4   # the animation flies into the screen and fades (ModeTransition.qml: 1.1 s)
+    startpill
+) &
+opened=$!
 
 # accessibility on: the pill's scene list moves the cursor through AT-SPI
 QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1 ghostwriter "$file"

@@ -36,9 +36,10 @@ stay light: the background parts are small C++ programs, the UI is QML, nothing 
 | 🔒 **Lock & login** | One look for both, now-playing card, notifications; own greetd greeter |
 | ⚙️ **Settings** | One app instead of System Settings: all KDE modules plus the shell's own sections |
 | ✍️ **Typewriter** | Distraction-free screenplay writing in Markdown, daily goal, scenes, versions, export to PDF / DOCX / EPUB |
-| 🖊️ **Pen** | Palm rejection, quick note from the corner, a tool ring (note, screenshot, magnifier, color picker, recording) |
+| 🖊️ **Pen** | Palm rejection, quick note from the corner, a tool ring (note, screenshot, Krita, color picker, recording) |
 | 📊 **Dashboard** | StandBy-style clock and system widgets on the built-in screen when docked |
 | 🌗 **Light & dark** | Follows the time of day; cards, menus and sheets adapt |
+| 🎨 **Icons** | MacTahoe (macOS 26) icon theme; apps it lacks get icons drawn to match (`tablet-tools app-icons`, re-run when apps are installed) |
 | 🌍 **Russian & English** | Follows the Plasma language |
 | 🧩 **More** | Web apps, Split View, Slide Over, picture-in-picture, screen time, storage cleanup, system snapshots, Android apps (Waydroid) |
 
@@ -133,15 +134,24 @@ keyboard dock → **PC**, keyboard + external monitor → **dock**. Each change 
 git clone https://github.com/Vorsente/tablet-shell
 cd tablet-shell
 ./install.sh                    # weather city = your time zone's; or: ./install.sh --city Berlin
+# To explicitly replace your login manager (e.g. SDDM):
+# ./install.sh --install-greeter
 ```
 
 The installer:
 
 1. checks the system and offers to install the missing packages (`sudo pacman -S …`);
 2. builds the C++ programs (about 10 minutes on an Atom, a minute on a laptop);
-3. installs everything for your user in `~/.local` — nothing outside your home;
+3. installs user components in `~/.local`; updating an existing tablet-shell greeter may use `sudo`;
 4. downloads the WhiteSur themes, icons and wallpapers and adjusts them;
-5. sets the KDE options the shell needs and starts its services.
+5. sets KDE options, starts services and asks the daemon to repair the panels;
+6. if the tablet-shell greetd login is already installed, refreshes it automatically and
+   silences cage/libseat (`seatd`) diagnostic output without creating log files
+   (may require sudo authentication).
+
+`--install-greeter` explicitly opts in to replacing SDDM / Plasma Login with greetd;
+without it the installer never replaces another display manager. Use
+`--no-greeter-update` to skip the automatic refresh of an existing tablet greeter.
 
 **Log out and back in.** That's it — the tablet is ready.
 
@@ -154,9 +164,9 @@ with full paths (they are copied to `~/.local/share/tablet-shell/system/`).
 | --- | --- | --- |
 | `system/devices.sh` | lets the user at the seat read the power/Windows buttons, pen and keyboards (power button menu, palm rejection, typewriter sounds); installs Rnote and Xournal++ | `--undo` |
 | `system/settings-wrappers.sh` | Plasma's "Configure…" links open the tablet Settings app | `--undo` |
-| `system/greeter.sh` | own login screen (greetd + cage) that looks like the lock screen | `--undo` |
+| `system/greeter.sh` | own login screen (greetd + cage); `--refresh` updates an existing tablet greeter | `--undo` |
 | `system/language.sh ru` | system language and formats (any locale), Firefox language pack | run with `en` |
-| `system/base.sh` | NetworkManager, Bluetooth, power profiles, compressed RAM swap (zram), smaller logs, touch apps | — |
+| `system/base.sh` | NetworkManager, Bluetooth, power profiles, compressed RAM swap (zram), touch apps | — |
 | `system/recovery/install.sh` | a btrfs snapshot before every update, restore from Settings, a "before the last update" boot entry | — |
 | `system/boot-splash/install.sh` | quiet boot with a splash showing the device name | `*.before-plymouth` files |
 | `system/android/install.sh` | Android apps via Waydroid (`--gapps` for Google Play, `--houdini` / `--ndk` for ARM apps) | `pacman -R waydroid` |
@@ -164,8 +174,17 @@ with full paths (they are copied to `~/.local/share/tablet-shell/system/`).
 
 ### Update and remove
 
+`update.sh` builds before changing installed files and saves backups to
+`~/.local/state/tablet-shell/backup-*`. It updates programs and services without resetting
+KDE preferences, themes, weather city or panel configuration. For ZIP installations, pass the
+new ZIP with `--from` instead of overwriting the old unpacked folder. System services
+outside this project retain their own journal behavior.
+
 ```sh
-git pull && ./install.sh        # update (your settings stay)
+./update.sh                    # Git checkout: fast-forward and install without changing settings
+./update.sh --offline          # rebuild and install local files only
+./update.sh --from ./new.zip   # update from a downloaded project ZIP archive
+./update.sh --no-greeter-update # no sudo login-screen refresh
 ./uninstall.sh                  # back to the standard Plasma desktop; your files stay
 ```
 
@@ -190,13 +209,18 @@ git pull && ./install.sh        # update (your settings stay)
 | pen button | hold above the screen | tool ring |
 | pen | swipe from the bottom-right corner | quick note |
 
-Keyboard shortcuts: <kbd>Meta</kbd>+<kbd>S</kbd> Split View · <kbd>Meta</kbd>+<kbd>O</kbd> Slide Over ·
+Keyboard shortcuts: <kbd>Meta</kbd>+<kbd>S</kbd> Split View (the previous app goes right, a minimized one
+too; with no other app the next one opened takes the right half) · <kbd>Meta</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd> divider
+at 1/2, 2/3, 1/3 (or hold the control center tile) · <kbd>Meta</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> swap sides ·
+<kbd>Meta</kbd>+<kbd>O</kbd> Slide Over ·
 <kbd>Meta</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd> back to full screen · <kbd>Meta</kbd>+<kbd>P</kbd> picture-in-picture ·
 <kbd>Meta</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> next corner.
 
 ### On-screen keyboard
 
-- **Flick a key down** for its grey symbol; **hold** for alternatives (е → ё, ь → ъ, accents, «»).
+- **Flick a key down** for its grey symbol (it slides into the key as you pull); **hold** for a menu with
+  the grey symbol first, then the alternatives (е → ё, ь → ъ, accents, «»; the first one is shown in the
+  key's corner).
 - **Hold the space bar** and move the finger: the cursor follows. **Swipe across** it to switch language.
 - **Double space** types ". "; **double-tap shift** for caps lock (green light).
 - **Spread two fingers** to split the keyboard, pinch to join; **hold the globe** for the menu.
@@ -244,7 +268,7 @@ booting, hold **Space** while powering on and choose *before the last update*.
 | The power button only suspends | run `sudo system/devices.sh`, then log in again |
 | Stuck at the login screen | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F2</kbd>, log in, `sudo ~/.local/share/tablet-shell/system/greeter.sh --undo` |
 | The lock screen does not take the password | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F2</kbd>, log in, `loginctl unlock-sessions` |
-| Logs | `journalctl --user -u tabletd -u tabletshell -u plasma-plasmashell` |
+| Logging | Disabled for tablet-shell apps and user services; system journal unaffected |
 
 ---
 
@@ -295,3 +319,45 @@ weather by [Open-Meteo](https://open-meteo.com).
 ## License
 
 [GPL-3.0-or-later](LICENSE)
+
+## Apple / Pixel whole-shell style
+
+Select **Settings → Appearance → Whole shell style → Apple / iPadOS or Google Pixel / Material Design**. Light/dark/automatic are independent of the style family. CLI: `~/.local/bin/shell-style pixel` and `~/.local/bin/shell-style apple`. Your selection survives `./update.sh --offline`. See [Pixel Material notes](ИЗМЕНЕНИЯ-PIXEL-MATERIAL.md).
+
+
+## Updates in Settings
+
+Open **Tablet Settings → Update**, check the current upstream GitHub release/commit,
+and confirm before downloading. The updater pins the confirmed commit, validates the
+archive, builds first and installs using the non-destructive update mode. A local ZIP
+build may contain changes absent from GitHub, so the confirmation dialog warns before
+replacing it. Updating the greetd login screen separately requires administrator access.
+
+## Pen tools and coding mode
+
+The pen menu contains **Note, Screenshot, Krita, Color Picker, Recording**. The magnifier
+is removed; icons and button surfaces follow the Apple/Pixel appearance. Krita is
+installed automatically by `./install.sh`. **Settings → Coding Mode** opens **LazyVim**
+inside a dedicated full-screen Konsole window with the same animated mode transition
+as tablet/PC/typewriter modes. Code lines animate before the terminal appears; closing
+Konsole restores the previous power, brightness, focus and desktop effects.
+
+On `./install.sh`, Neovim 0.11.2+, Konsole, ripgrep, fd, fzf, lazygit, tree-sitter-cli
+and JetBrains Mono Nerd Font are installed automatically via pacman; the official
+[LazyVim Starter](https://github.com/LazyVim/starter) and plugins are fetched online.
+The config is isolated at `~/.config/tablet-shell-lazyvim`, using
+`NVIM_APPNAME=tablet-shell-lazyvim`. Your existing `~/.config/nvim` and its data
+remain untouched, and repeated installations keep changes to the LazyVim config.
+The editor opens `~/Projects` without creating source files or automatic git commits.
+The first system package installation requires sudo authentication in a terminal;
+subsequent upgrades can be launched from Settings, as long as dependencies exist.
+
+
+## Update safety
+
+`./update.sh --offline` does not build or replace the on-screen keyboard, lock screen or login screen. It never mixes old keyboard
+executables with new QML and still updates other components. Later installations
+remove only obsolete, unchanged files recorded in the installer-owned manifest;
+unknown or modified files are preserved. See `ИЗМЕНЕНИЯ-КЛАВИАТУРА-ОБНОВЛЕНИЕ.md`.
+
+> **Oct 24 visual update:** dock/page dots spacing, separate Pixel widgets and contrast-aware icons, optional Colloid download, and Apple/Pixel theme transition: see `ИЗМЕНЕНИЯ-ПАНЕЛИ-PIXEL-ВИДЖЕТЫ-2026-10-24.md`.

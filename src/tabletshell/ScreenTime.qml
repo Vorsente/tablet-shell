@@ -55,7 +55,7 @@ Window {
             const data = load(key);
             const total = Object.values(data).reduce((a, b) => a + b, 0);
             const words = parseInt(shell.readFile(home + "/.local/share/typewriter/words-" + key)) || 0;
-            list.push({ date: key, total: total, words: words, weekday: Qt.formatDate(new Date(key), "ddd") });
+            list.push({ date: key, total: total, words: words, weekday: new Date(key).toLocaleDateString(Tr.locale(), "ddd") });
         }
         days = list;
         maxDay = Math.max(60, ...list.map(d => d.total));
@@ -87,10 +87,10 @@ Window {
         anchors.centerIn: parent
         width: Math.min(parent.width - Kirigami.Units.gridUnit * 2, Kirigami.Units.gridUnit * 30)
         height: Math.min(parent.height - Kirigami.Units.gridUnit * 2, content.implicitHeight + Kirigami.Units.gridUnit * 2)
-        radius: Kirigami.Units.gridUnit * 1.4
-        color: Qt.rgba(0.12, 0.12, 0.15, 0.92)
-        border.color: Qt.rgba(1, 1, 1, 0.16)
-        border.width: 1
+        radius: uiStyle.pixel ? Kirigami.Units.gridUnit * 2.1 : Kirigami.Units.gridUnit * 1.4
+        color: uiStyle.pixel ? "#25232C" : Qt.rgba(0.12, 0.12, 0.15, 0.92)
+        border.color: uiStyle.pixel ? "#625C69" : Qt.rgba(1, 1, 1, 0.16)
+        border.width: uiStyle.pixel ? 0 : 1
 
         MouseArea { anchors.fill: parent }  // keep taps inside
 
@@ -154,7 +154,7 @@ Window {
                             Layout.preferredWidth: Kirigami.Units.gridUnit * 1.6
                             Layout.preferredHeight: Math.max(3, (Kirigami.Units.gridUnit * 5) * modelData.total / win.maxDay)
                             radius: 4
-                            color: index === 6 ? Kirigami.Theme.highlightColor : Qt.rgba(1, 1, 1, 0.35)
+                            color: index === 6 ? (uiStyle.pixel ? "#D0BCFF" : Kirigami.Theme.highlightColor) : Qt.rgba(1, 1, 1, 0.35)
                         }
                         PC3.Label {
                             Layout.alignment: Qt.AlignHCenter

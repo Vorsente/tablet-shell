@@ -1,39 +1,33 @@
-// Tablet (iPadOS): glass status bar on top, floating dock that hides under windows.
-panels().forEach(function (p) { p.remove(); });
-
-var top = new Panel("org.kde.panel");
-top.location = "top";
-top.height = 28;
-top.floating = false;
-top.opacity = "translucent";
-var clock = top.addWidget("org.kde.plasma.digitalclock");
-clock.currentConfigGroup = ["Appearance"];
-clock.writeConfig("showDate", true);
-clock.writeConfig("dateDisplayFormat", "BesideTime");
-clock.writeConfig("dateFormat", "custom");
-clock.writeConfig("customDateFormat", "ddd d MMM");
-clock.writeConfig("fontWeight", 600);
-clock.writeConfig("use24hFormat", 2);
-top.addWidget("org.kde.plasma.panelspacer");
-var quick = top.addWidget("org.kde.plasma.quicklaunch");
-quick.currentConfigGroup = ["General"];
-quick.writeConfig("launcherUrls", ["file://" + HOME + "/.local/share/applications/appearance-toggle.desktop"]);
-quick.writeConfig("showLauncherNames", false);
-var tray = top.addWidget("org.kde.plasma.systemtray");
-tray.currentConfigGroup = ["General"];
-tray.writeConfig("scaleIconsToFit", true);
-
-var dock = new Panel("org.kde.panel");
-dock.location = "bottom";
-dock.height = 64;
-dock.floating = true;
-dock.lengthMode = "fit";
-dock.alignment = "center";
-dock.hiding = "dodgewindows";
-dock.opacity = "translucent";
-var tasks = dock.addWidget("org.kde.plasma.icontasks");
-tasks.currentConfigGroup = ["General"];
-tasks.writeConfig("launchers", LAUNCHERS);
-tasks.writeConfig("maxStripes", 1);
-tasks.writeConfig("iconSpacing", 2);
-tasks.writeConfig("indicateAudioStreams", true);
+// Non-destructive bootstrap. Safe to retry after a partially completed Plasma script.
+(function () {
+    var bar = null;
+    panels().some(function (p) {
+        if (p.widgets().some(function (w) { return w.type === "org.kde.plasma.systemtray"; })) {
+            bar = p;
+            return true;
+        }
+        // Reuse a shell bar whose tray failed to load.
+        if (p.widgets().some(function (w) { return w.type === "org.ipad.statusclock"; })) bar = p;
+        return false;
+    });
+    if (!bar) bar = new Panel("org.kde.panel");
+    bar.location = "top";
+    bar.height = 28;
+    bar.floating = false;
+    bar.hiding = "none";
+    bar.lengthMode = "fill";
+    bar.alignment = "center";
+    bar.offset = 0;
+    bar.opacity = "opaque";
+    function ensure(type) {
+        var widget = null;
+        bar.widgets().forEach(function (w) { if (w.type === type) widget = w; });
+        return widget || bar.addWidget(type);
+    }
+    ensure("org.ipad.statusclock");
+    ensure("org.kde.plasma.panelspacer");
+    var tray = ensure("org.kde.plasma.systemtray");
+    tray.currentConfigGroup = ["General"];
+    tray.writeConfig("scaleIconsToFit", true);
+    print("BUILT");
+})();

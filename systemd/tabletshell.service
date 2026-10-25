@@ -4,6 +4,8 @@ PartOf=graphical-session.target plasma-plasmashell.service
 After=plasma-plasmashell.service
 
 [Service]
+StandardOutput=null
+StandardError=null
 ExecStart=%h/.local/bin/tabletshell control
 Restart=on-failure
 

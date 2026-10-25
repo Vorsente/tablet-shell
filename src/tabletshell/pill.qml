@@ -106,7 +106,7 @@ Window {
     Rectangle {
         anchors.fill: parent
         radius: height / 2
-        color: win.celebrate ? Qt.rgba(48 / 255, 209 / 255, 88 / 255, 0.85) : Qt.rgba(0, 0, 0, 0.55)
+        color: uiStyle.pixel ? (win.celebrate ? "#81C995" : "#403949") : win.celebrate ? Qt.rgba(48 / 255, 209 / 255, 88 / 255, 0.85) : Qt.rgba(0, 0, 0, 0.55)
         Behavior on color { ColorAnimation { duration: 400 } }
         border.color: Qt.rgba(1, 1, 1, 0.25)
         border.width: 1

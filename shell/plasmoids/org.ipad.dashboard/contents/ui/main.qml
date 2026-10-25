@@ -6,6 +6,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Window
 import QtCore
+import org.kde.kirigami as Kirigami
 
 import org.kde.plasma.plasmoid
 import org.kde.plasma.plasma5support as P5Support
@@ -17,6 +18,9 @@ import "Tr.js" as Tr
 ContainmentItem {
     id: root
 
+    readonly property bool pixel: Plasmoid.configuration.shellStyle === "pixel"
+    readonly property bool dark: Kirigami.ColorUtils.brightnessForColor(Kirigami.Theme.textColor) === Kirigami.ColorUtils.Light
+
     // only sample while the dashboard is on a screen
     readonly property bool active: Window.window !== null && Window.window.visible
     readonly property string homeDir: String(StandardPaths.writableLocation(StandardPaths.HomeLocation)).replace("file://", "")
@@ -25,21 +29,26 @@ ContainmentItem {
     // Apple system colours (dark appearance)
     QtObject {
         id: pal
-        readonly property color background: "#000000"
-        readonly property color plate: "#1C1C1E"
-        readonly property color label: "#FFFFFF"
-        readonly property color secondary: Qt.rgba(235 / 255, 235 / 255, 245 / 255, 0.6)
-        readonly property color tertiary: Qt.rgba(235 / 255, 235 / 255, 245 / 255, 0.3)
-        readonly property color blue: "#0A84FF"
-        readonly property color green: "#30D158"
-        readonly property color yellow: "#FFD60A"
-        readonly property color orange: "#FF9F0A"
-        readonly property color red: "#FF453A"
-        readonly property color purple: "#BF5AF2"
-        readonly property color teal: "#64D2FF"
+        readonly property bool pixel: root.pixel
+        readonly property bool dark: root.dark
+        // Material type: Roboto Flex when installed (install-material-icons.sh)
+        readonly property string fontFamily: root.pixel && Qt.fontFamilies().indexOf("Roboto Flex") >= 0
+                                             ? "Roboto Flex" : Kirigami.Theme.defaultFont.family
+        readonly property color background: root.pixel ? (root.dark ? "#141218" : "#FEF7FF") : "#000000"
+        readonly property color plate: root.pixel ? (root.dark ? "#2B2932" : "#F3EDF7") : "#1C1C1E"
+        readonly property color label: root.pixel ? (root.dark ? "#E6E0E9" : "#1D1B20") : "#FFFFFF"
+        readonly property color secondary: root.pixel ? (root.dark ? "#CAC4D0" : "#49454F") : Qt.rgba(235 / 255, 235 / 255, 245 / 255, 0.6)
+        readonly property color tertiary: root.pixel ? (root.dark ? "#938F99" : "#79747E") : Qt.rgba(235 / 255, 235 / 255, 245 / 255, 0.3)
+        readonly property color blue: root.pixel ? (root.dark ? "#D0BCFF" : "#6750A4") : "#0A84FF"
+        readonly property color green: root.pixel ? (root.dark ? "#81C995" : "#146C2E") : "#30D158"
+        readonly property color yellow: root.pixel ? (root.dark ? "#F9DE81" : "#755B00") : "#FFD60A"
+        readonly property color orange: root.pixel ? (root.dark ? "#FFB86C" : "#825500") : "#FF9F0A"
+        readonly property color red: root.pixel ? (root.dark ? "#F2B8B5" : "#B3261E") : "#FF453A"
+        readonly property color purple: root.pixel ? (root.dark ? "#D0BCFF" : "#6750A4") : "#BF5AF2"
+        readonly property color teal: root.pixel ? (root.dark ? "#80D5D0" : "#006A66") : "#64D2FF"
         readonly property color claude: "#D97757"
-        readonly property color pink: "#FF375F"
-        readonly property color indigo: "#5E5CE6"
+        readonly property color pink: root.pixel ? (root.dark ? "#EFB8C8" : "#7D5260") : "#FF375F"
+        readonly property color indigo: root.pixel ? (root.dark ? "#B69DF8" : "#625B71") : "#5E5CE6"
     }
 
     // ---- sensors --------------------------------------------------------------------------
@@ -87,6 +96,18 @@ ContainmentItem {
         if (c <= 82) return ["🌧️", Tr.t("Ливень")];
         if (c <= 86) return ["🌨️", Tr.t("Снегопад")];
         return ["⛈️", Tr.t("Гроза")];
+    }
+    function weatherIconName(code, day) {
+        const c = Number(code);
+        if (code === undefined || isNaN(c)) return "weather-clear-symbolic";
+        if (c === 0) return day ? "weather-clear-symbolic" : "weather-clear-night-symbolic";
+        if (c <= 2) return day ? "weather-few-clouds-symbolic" : "weather-few-clouds-night-symbolic";
+        if (c === 3) return "weather-overcast-symbolic";
+        if (c <= 48) return "weather-fog-symbolic";
+        if (c <= 57) return "weather-showers-scattered-symbolic";
+        if (c <= 67 || (c >= 80 && c <= 82)) return "weather-showers-symbolic";
+        if (c <= 86) return "weather-snow-symbolic";
+        return "weather-storm-symbolic";
     }
     function duration(secs) {
         const h = Math.floor(secs / 3600), m = Math.floor(secs % 3600 / 60);
@@ -275,14 +296,16 @@ ContainmentItem {
             text: parent.prefix
             color: parent.prefixColor
             font.pixelSize: parent.size * 0.8
-            font.weight: Font.Bold
+            font.family: pal.fontFamily
+            font.weight: root.pixel ? Font.Medium : Font.Bold
         }
         Text {
             id: big
             text: parent.value
             color: parent.color
             font.pixelSize: parent.size
-            font.weight: Font.Bold
+            font.family: pal.fontFamily
+            font.weight: root.pixel ? Font.Medium : Font.Bold
             font.features: { "tnum": 1 }
         }
         Text {
@@ -290,12 +313,14 @@ ContainmentItem {
             text: parent.unit
             color: pal.secondary
             font.pixelSize: parent.size * 0.45
+            font.family: pal.fontFamily
             font.weight: Font.DemiBold
         }
     }
     component Caption: Text {
         color: pal.secondary
         font.pixelSize: root.u * 0.72
+        font.family: pal.fontFamily
         font.features: { "tnum": 1 }
         elide: Text.ElideRight
     }
@@ -314,7 +339,8 @@ ContainmentItem {
             text: Qt.formatTime(root.now, Plasmoid.configuration.clock24 ? "HH:mm" : "h:mm")
             color: pal.label
             font.pixelSize: root.u * 3
-            font.weight: Font.Bold
+            font.family: pal.fontFamily
+            font.weight: root.pixel ? Font.Medium : Font.Bold
             font.features: { "tnum": 1 }
         }
         Column {
@@ -323,13 +349,15 @@ ContainmentItem {
                 text: root.now.toLocaleDateString(root.ru, "dddd").toUpperCase()
                 color: pal.red
                 font.pixelSize: root.u * 0.8
-                font.weight: Font.Bold
+                font.family: pal.fontFamily
+                font.weight: root.pixel ? Font.Medium : Font.Bold
             }
             Text {
                 text: root.now.toLocaleDateString(root.ru, "d MMMM") + (Plasmoid.configuration.showBattery && battery.value > 0
                       ? " · " + Math.round(battery.value) + "%" + (chargeRate.value > 0.05 ? " ⚡" : "") : "")
                 color: pal.secondary
                 font.pixelSize: root.u * 0.8
+                font.family: pal.fontFamily
             }
         }
         Item { Layout.fillWidth: true }
@@ -341,9 +369,10 @@ ContainmentItem {
                       : notifications.count + Tr.t(" уведомл.") + (notifications.unreadNotificationsCount > 0 ? " · " + notifications.unreadNotificationsCount + Tr.t(" новых") : "")
                 color: root.dnd ? pal.indigo : pal.secondary
                 font.pixelSize: root.u * 0.8
+                font.family: pal.fontFamily
                 font.weight: Font.DemiBold
             }
-            Pill { glyph: "☾"; on: root.dnd; onActivated: root.toggleDnd() }
+            Pill { glyph: "☾"; icon: "notifications-disabled-symbolic"; on: root.dnd; onActivated: root.toggleDnd() }
             Pill {
                 visible: notifications.count > 0
                 glyph: Tr.t("Очистить")
@@ -369,24 +398,48 @@ ContainmentItem {
 
             Item { Layout.fillHeight: true }
             Text {
-                text: root.now.toLocaleDateString(root.ru, "dddd").toUpperCase()
-                color: pal.red
+                text: root.pixel ? root.now.toLocaleDateString(root.ru, "dddd, d MMMM") : root.now.toLocaleDateString(root.ru, "dddd").toUpperCase()
+                color: root.pixel ? pal.label : pal.red
                 font.pixelSize: root.u * 1.25
-                font.weight: Font.Bold
+                font.family: pal.fontFamily
+                font.weight: root.pixel ? Font.Medium : Font.Bold
                 font.letterSpacing: root.u * 0.05
             }
             Text {
+                visible: !root.pixel
                 text: root.now.toLocaleDateString(root.ru, "d MMMM")
                 color: pal.label
                 font.pixelSize: root.u * 1.25
+                font.family: pal.fontFamily
                 font.weight: Font.DemiBold
             }
+            // Material: the Pixel lock screen clock, hours over minutes, hours in the accent
+            Column {
+                visible: root.pixel
+                Layout.topMargin: root.u * 0.4
+                spacing: -root.u * 1.6
+                Repeater {
+                    model: [Qt.formatTime(root.now, Plasmoid.configuration.clock24 ? "HH" : "hh"), Qt.formatTime(root.now, "mm")]
+                    delegate: Text {
+                        required property string modelData
+                        required property int index
+                        text: modelData
+                        color: index === 0 ? pal.blue : pal.label
+                        font.family: pal.fontFamily
+                        font.pixelSize: root.u * 7.4
+                        font.weight: Font.Normal
+                        font.features: { "tnum": 1 }
+                    }
+                }
+            }
             Text {
+                visible: !root.pixel
                 Layout.topMargin: -root.u * 0.6
                 text: Qt.formatTime(root.now, Plasmoid.configuration.clock24 ? "HH:mm" : "h:mm")
                 color: pal.label
                 font.pixelSize: root.u * 6.6
-                font.weight: Font.Bold
+                font.family: pal.fontFamily
+                font.weight: root.pixel ? Font.Medium : Font.Bold
                 font.letterSpacing: -root.u * 0.12
                 font.features: { "tnum": 1 }
             }
@@ -410,7 +463,8 @@ ContainmentItem {
                             text: notifications.count
                             color: pal.label
                             font.pixelSize: root.u * 0.8
-                            font.weight: Font.Bold
+                            font.family: pal.fontFamily
+                            font.weight: root.pixel ? Font.Medium : Font.Bold
                             font.features: { "tnum": 1 }
                         }
                     }
@@ -423,23 +477,37 @@ ContainmentItem {
                         color: root.dnd ? pal.indigo : pal.secondary
                         elide: Text.ElideRight
                         font.pixelSize: root.u * 0.85
+                        font.family: pal.fontFamily
                         font.weight: Font.DemiBold
                     }
                     // pill buttons: Do Not Disturb (moon, like iOS Focus) and clear
                     component Pill: Rectangle {
                         property string glyph
+                        property string icon        // Material: a themed symbol instead of the glyph
                         property bool on: false
                         signal activated()
-                        implicitWidth: pillText.implicitWidth + root.u * 1.2
+                        readonly property bool showIcon: root.pixel && icon !== ""
+                        implicitWidth: (showIcon ? root.u * 1.0 : pillText.implicitWidth) + root.u * 1.2
                         implicitHeight: root.u * 1.4
                         radius: height / 2
                         color: on ? pal.indigo : pal.plate
+                        Kirigami.Icon {
+                            visible: parent.showIcon
+                            anchors.centerIn: parent
+                            width: root.u * 0.95
+                            height: width
+                            source: parent.icon
+                            isMask: true
+                            color: parent.on ? pal.background : pal.label
+                        }
                         Text {
                             id: pillText
+                            visible: !parent.showIcon
                             anchors.centerIn: parent
                             text: parent.glyph
                             color: pal.label
                             font.pixelSize: root.u * 0.75
+                            font.family: pal.fontFamily
                             font.weight: Font.DemiBold
                         }
                         MouseArea {
@@ -450,6 +518,7 @@ ContainmentItem {
                     }
                     Pill {
                         glyph: "☾"
+                        icon: "notifications-disabled-symbolic"
                         on: root.dnd
                         onActivated: root.toggleDnd()
                     }
@@ -480,6 +549,7 @@ ContainmentItem {
                                 Layout.preferredWidth: 0
                                 text: (model.applicationName || "") + " · " + Qt.formatTime(model.updated || model.created, "HH:mm")
                                 font.pixelSize: root.u * 0.62
+                                font.family: pal.fontFamily
                             }
                             Text {
                                 Layout.fillWidth: true
@@ -489,6 +559,7 @@ ContainmentItem {
                                 color: pal.label
                                 elide: Text.ElideRight
                                 font.pixelSize: root.u * 0.75
+                                font.family: pal.fontFamily
                                 font.weight: Font.DemiBold
                             }
                         }
@@ -514,6 +585,7 @@ ContainmentItem {
                         text: chargeRate.value > 0.05 ? "⚡" : ""
                         color: pal.green
                         font.pixelSize: root.u * 1.2
+                        font.family: pal.fontFamily
                     }
                 }
                 ColumnLayout {
@@ -522,7 +594,8 @@ ContainmentItem {
                         text: Math.round(battery.value) + "%"
                         color: pal.label
                         font.pixelSize: root.u * 1.5
-                        font.weight: Font.Bold
+                        font.family: pal.fontFamily
+                        font.weight: root.pixel ? Font.Medium : Font.Bold
                         font.features: { "tnum": 1 }
                     }
                     Caption {
@@ -549,7 +622,7 @@ ContainmentItem {
                 pal: pal
                 u: root.u
                 title: Tr.t("Процессор")
-                icon: "cpu-symbolic"
+                icon: "speedometer-symbolic"
                 accent: pal.blue
                 Ring {
                     id: cpuRing
@@ -564,7 +637,8 @@ ContainmentItem {
                         text: Math.round(cpu.value) + "%"
                         color: pal.label
                         font.pixelSize: parent.width * 0.24
-                        font.weight: Font.Bold
+                        font.family: pal.fontFamily
+                        font.weight: root.pixel ? Font.Medium : Font.Bold
                         font.features: { "tnum": 1 }
                     }
                 }
@@ -609,7 +683,8 @@ ContainmentItem {
                         text: Math.round(100 * memRing.value) + "%"
                         color: pal.label
                         font.pixelSize: parent.width * 0.24
-                        font.weight: Font.Bold
+                        font.family: pal.fontFamily
+                        font.weight: root.pixel ? Font.Medium : Font.Bold
                         font.features: { "tnum": 1 }
                     }
                 }
@@ -651,6 +726,7 @@ ContainmentItem {
                                 text: Tr.t("Остановить")
                                 color: pal.red
                                 font.pixelSize: root.u * 0.7
+                                font.family: pal.fontFamily
                                 font.weight: Font.DemiBold
                             }
                             MouseArea {
@@ -671,7 +747,7 @@ ContainmentItem {
                 pal: pal
                 u: root.u
                 title: Tr.t("Температура")
-                icon: "sensors-temperature-symbolic"
+                icon: "temperature-warm-symbolic"
                 accent: pal.orange
                 ColumnLayout {
                     anchors.fill: parent
@@ -681,7 +757,8 @@ ContainmentItem {
                             text: Math.round(temp.value) + "°"
                             color: pal.label
                             font.pixelSize: root.u * 3.4
-                            font.weight: Font.Bold
+                            font.family: pal.fontFamily
+                            font.weight: root.pixel ? Font.Medium : Font.Bold
                             font.features: { "tnum": 1 }
                         }
                         ColumnLayout {
@@ -691,7 +768,8 @@ ContainmentItem {
                                 text: [Tr.t("Норма"), Tr.t("Тепло"), Tr.t("Горячо"), Tr.t("Перегрев")][root.tempLevel]
                                 color: [pal.green, pal.yellow, pal.orange, pal.red][root.tempLevel]
                                 font.pixelSize: root.u * 0.95
-                                font.weight: Font.Bold
+                                font.family: pal.fontFamily
+                                font.weight: root.pixel ? Font.Medium : Font.Bold
                             }
                             Caption { text: Tr.t("процессор, максимум ядер") }
                         }
@@ -701,6 +779,8 @@ ContainmentItem {
                         Layout.fillWidth: true
                         implicitHeight: root.u * 0.4
                         weather: true
+                        material: root.pixel
+                        ring: pal.plate
                         value: (temp.value - 40) / 55
                     }
                     RowLayout {
@@ -724,7 +804,7 @@ ContainmentItem {
                 readonly property color sessionColor: root.limitColor(session, pal.claude)
                 readonly property color weekColor: root.limitColor(week, pal.purple)
                 title: "Claude" + (root.claude.plan ? " " + root.claude.plan.charAt(0).toUpperCase() + root.claude.plan.slice(1) : "")
-                icon: "chat-symbolic"
+                icon: "dialog-messages-symbolic"
                 accent: pal.claude
                 Caption {
                     visible: !!root.claude.error && !root.claude.session
@@ -786,13 +866,15 @@ ContainmentItem {
                                     text: modelData.name
                                     color: pal.label
                                     font.pixelSize: root.u * 0.8
+                                    font.family: pal.fontFamily
                                     font.weight: Font.DemiBold
                                 }
                                 Text {
                                     text: Math.round(modelData.p) + "%"
                                     color: modelData.c
                                     font.pixelSize: root.u * 0.8
-                                    font.weight: Font.Bold
+                                    font.family: pal.fontFamily
+                                    font.weight: root.pixel ? Font.Medium : Font.Bold
                                     font.features: { "tnum": 1 }
                                 }
                             }
@@ -841,6 +923,7 @@ ContainmentItem {
                         text: (root.youtube.last28 >= 0 ? "▲ +" : "▼ ") + root.number(root.youtube.last28) + Tr.t(" за 28 дней")
                         color: root.youtube.last28 >= 0 ? pal.green : pal.red
                         font.pixelSize: root.u * 0.85
+                        font.family: pal.fontFamily
                         font.weight: Font.DemiBold
                     }
                     Caption {
@@ -854,7 +937,8 @@ ContainmentItem {
                         text: Tr.t("Подключить канал")
                         color: pal.label
                         font.pixelSize: root.u * 1.3
-                        font.weight: Font.Bold
+                        font.family: pal.fontFamily
+                        font.weight: root.pixel ? Font.Medium : Font.Bold
                     }
                     Caption {
                         visible: !ytWidget.has
@@ -918,7 +1002,7 @@ ContainmentItem {
                 readonly property var w: root.online.weather || {}
                 readonly property var info: root.weatherInfo(w.code, w.day)
                 title: w.place || (Plasmoid.configuration.weatherCity || Tr.t("Погода"))
-                icon: "weather-clear-symbolic"
+                icon: root.weatherIconName(w.code, w.day)
                 accent: pal.teal
                 Caption {
                     anchors.centerIn: parent
@@ -934,7 +1018,8 @@ ContainmentItem {
                             text: Math.round(weatherW.w.temp) + "°"
                             color: pal.label
                             font.pixelSize: root.u * 3.2
-                            font.weight: Font.Bold
+                            font.family: pal.fontFamily
+                            font.weight: root.pixel ? Font.Medium : Font.Bold
                             font.features: { "tnum": 1 }
                         }
                         Caption { text: weatherW.info[1] + Tr.t(" · ощущается ") + Math.round(weatherW.w.feels) + "°" }
@@ -942,8 +1027,24 @@ ContainmentItem {
                     }
                     Item { Layout.fillWidth: true }
                     Text {
+                        visible: !root.pixel
                         text: weatherW.info[0]
                         font.pixelSize: root.u * 3.4
+                        font.family: pal.fontFamily
+                    }
+                    // Material: the theme's weather icon on a tonal circle instead of an emoji
+                    Rectangle {
+                        visible: root.pixel
+                        implicitWidth: root.u * 4.4; implicitHeight: implicitWidth
+                        radius: width / 2
+                        color: Qt.alpha(pal.teal, 0.22)
+                        Kirigami.Icon {
+                            anchors.centerIn: parent
+                            width: parent.width * 0.6; height: width
+                            source: root.weatherIconName(weatherW.w.code, weatherW.w.day)
+                            color: pal.teal
+                            isMask: true
+                        }
                     }
                 }
             }
@@ -991,7 +1092,8 @@ ContainmentItem {
                             color: pal.label
                             elide: Text.ElideRight
                             font.pixelSize: root.u * 1.0
-                            font.weight: Font.Bold
+                            font.family: pal.fontFamily
+                            font.weight: root.pixel ? Font.Medium : Font.Bold
                         }
                         Caption { Layout.fillWidth: true; text: mediaWidget.player ? mediaWidget.player.artist : "" }
                         RowLayout {
@@ -1005,6 +1107,7 @@ ContainmentItem {
                                     text: modelData[0]
                                     color: pal.label
                                     font.pixelSize: root.u * 1.5
+                                    font.family: pal.fontFamily
                                     MouseArea { anchors.fill: parent; anchors.margins: -root.u * 0.4; onClicked: parent.modelData[1]() }
                                 }
                             }
@@ -1036,7 +1139,8 @@ ContainmentItem {
                         text: Math.round(battery.value) + "%"
                         color: pal.label
                         font.pixelSize: parent.width * 0.24
-                        font.weight: Font.Bold
+                        font.family: pal.fontFamily
+                        font.weight: root.pixel ? Font.Medium : Font.Bold
                     }
                 }
                 ColumnLayout {
@@ -1049,7 +1153,8 @@ ContainmentItem {
                         text: chargeRate.value > 0.05 ? Tr.t("Заряжается") : chargeRate.value < -0.05 ? Tr.t("От аккумулятора") : Tr.t("Подключено")
                         color: pal.label
                         font.pixelSize: root.u * 1.0
-                        font.weight: Font.Bold
+                        font.family: pal.fontFamily
+                        font.weight: root.pixel ? Font.Medium : Font.Bold
                     }
                     Caption { text: Math.abs(chargeRate.value).toLocaleString(root.ru, "f", 1) + Tr.t(" Вт") }
                     Caption { visible: health.value > 0; text: Tr.t("Состояние ") + Math.round(health.value) + "%" }
@@ -1104,6 +1209,7 @@ ContainmentItem {
                                 text: modelData
                                 color: index < 7 ? pal.secondary : (index % 7 >= 5 ? pal.secondary : pal.label)
                                 font.pixelSize: parent.height * (index < 7 ? 0.5 : 0.62)
+                                font.family: pal.fontFamily
                                 font.weight: parent.today ? Font.Bold : Font.Normal
                             }
                         }
@@ -1121,7 +1227,7 @@ ContainmentItem {
                 u: root.u
                 readonly property var st: root.online.screentime || {}
                 title: Tr.t("Экранное время")
-                icon: "chronometer"
+                icon: "chronometer-symbolic"
                 accent: pal.indigo
                 ColumnLayout {
                     anchors.fill: parent
@@ -1130,7 +1236,8 @@ ContainmentItem {
                         text: root.duration(stWidget.st.total || 0)
                         color: pal.label
                         font.pixelSize: root.u * 1.8
-                        font.weight: Font.Bold
+                        font.family: pal.fontFamily
+                        font.weight: root.pixel ? Font.Medium : Font.Bold
                     }
                     Repeater {
                         model: (stWidget.st.top || []).slice(0, 3)
@@ -1178,7 +1285,8 @@ ContainmentItem {
                         text: twWidget.tw.goal ? Math.round(100 * Math.min(1, twWidget.tw.words / twWidget.tw.goal)) + "%" : ""
                         color: pal.label
                         font.pixelSize: parent.width * 0.24
-                        font.weight: Font.Bold
+                        font.family: pal.fontFamily
+                        font.weight: root.pixel ? Font.Medium : Font.Bold
                     }
                 }
                 ColumnLayout {

@@ -16,6 +16,10 @@ Window {
     visible: false
     color: "transparent"
     title: Tr.t("Уведомления")
+    readonly property bool materialDark: Kirigami.ColorUtils.brightnessForColor(Kirigami.Theme.textColor) === Kirigami.ColorUtils.Light
+    readonly property color materialSurface: materialDark ? "#25232C" : "#F9F4FF"
+    readonly property color materialCard: materialDark ? "#36343F" : "#E9E2F0"
+    readonly property color materialText: materialDark ? "#F1EAF5" : "#1D1B20"
 
     LayerShell.Window.scope: "tabletshell-notifications"
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
@@ -60,10 +64,10 @@ Window {
         anchors.right: parent.right
         anchors.margins: Kirigami.Units.gridUnit
         width: Math.min(parent.width - Kirigami.Units.gridUnit * 2, Kirigami.Units.gridUnit * 24)
-        radius: Kirigami.Units.gridUnit * 1.4
-        color: Qt.rgba(0.12, 0.12, 0.15, 0.9)
-        border.color: Qt.rgba(1, 1, 1, 0.16)
-        border.width: 1
+        radius: uiStyle.pixel ? Kirigami.Units.gridUnit * 2.1 : Kirigami.Units.gridUnit * 1.4
+        color: uiStyle.pixel ? win.materialSurface : Qt.rgba(0.12, 0.12, 0.15, 0.9)
+        border.color: uiStyle.pixel ? (win.materialDark ? "#625C69" : "#D8CEDF") : Qt.rgba(1, 1, 1, 0.16)
+        border.width: uiStyle.pixel ? 0 : 1
 
         MouseArea { anchors.fill: parent }  // keep taps inside
 
@@ -77,7 +81,7 @@ Window {
                 PC3.Label {
                     Layout.fillWidth: true
                     text: Tr.t("Уведомления")
-                    color: "white"
+                    color: uiStyle.pixel ? win.materialText : "white"
                     font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.5
                     font.weight: Font.DemiBold
                 }
@@ -93,7 +97,7 @@ Window {
                 Layout.fillHeight: true
                 visible: list.count === 0
                 text: Tr.t("Нет уведомлений")
-                color: Qt.rgba(1, 1, 1, 0.6)
+                color: uiStyle.pixel ? Qt.alpha(win.materialText, 0.64) : Qt.rgba(1, 1, 1, 0.6)
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
             }
@@ -115,8 +119,8 @@ Window {
                     required property var model
                     width: list.width
                     height: cardRow.implicitHeight + Kirigami.Units.largeSpacing * 2
-                    radius: Kirigami.Units.gridUnit * 0.8
-                    color: Qt.rgba(1, 1, 1, 0.1)
+                    radius: uiStyle.pixel ? Kirigami.Units.gridUnit * 1.4 : Kirigami.Units.gridUnit * 0.8
+                    color: uiStyle.pixel ? win.materialCard : Qt.rgba(1, 1, 1, 0.1)
 
                     MouseArea {
                         anchors.fill: parent
@@ -154,7 +158,7 @@ Window {
                                 PC3.Label {
                                     Layout.fillWidth: true
                                     text: card.model.summary || card.model.applicationName || ""
-                                    color: "white"
+                                    color: uiStyle.pixel ? win.materialText : "white"
                                     font.weight: Font.DemiBold
                                     elide: Text.ElideRight
                                 }

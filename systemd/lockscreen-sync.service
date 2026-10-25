@@ -3,6 +3,8 @@ Description=Rebuild the iPadOS-like lock screen from the system Plasma packages
 Before=plasma-plasmashell.service
 
 [Service]
+StandardOutput=null
+StandardError=null
 Type=oneshot
 ExecStart=%h/.local/bin/lockscreen-sync
 

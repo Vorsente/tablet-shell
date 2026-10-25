@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Режим кодинга (LazyVim)
+Name[en]=Coding Mode (LazyVim)
+Comment=LazyVim в Konsole с анимацией и восстановлением настроек
+Comment[en]=Distraction-free coding with automatic display and power restoration
+Exec=@HOME@/.local/bin/coding-mode
+Icon=applications-development
+Terminal=false
+Categories=Development;Utility;
+StartupNotify=true

@@ -27,9 +27,14 @@
 #include <QGuiApplication>
 #include <QProcess>
 #include <QSettings>
+#include <QSet>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickWindow>
+#include <QPainterPath>
+#include <QRegion>
+
+#include <KWindowEffects>
 
 #include <malloc.h>
 
@@ -37,8 +42,11 @@
 #include <linux/uinput.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
+#include <algorithm>
 
 #include "tr.h"
+#include <QtCore/qlogging.h>
+#include "../common/ui-style.h"
 
 // AT-SPI object reference (a(so) in the accessibility bus API)
 struct AtspiRef {
@@ -125,6 +133,25 @@ public:
             }
         }
         return QString();
+    }
+
+    // KWin blur behind parts of one of our windows (Liquid Glass): areas are
+    // {x, y, width, height, radius} in window coordinates; none = blur off
+    Q_INVOKABLE void blurBehind(QWindow *window, const QVariantList &areas)
+    {
+        if (!window) {
+            return;
+        }
+        QRegion region;
+        for (const QVariant &v : areas) {
+            const QVariantMap a = v.toMap();
+            const QRectF r(a.value(QStringLiteral("x")).toReal(), a.value(QStringLiteral("y")).toReal(),
+                           a.value(QStringLiteral("width")).toReal(), a.value(QStringLiteral("height")).toReal());
+            QPainterPath path;
+            path.addRoundedRect(r, a.value(QStringLiteral("radius")).toReal(), a.value(QStringLiteral("radius")).toReal());
+            region += QRegion(path.toFillPolygon().toPolygon());
+        }
+        KWindowEffects::enableBlurBehind(window, !region.isEmpty(), region);
     }
 
     Q_INVOKABLE QString readFile(const QString &path)
@@ -288,11 +315,14 @@ public:
 
     void checkCamera()
     {
-        QStringList devices;
+        // Hash lookups make every /proc/PID/fd check O(1), regardless of
+        // the number of video devices or already discovered applications.
+        QSet<QString> devices;
         for (const QFileInfo &dev : QDir(QStringLiteral("/dev")).entryInfoList({QStringLiteral("video*")}, QDir::System)) {
-            devices << dev.canonicalFilePath();
+            devices.insert(dev.canonicalFilePath());
         }
         QStringList apps;
+        QSet<QString> found;
         if (!devices.isEmpty()) {
             // processes with an open descriptor on a video device (pipewire itself only while a
             // client streams from it)
@@ -307,7 +337,8 @@ public:
                     if (devices.contains(fd.symLinkTarget())) {
                         QFile comm(proc.filePath() + QStringLiteral("/comm"));
                         const QString name = comm.open(QIODevice::ReadOnly) ? QString::fromUtf8(comm.readAll()).trimmed() : proc.fileName();
-                        if (name != QLatin1String("wireplumber") && !apps.contains(name)) {
+                        if (name != QLatin1String("wireplumber") && !found.contains(name)) {
+                            found.insert(name);
                             apps << name;
                         }
                         break;
@@ -315,6 +346,9 @@ public:
                 }
             }
         }
+        // /proc traversal order is not stable. Canonicalize before comparing
+        // so merely reordered process entries do not redraw the privacy UI.
+        std::sort(apps.begin(), apps.end());
         if (apps != m_cameraApps) {
             m_cameraApps = apps;
             Q_EMIT recordingChanged();
@@ -362,7 +396,7 @@ public Q_SLOTS:
         Q_EMIT notificationsRequested();
     }
 
-    // Mode change animation (ModeTransition.qml): tablet|pc|dock|typewriter|reading, empty = the
+    // Mode change animation (ModeTransition.qml): tablet|pc|dock|typewriter|coding|reading, empty = the
     // current device mode. Off with tabletrc [Modes] transitionAnimation=false, silent with
     // transitionSound=false.
     Q_SCRIPTABLE void ModeTransition(const QString &from, const QString &to)
@@ -670,7 +704,6 @@ private:
         }
         m_uinput = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
         if (m_uinput < 0) {
-            qWarning("tabletshell: /dev/uinput not writable (udev rule missing?)");
             return false;
         }
         ioctl(m_uinput, UI_SET_EVBIT, EV_KEY);
@@ -715,6 +748,9 @@ private:
 
 int main(int argc, char *argv[])
 {
+    // Keep Qt diagnostics silent without an app-local helper declaration.
+    // TABLET_SHELL_DEBUG=1 keeps Qt/QML messages for troubleshooting
+    if (!qEnvironmentVariableIsSet("TABLET_SHELL_DEBUG")) qInstallMessageHandler([](QtMsgType, const QMessageLogContext &, const QString &) {});
     const QString mode = argc > 1 ? QString::fromLocal8Bit(argv[1]) : QStringLiteral("control");
     qputenv("QT_WAYLAND_SHELL_INTEGRATION", "layer-shell");
     QGuiApplication app(argc, argv);
@@ -724,7 +760,6 @@ int main(int argc, char *argv[])
     if (mode == QLatin1String("control")) {
         auto bus = QDBusConnection::sessionBus();
         if (!bus.registerService(QStringLiteral("org.ipad.TabletShell"))) {
-            qWarning("tabletshell: already running");
             return 0;
         }
         bus.registerObject(QStringLiteral("/"), &shell, QDBusConnection::ExportScriptableSlots);
@@ -734,6 +769,11 @@ int main(int argc, char *argv[])
         shell.watchPower();
         shell.watchRecording();
         QObject::connect(&app, &QCoreApplication::aboutToQuit, &shell, &Shell::flushScreenTime);
+    } else if (mode == QLatin1String("codingfocus")) {
+        // Hold notification inhibition using a persistent DBus owner. It ends when
+        // coding-mode kills this process; no user-wide DND flag is modified.
+        shell.inhibitNotifications(T(QStringLiteral("Режим кодинга: фокус")));
+        return app.exec();
     } else if (mode == QLatin1String("pill")) {
         if (qEnvironmentVariable("TYPEWRITER_FOCUS", QStringLiteral("true")) != QLatin1String("false")) {
             shell.inhibitNotifications(T(QStringLiteral("Печатная машинка: фокус")));
@@ -742,6 +782,8 @@ int main(int argc, char *argv[])
     }
 
     QQmlApplicationEngine engine;
+    UiStyle uiStyle;
+    engine.rootContext()->setContextProperty(QStringLiteral("uiStyle"), &uiStyle);
     engine.rootContext()->setContextProperty(QStringLiteral("shell"), &shell);
     engine.load(QUrl::fromLocalFile(QStringLiteral(SHELL_DIR "/") + mode + QStringLiteral(".qml")));
     if (engine.rootObjects().isEmpty()) {

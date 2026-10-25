@@ -1,6 +1,6 @@
 // Pen tool ring: hold a pen button in the air (tabletd -> D-Bus PenRing) and the tools fan out
-// around the pen: quick note, screenshot of a region, magnifier (KWin zoom, follows the pen),
-// colour picker (to the clipboard), screen recording of a region. A tap elsewhere closes it.
+// around the pen: quick note, screenshot of a region, Krita, colour picker (to the clipboard),
+// screen recording of a region. A tap elsewhere closes it.
 import QtQuick
 import QtQuick.Window
 
@@ -22,21 +22,27 @@ Window {
     LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
 
     readonly property string home: shell.env("HOME")
-    readonly property real radius: 104
+    readonly property real radius: Math.min(126, Math.max(62, Math.min(width, height) / 2 - 58))
     // where the pen is, as fractions of the screen; the ring stays whole on the screen (the window
     // only knows its size once it is shown, so this is a binding)
     property real fx: 0.5
     property real fy: 0.5
-    readonly property real margin: radius + 60
+    readonly property real margin: radius + 54
     readonly property point centre: Qt.point(Math.max(margin, Math.min(width - margin, fx * width)),
                                              Math.max(margin, Math.min(height - margin, fy * height)))
     property real open: 0
-    property bool zoomed: false
+    // Keep icon AND button colours under our control: Kirigami.Icon otherwise inherits
+    // an unrelated palette from the active Qt/Plasma theme, making icons invisible.
+    readonly property bool pixelLook: uiStyle.pixel
+    readonly property color buttonSurface: pixelLook ? (Kirigami.Theme.backgroundColor) : Qt.rgba(0.14, 0.16, 0.20, 0.98)
+    readonly property color buttonText: pixelLook ? Kirigami.Theme.textColor : "#ffffff"
+    readonly property color buttonAccent: Kirigami.Theme.highlightColor
+    readonly property color buttonPressedText: Kirigami.Theme.highlightedTextColor
 
     readonly property var tools: [
         { id: "note", icon: "document-edit", label: Tr.t("Заметка") },
-        { id: "shot", icon: "spectacle", label: Tr.t("Скриншот") },
-        { id: "zoom", icon: "zoom-in", label: Tr.t("Лупа") },
+        { id: "shot", icon: "image-x-generic", label: Tr.t("Скриншот") },
+        { id: "krita", icon: "applications-graphics", label: "Krita" },
         { id: "color", icon: "color-picker", label: Tr.t("Пипетка") },
         { id: "record", icon: "media-record", label: Tr.t("Запись") },
     ]
@@ -56,13 +62,8 @@ Window {
             shell.start([home + "/.local/bin/quick-note"]);
         } else if (tool === "shot") {
             shell.start(["spectacle", "-r"]);
-        } else if (tool === "zoom") {
-            zoomed = !zoomed;
-            const name = zoomed ? "view_zoom_in" : "view_actual_size";
-            shell.start(["qdbus6", "org.kde.kglobalaccel", "/component/kwin", "org.kde.kglobalaccel.Component.invokeShortcut", name]);
-            if (zoomed) {   // twice: 2x is a useful magnifier
-                shell.start(["qdbus6", "org.kde.kglobalaccel", "/component/kwin", "org.kde.kglobalaccel.Component.invokeShortcut", name]);
-            }
+        } else if (tool === "krita") {
+            shell.start([home + "/.local/bin/launch-krita"]);
         } else if (tool === "color") {
             showHint(Tr.t("Коснитесь цвета"), "");
             shell.pickColor();
@@ -92,8 +93,8 @@ Window {
         width: 22
         height: 22
         radius: 11
-        color: Qt.rgba(1, 1, 1, 0.85)
-        border.color: Qt.rgba(0, 0, 0, 0.3)
+        color: win.buttonAccent
+        border.color: win.buttonSurface
         opacity: win.open
         scale: win.open
     }
@@ -108,40 +109,57 @@ Window {
             readonly property real angle: -Math.PI / 2 + index * 2 * Math.PI / win.tools.length
             readonly property real reach: win.radius * Math.min(1, Math.max(0, win.open * 1.15 - index * 0.04))
             x: win.centre.x + Math.cos(angle) * reach - width / 2
-            y: win.centre.y + Math.sin(angle) * reach - 32
-            width: 92
-            height: 92
+            y: win.centre.y + Math.sin(angle) * reach - height / 2
+            width: 104
+            height: 102
             opacity: Math.min(1, win.open * 1.4)
 
             Rectangle {
+                id: tile
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: 64
-                height: 64
-                radius: 32
-                color: area.pressed ? Qt.rgba(0.25, 0.25, 0.28, 0.95) : Qt.rgba(0.11, 0.11, 0.12, 0.9)
-                border.color: tool.modelData.id === "zoom" && win.zoomed ? "#0A84FF" : Qt.rgba(1, 1, 1, 0.18)
-                border.width: tool.modelData.id === "zoom" && win.zoomed ? 2 : 1
+                width: 72
+                height: 72
+                radius: win.pixelLook ? 27 : 22
+                color: area.pressed ? win.buttonAccent : win.buttonSurface
+                border.color: area.pressed ? win.buttonAccent : Qt.rgba(win.buttonText.r, win.buttonText.g, win.buttonText.b, 0.32)
+                border.width: 1.5
+                Behavior on color { ColorAnimation { duration: 120 } }
                 Kirigami.Icon {
                     anchors.centerIn: parent
-                    width: 30
-                    height: 30
-                    source: tool.modelData.icon
+                    width: 34
+                    height: 34
+                    source: tool.modelData.id === "krita" ? Qt.resolvedUrl("icons/krita.svg")
+                          : tool.modelData.id === "shot" ? Qt.resolvedUrl("icons/shot.svg") : tool.modelData.icon
+                    fallback: "applications-graphics"
+                    color: area.pressed ? win.buttonPressedText : win.buttonText
+                    isMask: true
                 }
                 MouseArea {
                     id: area
                     anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
                     onClicked: win.run(tool.modelData.id)
                 }
             }
-            Text {
+            Rectangle {
+                anchors.top: tile.bottom
+                anchors.topMargin: 4
                 anchors.horizontalCenter: parent.horizontalCenter
-                y: 68
-                text: tool.modelData.label
-                color: "white"
-                style: Text.Outline
-                styleColor: Qt.rgba(0, 0, 0, 0.6)
-                font.pixelSize: 13
-                font.weight: Font.DemiBold
+                width: Math.max(72, label.implicitWidth + 14)
+                height: 24
+                radius: 12
+                color: win.buttonSurface
+                border.color: Qt.rgba(win.buttonText.r, win.buttonText.g, win.buttonText.b, 0.24)
+                border.width: 1
+                Text {
+                    id: label
+                    anchors.centerIn: parent
+                    text: tool.modelData.label
+                    color: win.buttonText
+                    font.pixelSize: 13
+                    font.weight: Font.DemiBold
+                }
             }
         }
     }

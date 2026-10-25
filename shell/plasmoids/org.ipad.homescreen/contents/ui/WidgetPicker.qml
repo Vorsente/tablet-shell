@@ -35,8 +35,9 @@ Item {
         anchors.centerIn: parent
         width: Math.min(parent.width - Kirigami.Units.gridUnit * 4, picker.unit * 10)
         height: parent.height - Kirigami.Units.gridUnit * 4
-        radius: Kirigami.Units.gridUnit
+        radius: picker.home.pixel ? Kirigami.Units.gridUnit * 1.6 : Kirigami.Units.gridUnit
         color: picker.home.pal.sheet
+        GlassSheen { home: picker.home }
         MouseArea { anchors.fill: parent }   // keep taps on the sheet
 
         Text {

@@ -24,7 +24,7 @@ Window {
     LayerShell.Window.exclusionZone: -1
     LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
 
-    readonly property color green: "#30D158"
+    readonly property color green: uiStyle.pixel ? "#D0BCFF" : "#30D158"
     property int level: 0         // battery percent
     property bool full: false
     property real shown: 0        // fade in/out of everything
@@ -68,7 +68,7 @@ Window {
         opacity: 0.6 * win.shown
         gradient: Gradient {
             GradientStop { position: 0; color: "#000000" }
-            GradientStop { position: 0.5; color: "#0b1a10" }
+            GradientStop { position: 0.5; color: uiStyle.pixel ? "#211B2D" : "#0b1a10" }
             GradientStop { position: 1; color: "#000000" }
         }
     }
@@ -104,7 +104,7 @@ Window {
             width: 256
             height: 256
             radius: 128
-            color: Qt.rgba(0, 0, 0, 0.72)
+            color: uiStyle.pixel ? "#2B2932" : Qt.rgba(0, 0, 0, 0.72)
         }
 
         // the ring: dim track, green arc up to the level

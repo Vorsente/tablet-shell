@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0">
+  <kcfgfile name=""/>
+  <group name="General">
+    <entry name="shellStyle" type="String"><default>apple</default></entry>
+  </group>
+</kcfg>

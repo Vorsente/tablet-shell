@@ -32,7 +32,18 @@ QtObject {
     property var weekly: null
     // the device's name for the battery widget (tablet-tools hardware: DMI product)
     property string model: ""
+    // Do not spawn overlapping helpers when windows repeatedly expose the desktop.
+    property bool todayBusy: false
+    property bool onlineBusy: false
+    property bool batteryBusy: false
+    property double lastToday: 0
+    property double lastOnline: 0
+    property double lastBattery: 0
+    property string lastWeatherCity: ""
+
     function refreshToday() {
+        if (todayBusy || Date.now() - lastToday < 30 * 60 * 1000) return;
+        todayBusy = true;
         home.runCommand([home.homeDir + "/.local/bin/tablet-tools", "weekly"], out => {
             try {
                 data.weekly = JSON.parse(out);
@@ -42,32 +53,48 @@ QtObject {
         home.runCommand([home.homeDir + "/.local/bin/tablet-tools", "today"], out => {
             try {
                 data.today = JSON.parse(out);
+                data.lastToday = Date.now();
             } catch (e) {
             }
+            data.todayBusy = false;
         });
     }
 
     function refresh() {
-        home.runCommand([home.homeDir + "/.local/bin/tablet-tools", "dashboard", "--weather", home.weatherCity], out => {
-            try {
-                data.online = JSON.parse(out);
-            } catch (e) {
-            }
-        });
+        data.now = new Date();
+        const city = home.weatherCity;
+        if (!onlineBusy && (city !== lastWeatherCity || Date.now() - lastOnline >= 5 * 60 * 1000)) {
+            onlineBusy = true;
+            home.runCommand([home.homeDir + "/.local/bin/tablet-tools", "dashboard", "--weather", city], out => {
+                try {
+                    data.online = JSON.parse(out);
+                    data.lastOnline = Date.now();
+                    data.lastWeatherCity = city;
+                } catch (e) {
+                }
+                data.onlineBusy = false;
+                if (data.active && home.weatherCity !== city) data.refresh();
+            });
+        }
         refreshBattery();
         refreshToday();
     }
     function refreshBattery() {
+        if (batteryBusy || Date.now() - lastBattery < 25000) return;
+        batteryBusy = true;
         home.runCommand(["sh", "-c", "for d in /sys/class/power_supply/*; do [ \"$(cat $d/type)\" = Battery ] && cat $d/capacity $d/status && break; done"], out => {
             const lines = out.trim().split("\n");
-            data.battery = parseInt(lines[0]);
+            const capacity = parseInt(lines[0], 10);
+            data.battery = isNaN(capacity) ? -1 : Math.max(0, Math.min(100, capacity));
+            data.lastBattery = Date.now();
+            data.batteryBusy = false;
             data.charging = lines[1] === "Charging" || lines[1] === "Full";
         });
     }
 
     onActiveChanged: if (active) refresh()
     Component.onCompleted: {
-        refresh();
+        if (active) refresh();
         home.runCommand([home.homeDir + "/.local/bin/tablet-tools", "hardware"], out => {
             try {
                 data.model = JSON.parse(out).model || "";
@@ -164,6 +191,21 @@ QtObject {
         if (c <= 82) return ["🌧️", Tr.t("Ливень")];
         if (c <= 86) return ["🌨️", Tr.t("Снегопад")];
         return ["⛈️", Tr.t("Гроза")];
+    }
+    // themed (symbolic) icon for a WMO weather code: Material draws icons, not emoji
+    function weatherIcon(code, day) {
+        const c = Number(code);
+        if (isNaN(c) || c < 0) return "weather-none-available-symbolic";
+        if (c === 0) return day ? "weather-clear-symbolic" : "weather-clear-night-symbolic";
+        if (c <= 2) return day ? "weather-few-clouds-symbolic" : "weather-few-clouds-night-symbolic";
+        if (c === 3) return "weather-overcast-symbolic";
+        if (c <= 48) return "weather-fog-symbolic";
+        if (c <= 57) return "weather-showers-scattered-symbolic";
+        if (c <= 67) return "weather-showers-symbolic";
+        if (c <= 77) return "weather-snow-symbolic";
+        if (c <= 82) return "weather-showers-symbolic";
+        if (c <= 86) return "weather-snow-symbolic";
+        return "weather-storm-symbolic";
     }
     function duration(secs) {
         const h = Math.floor(secs / 3600), m = Math.floor(secs % 3600 / 60);

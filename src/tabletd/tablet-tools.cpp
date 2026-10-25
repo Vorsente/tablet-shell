@@ -10,6 +10,7 @@
 //   typewriter-runtime FILE                              running time of a screenplay (page ~ minute)
 //   cleanup scan | run ID... | auto                      storage: sizes / clean up (tablet-settings «Хранилище»)
 //   weekly                                               week report: screen time, words, battery vs the week before
+//   app-icons [--force]                                  MacTahoe-style icons for apps the icon theme lacks (icons.cpp)
 #include <KConfig>
 #include <KConfigGroup>
 
@@ -51,6 +52,7 @@
 #include <unistd.h>
 
 #include "tr.h"
+#include <QtCore/qlogging.h>
 
 // typewriter (typewriter.cpp): words today, goal, streak, history
 QJsonObject typewriterSummary();
@@ -58,6 +60,8 @@ int typewriterStatsCommand();
 int typewriterWordsOn(const QDate &day);
 int typewriterExportCommand(const QString &file, const QString &format, QString out);
 int typewriterRuntimeCommand(const QString &file);
+// app icons in the icon theme's style (icons.cpp)
+int appIconsCommand(const QStringList &args);
 
 namespace
 {
@@ -99,6 +103,11 @@ Fetched fetch(QNetworkAccessManager &net, const QUrl &url, qint64 limit = 2'000'
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     req.setTransferTimeout(10000);
     QNetworkReply *reply = net.get(req);
+    // A huge HTML page or icon must not fill RAM while the nested event loop
+    // waits for completion. Abort above the caller's size limit.
+    QObject::connect(reply, &QNetworkReply::downloadProgress, reply, [reply, limit](qint64 received, qint64) {
+        if (received > limit) reply->abort();
+    });
     QEventLoop loop;
     QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
     loop.exec();
@@ -419,7 +428,8 @@ void syncGreeterWallpaper()
             dark = sunElevation(QDateTime::currentDateTimeUtc(), live.readEntry("Latitude", 55.75), live.readEntry("Longitude", 37.62)) < 0;
         } else {
             KConfig globals(QStringLiteral("kdeglobals"));
-            dark = globals.group(QStringLiteral("KDE")).readEntry("LookAndFeelPackage", QString()) != QLatin1String("org.ipad.light");
+            const QString look = globals.group(QStringLiteral("KDE")).readEntry("LookAndFeelPackage", QString());
+            dark = !(look == QLatin1String("org.ipad.light") || look == QLatin1String("org.tabletshell.pixel.light"));
         }
         QFileInfoList files;
         if (dark) {
@@ -480,6 +490,10 @@ int wallpaperSet(const QString &path)
         QProcess::execute(QStringLiteral("plasma-apply-wallpaperimage"), {abs});
     }
     {
+        KConfig rc(QStringLiteral("tabletrc"), KConfig::SimpleConfig);
+        const QString style = rc.group(QStringLiteral("Appearance")).readEntry(QStringLiteral("shellStyle"), QStringLiteral("apple"));
+        rc.group(QStringLiteral("Appearance")).writeEntry(style == QLatin1String("pixel") ? QStringLiteral("pixelWallpaper") : QStringLiteral("appleWallpaper"), abs);
+
         KConfig locker(QStringLiteral("kscreenlockerrc"));
         KConfigGroup greeter = locker.group(QStringLiteral("Greeter"));
         const QString url = QStringLiteral("file://") + abs + (QFileInfo(abs).isDir() ? QStringLiteral("/") : QString());
@@ -1460,6 +1474,9 @@ int youtubeLogin()
 
 int main(int argc, char *argv[])
 {
+    // Keep Qt diagnostics silent without an app-local helper declaration.
+    // TABLET_SHELL_DEBUG=1 keeps Qt/QML messages for troubleshooting
+    if (!qEnvironmentVariableIsSet("TABLET_SHELL_DEBUG")) qInstallMessageHandler([](QtMsgType, const QMessageLogContext &, const QString &) {});
     QStringList args;
     for (int i = 0; i < argc; ++i) {
         args << QString::fromLocal8Bit(argv[i]);
@@ -1477,6 +1494,11 @@ int main(int argc, char *argv[])
         }
         std::fputs("usage: typewriter-export FILE pdf|docx|epub [OUT]\n", stderr);
         return 2;
+    }
+    if (tool == QLatin1String("app-icons")) {
+        qputenv("QT_QPA_PLATFORM", "offscreen"); // painting icons, no window
+        QGuiApplication app(argc, argv);
+        return appIconsCommand(args);
     }
     if (tool == QLatin1String("webapp-create")) {
         qputenv("QT_QPA_PLATFORM", "offscreen"); // painting icons, no window
@@ -1540,6 +1562,6 @@ int main(int argc, char *argv[])
     if (tool == QLatin1String("hardware")) {
         return hardware();
     }
-    std::fputs("usage: tablet-tools webapp-create|wallpaper|screentime-apps|dashboard|youtube-login|hardware ...\n", stderr);
+    std::fputs("usage: tablet-tools webapp-create|wallpaper|screentime-apps|dashboard|youtube-login|hardware|app-icons ...\n", stderr);
     return 2;
 }

@@ -4,6 +4,8 @@ PartOf=graphical-session.target
 After=plasma-kwin_wayland.service
 
 [Service]
+StandardOutput=null
+StandardError=null
 ExecStart=%h/.local/bin/tabletd
 Restart=on-failure
 RestartSec=2

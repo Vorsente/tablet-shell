@@ -1,0 +1,290 @@
+#!/usr/bin/env python3
+"""GitHub updater for tablet-shell. JSON-lines UI protocol; never writes logs.
+
+The repo is deliberately fixed to the project's upstream. Code is downloaded from a
+pinned Git commit, extracted defensively, built *before* installation, and then
+applied by update.sh in its non-destructive mode.
+"""
+import argparse
+import json
+import os
+from pathlib import Path, PurePosixPath
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
+import zipfile
+
+OWNER = 'Vorsente'
+REPO = 'tablet-shell'
+API = f'https://api.github.com/repos/{OWNER}/{REPO}'
+SOURCE = f'https://github.com/{OWNER}/{REPO}'
+HASH_RE = re.compile(r'^[0-9a-f]{40}$')
+MAX_ARCHIVE = 75 * 1024 * 1024
+MAX_EXTRACTED = 220 * 1024 * 1024
+MAX_FILES = 10000
+ALLOWED_HOSTS = {'api.github.com', 'codeload.github.com', 'github.com'}
+
+
+class UpdateError(Exception):
+    pass
+
+
+def emit(stage, **data):
+    print(json.dumps({'stage': stage, **data}, ensure_ascii=False), flush=True)
+
+
+def urlopen_safe(url, timeout=20, accept=None):
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != 'https' or parsed.hostname not in ALLOWED_HOSTS or parsed.username or parsed.password:
+        raise UpdateError('Небезопасный адрес загрузки')
+    req = urllib.request.Request(url, headers={
+        'Accept': accept or ('application/vnd.github+json' if parsed.hostname == 'api.github.com' else 'application/zip'),
+        'User-Agent': 'tablet-shell-updater/1.0',
+        'X-GitHub-Api-Version': '2022-11-28',
+    })
+    resp = urllib.request.urlopen(req, timeout=timeout)
+    final = urllib.parse.urlparse(resp.geturl())
+    if final.scheme != 'https' or final.hostname not in ALLOWED_HOSTS:
+        resp.close()
+        raise UpdateError('GitHub перенаправил загрузку на неизвестный сервер')
+    return resp
+
+
+def get_json(url):
+    with urlopen_safe(url, 12) as resp:
+        raw = resp.read(1024 * 1024 + 1)
+        if len(raw) > 1024 * 1024:
+            raise UpdateError('Ответ GitHub слишком большой')
+    try:
+        return json.loads(raw)
+    except (ValueError, UnicodeError) as exc:
+        raise UpdateError('GitHub вернул некорректные данные') from exc
+
+
+def resolve_sha(ref):
+    """Commit SHA of a branch or tag. The plain commit object includes the whole diff and
+    easily exceeds the 1 MB answer limit, so ask for the bare SHA only."""
+    with urlopen_safe(API + '/commits/' + urllib.parse.quote(ref, safe=''), 12,
+                      accept='application/vnd.github.sha') as resp:
+        sha = resp.read(100).decode('ascii', 'replace').strip().lower()
+    if not HASH_RE.fullmatch(sha):
+        raise UpdateError('GitHub вернул неверный идентификатор коммита')
+    return sha
+
+
+def recent_changes(sha, installed, limit=12):
+    """What is new: commit titles from the remote head back to the installed commit."""
+    try:
+        items = get_json(API + '/commits?per_page=%d&sha=%s' % (limit, sha))
+    except (UpdateError, urllib.error.URLError, OSError, ValueError):
+        return []
+    changes = []
+    for item in items if isinstance(items, list) else []:
+        commit_sha = str(item.get('sha', '')).lower()
+        if installed and commit_sha.startswith(installed):
+            break
+        commit = item.get('commit') or {}
+        title = str(commit.get('message') or '').strip().splitlines()[0:1]
+        date = str((commit.get('committer') or {}).get('date') or '')[:10]
+        if title:
+            changes.append({'title': title[0][:160], 'date': date, 'sha': commit_sha[:7]})
+    return changes
+
+
+def available_source():
+    """Prefer GitHub releases; when none are published, track main commit."""
+    try:
+        release = get_json(API + '/releases/latest')
+        sha = release.get('tag_name', '')
+        tag = str(sha)
+        if not tag or len(tag) > 180:
+            raise UpdateError('Некорректный тег релиза GitHub')
+        # Always resolve the release tag to a 40-character commit SHA.
+        sha = resolve_sha(tag)
+        label = str(release.get('name') or tag)[:160]
+        kind = 'release'
+    except urllib.error.HTTPError as err:
+        if err.code != 404:  # rate limits, auth failures and server errors must be visible
+            raise
+        repo = get_json(API)
+        branch = str(repo.get('default_branch') or 'main')
+        if not re.fullmatch(r'[A-Za-z0-9._/-]{1,100}', branch) or '..' in branch:
+            raise UpdateError('Некорректная ветка репозитория')
+        sha = resolve_sha(branch)
+        label = branch + ' · ' + sha[:10]
+        kind = 'branch'
+    if not HASH_RE.fullmatch(sha):
+        raise UpdateError('GitHub вернул неверный идентификатор коммита')
+    return {'sha': sha, 'label': label, 'kind': kind, 'url': SOURCE}
+
+
+def installed_version(home):
+    marker = home / '.local/share/tablet-shell/version'
+    try:
+        value = marker.read_text(encoding='ascii').strip().lower()
+    except OSError:
+        return ''
+    if HASH_RE.fullmatch(value) or re.fullmatch(r'[0-9a-f]{7,39}', value):
+        return value
+    return ''
+
+
+def check(home):
+    remote = available_source()
+    local = installed_version(home)
+    equal = bool(local) and remote['sha'].startswith(local)
+    changes = [] if equal else recent_changes(remote['sha'], local)
+    # The installed files' age: an archive/USB install may be newer than GitHub's head.
+    try:
+        import datetime
+        stamp = (home / '.local/share/tabletd/tabletd').stat().st_mtime
+        installed_date = datetime.date.fromtimestamp(stamp).isoformat()
+    except OSError:
+        installed_date = ''
+    remote_date = changes[0]['date'] if changes else ''
+    older = bool(remote_date and installed_date and remote_date < installed_date and not local)
+    return {**remote, 'installed': local or 'local',
+            'changes': changes, 'remoteDate': remote_date, 'installedDate': installed_date,
+            'older': older,
+            'updateAvailable': not equal,
+            'untracked': not bool(local),
+            'stage': 'up-to-date' if equal else 'available'}
+
+
+def download_archive(sha, destination):
+    url = f'https://codeload.github.com/{OWNER}/{REPO}/zip/{sha}'
+    size = 0
+    with urlopen_safe(url, 35) as resp, destination.open('wb') as out:
+        content_length = resp.headers.get('Content-Length')
+        declared = int(content_length) if content_length and content_length.isdigit() else 0
+        if declared > MAX_ARCHIVE:
+            raise UpdateError('Размер обновления превышает допустимый')
+        previous_percent = -1
+        while True:
+            block = resp.read(128 * 1024)
+            if not block:
+                break
+            size += len(block)
+            if size > MAX_ARCHIVE:
+                raise UpdateError('Размер обновления превышает допустимый')
+            out.write(block)
+            # Do not print every downloaded block, only a changed percentage.
+            percent = min(99, int(size * 100 / declared)) if declared else 0
+            if declared and percent != previous_percent:
+                emit('downloading', progress=percent)
+                previous_percent = percent
+    if not size:
+        raise UpdateError('GitHub вернул пустой архив')
+    emit('downloading', progress=100)
+
+
+def unpack_archive(archive, dest):
+    """Reject zip-slip, links, strange names and decompression bombs."""
+    with zipfile.ZipFile(archive) as z:
+        infos = z.infolist()
+        if len(infos) > MAX_FILES or sum(i.file_size for i in infos) > MAX_EXTRACTED:
+            raise UpdateError('Архив обновления слишком большой')
+        # Github codeload uses a single top-level directory: tablet-shell-<sha>.
+        roots = {PurePosixPath(i.filename).parts[0] for i in infos if i.filename}
+        if len(roots) != 1 or not next(iter(roots)).startswith('tablet-shell-'):
+            raise UpdateError('Неверная структура архива обновления')
+        root = next(iter(roots))
+        for info in infos:
+            name = info.filename
+            path = PurePosixPath(name)
+            if (not name or name.startswith('/') or '\\' in name or '..' in path.parts
+                    or len(path.parts) < 2 or path.parts[0] != root or '\x00' in name):
+                # Single top-level directory entry is allowed.
+                if not (name.rstrip('/') == root and info.is_dir()):
+                    raise UpdateError('Обнаружен небезопасный путь в архиве')
+            mode = info.external_attr >> 16
+            if (mode & 0o170000) == 0o120000:
+                raise UpdateError('Символические ссылки в обновлении запрещены')
+            if (mode & 0o170000) not in (0, 0o040000, 0o100000):
+                raise UpdateError('Недопустимый тип файла в архиве')
+            if info.is_dir():
+                continue
+            relative = Path(*path.parts[1:])
+            target = dest / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if target.exists():
+                raise UpdateError('В архиве повторяется путь')
+            with z.open(info) as source, target.open('xb') as sink:
+                shutil.copyfileobj(source, sink, 128 * 1024)
+    for key in ('install.sh', 'build.sh', 'update.sh', 'src/tabletd/tabletd.cpp'):
+        if not (dest / key).is_file():
+            raise UpdateError('В архиве нет обязательного файла: ' + key)
+
+
+def install(home, expected):
+    emit('checking', message='Проверка GitHub')
+    remote = check(home)
+    if remote['sha'] != expected:
+        raise UpdateError('Версия на GitHub изменилась. Проверьте обновления ещё раз.')
+    if not remote['updateAvailable']:
+        emit('up-to-date', **{k: v for k, v in remote.items() if k != 'stage'})
+        return
+    with tempfile.TemporaryDirectory(prefix='tablet-shell-update-') as work:
+        archive = Path(work) / 'source.zip'
+        source_dir = Path(work) / 'tablet-shell'
+        source_dir.mkdir()
+        emit('downloading', progress=0)
+        download_archive(expected, archive)
+        emit('preparing', message='Проверка полученного архива')
+        unpack_archive(archive, source_dir)
+        emit('installing', message='Сборка и установка (на слабых устройствах может быть долгой)')
+        env = os.environ.copy()
+        env['TABLET_SHELL_SOURCE_COMMIT'] = expected
+        # Use the NEW update.sh included in the pinned revision, not an arbitrary shell command.
+        # No sudo prompts from the GUI; keep the existing login manager intact.
+        # update.sh prints "[n/4] stage" lines: they become the progress shown in Settings.
+        # Its other output is only kept (in memory) to explain a failure.
+        proc = subprocess.Popen(['bash', str(source_dir / 'update.sh'), '--offline',
+                                 '--from', str(source_dir), '--no-greeter-update'],
+                                cwd=str(source_dir), env=env, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True, errors='replace')
+        tail = []
+        for line in proc.stdout:
+            line = line.strip()
+            if not line:
+                continue
+            tail = (tail + [line])[-6:]
+            step = re.search(r'\[(\d)/4\]\s*(.*)', line)
+            if step:
+                n = int(step.group(1))
+                emit('installing', step=n, progress=n * 25 - 15, message=step.group(2)[:120])
+        if proc.wait() != 0:
+            detail = [l for l in tail if not l.startswith('Update was interrupted')]
+            suffix = (': ' + detail[-1][:320]) if detail else ''
+            raise UpdateError('Не удалось установить обновление' + suffix)
+        emit('done', sha=expected, label=remote['label'],
+             message='Обновление установлено. Перезапустите оболочку, чтобы применить его.')
+
+
+def main():
+    parser = argparse.ArgumentParser(description='GitHub update client for tablet-shell')
+    parser.add_argument('action', choices=['check', 'install'])
+    parser.add_argument('--sha', help='Exact commit SHA confirmed by the user')
+    args = parser.parse_args()
+    home = Path.home()
+    try:
+        if args.action == 'check':
+            emit('checking')
+            emit(**check(home))
+        else:
+            if not args.sha or not HASH_RE.fullmatch(args.sha):
+                raise UpdateError('Сначала проверьте обновления в настройках')
+            install(home, args.sha)
+    except (UpdateError, OSError, urllib.error.URLError, ValueError, zipfile.BadZipFile) as exc:
+        emit('error', message=str(exc)[:500])
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

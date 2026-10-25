@@ -50,11 +50,12 @@ Item {
         y: parent.height * 0.18
         width: Math.min(parent.width - Kirigami.Units.gridUnit * 2, Kirigami.Units.gridUnit * 26)
         height: form.implicitHeight + Kirigami.Units.gridUnit * 2
-        radius: Kirigami.Units.gridUnit * 1.2
+        radius: dialog.home.pixel ? Kirigami.Units.gridUnit * 1.6 : Kirigami.Units.gridUnit * 1.2
         color: dialog.home.pal.sheet
         border.color: dialog.home.pal.sheetBorder
-        border.width: 1
+        border.width: dialog.home.pixel ? 0 : 1
 
+        GlassSheen { home: dialog.home }
         MouseArea { anchors.fill: parent }  // keep taps inside the sheet
 
         ColumnLayout {
@@ -73,6 +74,13 @@ Item {
             PC3.TextField {
                 id: urlField
                 Layout.fillWidth: true
+                color: dialog.home.pal.text
+                placeholderTextColor: dialog.home.pal.secondary
+                background: Rectangle {
+                    implicitHeight: Kirigami.Units.gridUnit * 2.2
+                    radius: height * 0.3
+                    color: dialog.home.pal.fill
+                }
                 placeholderText: Tr.t("Адрес, например music.yandex.ru")
                 inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase
                 onAccepted: nameField.text ? dialog.accept() : nameField.forceActiveFocus()
@@ -80,16 +88,28 @@ Item {
             PC3.TextField {
                 id: nameField
                 Layout.fillWidth: true
+                color: dialog.home.pal.text
+                placeholderTextColor: dialog.home.pal.secondary
+                background: Rectangle {
+                    implicitHeight: Kirigami.Units.gridUnit * 2.2
+                    radius: height * 0.3
+                    color: dialog.home.pal.fill
+                }
                 placeholderText: Tr.t("Название (необязательно)")
                 onAccepted: dialog.accept()
             }
             RowLayout {
                 Layout.alignment: Qt.AlignRight
-                PC3.Button {
+                GlassButton {
+                    home: dialog.home
+                    onSheet: true
                     text: Tr.t("Отмена")
                     onClicked: dialog.open = false
                 }
-                PC3.Button {
+                GlassButton {
+                    home: dialog.home
+                    onSheet: true
+                    prominent: true
                     text: Tr.t("Добавить")
                     enabled: urlField.text.trim().length > 0
                     onClicked: dialog.accept()

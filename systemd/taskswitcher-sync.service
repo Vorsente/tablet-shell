@@ -3,6 +3,8 @@ Description=Task switcher effect copy with minimum flick travel
 Before=plasma-kwin_wayland.service
 
 [Service]
+StandardOutput=null
+StandardError=null
 Type=oneshot
 ExecStart=%h/.local/bin/taskswitcher-sync
 ExecStartPost=-/usr/bin/qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.reconfigureEffect mobiletaskswitcher

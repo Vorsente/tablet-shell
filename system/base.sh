@@ -31,8 +31,5 @@ vm.page-cluster = 0
 EOF
 fi
 
-# eMMC / small SSD: fewer log writes
-mkdir -p /etc/systemd/journald.conf.d
-printf '[Journal]\nSystemMaxUse=200M\n' > /etc/systemd/journald.conf.d/size.conf
 
 t "Готово. Перезагрузитесь." "Done. Reboot to apply."; echo

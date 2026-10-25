@@ -2,5 +2,7 @@
 Description=Login screen wallpaper = home/lock wallpaper (light/dark variant)
 
 [Service]
+StandardOutput=null
+StandardError=null
 Type=oneshot
 ExecStart=%h/.local/bin/wallpaper sync

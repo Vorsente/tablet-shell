@@ -19,10 +19,16 @@ Rectangle {
         settings.setValue(item, v);
     }
 
-    implicitHeight: content.implicitHeight + (touch ? Kirigami.Units.gridUnit * 1.2 : Kirigami.Units.smallSpacing * 3)
+    implicitHeight: content.implicitHeight + (touch ? Kirigami.Units.gridUnit * (settings.pixel ? 1.8 : 1.2)
+                                              : Kirigami.Units.smallSpacing * (settings.pixel ? 4 : 3))
     Layout.fillWidth: true
-    color: touch ? Kirigami.Theme.alternateBackgroundColor : "transparent"
-    radius: touch ? Kirigami.Units.gridUnit * 0.7 : 0
+    color: settings.pixel ? (Kirigami.Theme.colorSet === Kirigami.Theme.View
+                              ? Kirigami.Theme.backgroundColor : Kirigami.Theme.alternateBackgroundColor)
+                          : touch ? Kirigami.Theme.alternateBackgroundColor : "transparent"
+    radius: settings.pixel ? Kirigami.Units.gridUnit * 1.75 : touch ? Kirigami.Units.gridUnit * 0.7 : 0
+
+    border.width: settings.pixel ? 1 : 0
+    border.color: settings.pixel ? Qt.alpha(Kirigami.Theme.textColor, 0.09) : "transparent"
 
     RowLayout {
         id: content
@@ -79,6 +85,27 @@ Rectangle {
     Component {
         id: switchControl
         QQC2.Switch {
+            id: toggle
+            Rectangle {
+                id: materialTrack
+                visible: row.settings.pixel
+                x: toggle.leftPadding
+                y: (toggle.height - height) / 2
+                implicitWidth: 52; implicitHeight: 32
+                width: 52; height: 32; radius: 16
+                color: toggle.checked ? Kirigami.Theme.highlightColor : Kirigami.Theme.alternateBackgroundColor
+                border.width: toggle.checked ? 0 : 2
+                border.color: Kirigami.Theme.disabledTextColor
+                Rectangle {
+                    width: toggle.checked ? 24 : 16
+                    height: width; radius: width / 2
+                    x: toggle.checked ? parent.width - width - 4 : 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: toggle.checked ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.disabledTextColor
+                    Behavior on x { NumberAnimation { duration: 140 } }
+                }
+            }
+            Binding { target: toggle; property: "indicator"; when: row.settings.pixel; value: materialTrack }
             checked: !!row.value
             scale: row.touch ? 1.4 : 1
             transformOrigin: Item.Right
@@ -117,6 +144,17 @@ Rectangle {
     Component {
         id: buttonControl
         QQC2.Button {
+            id: actionButton
+            Rectangle {
+                id: actionSurface
+                visible: row.settings.pixel
+                implicitHeight: 48
+                radius: height / 2
+                color: actionButton.down ? Kirigami.Theme.highlightColor : Qt.alpha(Kirigami.Theme.highlightColor, 0.16)
+                border.width: actionButton.activeFocus ? 2 : 0
+                border.color: Kirigami.Theme.highlightColor
+            }
+            Binding { target: actionButton; property: "background"; when: row.settings.pixel; value: actionSurface }
             text: row.item.button
             icon.name: row.item.icon || ""
             // Qt 6.12: assigning undefined no longer restores the default

@@ -2,6 +2,7 @@
 // screen, power button, pen, typewriter, reading mode, Android...). C++ backend + Kirigami UI that
 // adapts to the mode: touch-first in tablet mode, keyboard/mouse-first in PC mode.
 #include "backend.h"
+#include "../common/ui-style.h"
 
 #include <QApplication>
 #include <QDBusConnection>
@@ -13,9 +14,13 @@
 #include <QUrl>
 
 #include "tr.h"
+#include <QtCore/qlogging.h>
 
 int main(int argc, char *argv[])
 {
+    // Keep Qt diagnostics silent without an app-local helper declaration.
+    // TABLET_SHELL_DEBUG=1 keeps Qt/QML messages for troubleshooting
+    if (!qEnvironmentVariableIsSet("TABLET_SHELL_DEBUG")) qInstallMessageHandler([](QtMsgType, const QMessageLogContext &, const QString &) {});
     QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("tablet-settings"));
     app.setApplicationDisplayName(T(QStringLiteral("Настройки планшета")));
@@ -48,6 +53,8 @@ int main(int argc, char *argv[])
     // shared with the embedded KDE settings modules
     auto engine = std::make_shared<QQmlApplicationEngine>();
     backend.setEngine(engine);
+    UiStyle uiStyle;
+    engine->rootContext()->setContextProperty(QStringLiteral("uiStyle"), &uiStyle);
     engine->rootContext()->setContextProperty(QStringLiteral("backend"), &backend);
     engine->load(QUrl::fromLocalFile(QStringLiteral(APP_DIR "/qml/Main.qml")));
     if (engine->rootObjects().isEmpty()) {

@@ -1,5 +1,5 @@
-// Privacy indicator (like iOS): while an app records, a breathing dot at the top of the screen,
-// orange for the microphone, green for the camera. When recording starts the pill opens for a
+// Privacy indicator (like iOS): while an app records, a dot at the top of the screen,
+// orange for the microphone, green for the camera (steady, not animated). When recording starts the pill opens for a
 // moment with the app's name. Touches pass through. Data: shell.micApps / shell.cameraApps.
 import QtQuick
 import QtQuick.Window
@@ -40,7 +40,7 @@ Window {
         onTriggered: win.expanded = false
     }
 
-    readonly property color tint: camera ? "#30D158" : "#FF9F0A"
+    readonly property color tint: uiStyle.pixel ? (camera ? "#81C995" : "#FFB86C") : camera ? "#30D158" : "#FF9F0A"
 
     Rectangle {
         id: pill
@@ -49,20 +49,16 @@ Window {
         height: win.expanded ? 28 : 12
         width: win.expanded ? label.implicitWidth + 44 : 12
         radius: height / 2
-        color: win.expanded ? Qt.rgba(0, 0, 0, 0.82) : win.tint
+        // collapsed: the bright tint in both styles (Material used a dark green that vanished on dark bars)
+        color: !win.expanded ? win.tint : uiStyle.pixel ? "#2B2B2B" : Qt.rgba(0, 0, 0, 0.82)
         opacity: win.camera || win.mic ? 1 : 0
         Behavior on width { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
         Behavior on height { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
         Behavior on color { ColorAnimation { duration: 250 } }
         Behavior on opacity { NumberAnimation { duration: 250 } }
 
-        // breathing while collapsed
-        SequentialAnimation on scale {
-            running: !win.expanded && (win.camera || win.mic)
-            loops: Animation.Infinite
-            NumberAnimation { to: 0.8; duration: 900; easing.type: Easing.InOutSine }
-            NumberAnimation { to: 1.0; duration: 900; easing.type: Easing.InOutSine }
-        }
+        // steady dot: an endless "breathing" animation kept the overlay repainting at 60 fps for
+        // as long as an app recorded (noticeable CPU on the Atom); iOS and Android do not animate it either
 
         Rectangle {
             visible: win.expanded

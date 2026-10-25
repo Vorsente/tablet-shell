@@ -4,17 +4,30 @@
 get() { kreadconfig6 --file kdeglobals --group KDE --key "$1"; }
 status() {
     if [ "$(get AutomaticLookAndFeel)" = true ]; then echo auto
-    elif [ "$(get LookAndFeelPackage)" = org.ipad.light ]; then echo light
+    elif [ "$(get LookAndFeelPackage)" = org.ipad.light ] || [ "$(get LookAndFeelPackage)" = org.tabletshell.pixel.light ]; then echo light
     else echo dark; fi
+}
+style_package() {
+    if [ "$(kreadconfig6 --file tabletrc --group Appearance --key shellStyle)" = pixel ]; then
+        echo "org.tabletshell.pixel.$1"
+    else
+        echo "org.ipad.$1"
+    fi
 }
 set_fixed() {
     kwriteconfig6 --file kdeglobals --group KDE --key AutomaticLookAndFeel false
-    plasma-apply-lookandfeel -a "org.ipad.$1" >/dev/null 2>&1
+    plasma-apply-lookandfeel -a "$(style_package "$1")" >/dev/null 2>&1
+    # Pixel dark has light status symbols; Pixel light has dark ones.
+    if [ "$(kreadconfig6 --file tabletrc --group Appearance --key shellStyle 2>/dev/null)" = pixel ]; then
+        kwriteconfig6 --file kdeglobals --group Icons --key Theme --notify "TabletPixel${1^}"
+    else
+        kwriteconfig6 --file kdeglobals --group Icons --key Theme --notify "MacTahoe-$1"
+    fi
 }
 case "$1" in
     dark|light) set_fixed "$1" ;;
     auto) kwriteconfig6 --file kdeglobals --group KDE --key AutomaticLookAndFeel --notify true ;;
-    toggle) if [ "$(get LookAndFeelPackage)" = org.ipad.light ]; then set_fixed dark; else set_fixed light; fi ;;
+    toggle) if [ "$(get LookAndFeelPackage)" = org.ipad.light ] || [ "$(get LookAndFeelPackage)" = org.tabletshell.pixel.light ]; then set_fixed dark; else set_fixed light; fi ;;
     status|"") status ;;
     *) echo "usage: appearance dark|light|auto|toggle|status" >&2; exit 1 ;;
 esac

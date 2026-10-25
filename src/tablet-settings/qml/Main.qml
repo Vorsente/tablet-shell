@@ -12,6 +12,7 @@ Kirigami.ApplicationWindow {
     id: app
 
     readonly property bool touch: backend.tabletMode
+    readonly property bool pixel: uiStyle.pixel
     readonly property string home: backend.home()
     property int currentSection: -1
 
@@ -46,6 +47,7 @@ Kirigami.ApplicationWindow {
         case "home": return backend.homeScreen(item.key, item.def);
         case "dashboard": return backend.containmentConfig("org.ipad.dashboard", item.key, item.def);
         case "appearance": return backend.run([home + "/.local/bin/appearance", "status"]).trim() || "auto";
+        case "shellStyle": return uiStyle.name;
         case "info": return item.get();
         case "im": {
             const im = String(backend.read("kwinrc", "Wayland", "InputMethod", ""));
@@ -62,6 +64,7 @@ Kirigami.ApplicationWindow {
         case "home": backend.setHomeScreen(item.key, v); break;
         case "dashboard": backend.setContainmentConfig("org.ipad.dashboard", item.key, v); break;
         case "appearance": backend.start([home + "/.local/bin/appearance", v]); break;
+        case "shellStyle": backend.start([home + "/.local/bin/shell-style", v]); break;
         case "im":
             backend.write("kwinrc", "Wayland", "InputMethod",
                           v === "own" ? home + "/.local/share/applications/tablet-keyboard.desktop"
@@ -72,6 +75,8 @@ Kirigami.ApplicationWindow {
             backend.reapplyModes();
         } else if (item.apply === "gestures") {
             backend.reloadKWinScript("tablet-gestures");
+        } else if (item.apply === "weatherAnimation") {
+            backend.setHomeScreen("weatherAnimation", v);
         } else if (item.apply === "livewallpaper") {
             backend.start([home + "/.local/bin/wallpaper", "live", v ? "on" : "off"]);
             backend.setHomeScreen("liveWallpaper", v);   // weather on the wallpaper moves only then
@@ -115,7 +120,7 @@ Kirigami.ApplicationWindow {
     // ---- what can be set ------------------------------------------------------------------------
 
     readonly property var sections: [
-        { title: Tr.t("Режимы"), icon: "tablet", items: [
+        { title: Tr.t("Режимы"), icon: "tablet-symbolic", items: [
             { type: "choice", store: "device", label: Tr.t("Режим устройства"),
               note: Tr.t("«Авто» — планшет без клавиатуры, ПК с клавиатурой или док-станцией"),
               options: [{ value: "auto", label: Tr.t("Авто") }, { value: "on", label: Tr.t("Всегда планшет") }, { value: "off", label: Tr.t("Всегда ПК") }] },
@@ -129,6 +134,10 @@ Kirigami.ApplicationWindow {
               label: Tr.t("Открывать файлы одним касанием"), note: Tr.t("В режиме планшета; в ПК-режиме двойной щелчок") }),
             make(tabletrc("Modes", "askTypewriter", true), { type: "switch",
               label: Tr.t("Предлагать печатную машинку"), note: Tr.t("Уведомление при подключении клавиатуры") }),
+            make(tabletrc("Modes", "askCoding", true), { type: "switch",
+              label: Tr.t("Предлагать LazyVim"), note: Tr.t("В уведомлении при подключении клавиатуры") }),
+            make(tabletrc("Modes", "changeDisplayScale", false), { type: "switch", apply: "modes",
+              label: Tr.t("Менять масштаб при смене режима"), note: Tr.t("На медленных устройствах лучше оставить выключенным") }),
             make(tabletrc("Modes", "transitionAnimation", true), { type: "switch",
               label: Tr.t("Анимация смены режима"), note: Tr.t("Клавиатура, монитор, печатная машинка и чтение — с заставкой на весь экран") }),
             make(tabletrc("Modes", "transitionSound", true), { type: "switch",
@@ -140,15 +149,21 @@ Kirigami.ApplicationWindow {
             make(tabletrc("Effects", "lockSound", true), { type: "switch",
               label: Tr.t("Звук блокировки"), note: Tr.t("Короткий щелчок, когда экран заблокирован") }),
         ] },
-        { title: Tr.t("Внешний вид"), icon: "preferences-desktop-theme", wallpapers: true, items: [
+        { title: Tr.t("Внешний вид"), icon: "preferences-desktop-theme-global-symbolic", wallpapers: true, items: [
+            { type: "choice", store: "shellStyle", label: Tr.t("Стиль всей оболочки"),
+              note: Tr.t("Apple — исходный интерфейс. Pixel — Material Design: рабочий стол, панели, иконки, настройки, клавиатура, блокировка и вход."),
+              options: [{ value: "apple", label: "Apple / iPadOS" }, { value: "pixel", label: "Google Pixel / Material Design" }] },
             { type: "choice", store: "appearance", label: Tr.t("Оформление"),
               options: [{ value: "light", label: Tr.t("Светлое") }, { value: "dark", label: Tr.t("Тёмное") }, { value: "auto", label: Tr.t("Авто (по времени)") }] },
             make(tabletrc("Appearance", "liveWallpaper", true), { type: "switch", apply: "livewallpaper",
-              label: Tr.t("Живые обои"), note: Tr.t("Днём светлый вариант, ночью тёмный, на рассвете и закате плавный переход; погода на обоях движется") }),
+              label: Tr.t("Живые обои"), note: Tr.t("Днём светлый вариант, ночью тёмный — плавный переход") }),
+            make({store:"kconfig", file:"tabletrc", group:"Appearance", key:"weatherAnimation", def:false},
+                 { type: "switch", apply: "weatherAnimation", label: Tr.t("Анимированная погода на обоях"),
+                   note: Tr.t("Дополнительная нагрузка на графику; выключено по умолчанию") }),
             make(tabletrc("Tray", "hideApps", true), { type: "switch", label: Tr.t("Значки приложений под стрелкой в трее"),
               note: Tr.t("Новые значки (Telegram, Claude и т.п.) сразу прячутся; закреплённые вручную остаются на виду") }),
         ] },
-        { title: Tr.t("Жесты"), icon: "input-touchscreen", items: [
+        { title: Tr.t("Жесты"), icon: "input-touchscreen-symbolic", items: [
             make({ store: "kconfig", file: "kwinrc", group: "Script-tablet-gestures", key: "topEdge", def: true },
                  { type: "switch", apply: "gestures", label: Tr.t("Пункт управления"), note: Tr.t("Свайп вниз от верхнего края") }),
             make({ store: "kconfig", file: "kwinrc", group: "Script-tablet-gestures", key: "leftEdge", def: true },
@@ -158,7 +173,7 @@ Kirigami.ApplicationWindow {
             { type: "info", store: "info", label: "Slide Over", note: Tr.t("Плавающее окно поверх остальных"), get: () => "Meta+O" },
             { type: "info", store: "info", label: "Split View", note: Tr.t("Два окна рядом"), get: () => "Meta+S" },
         ] },
-        { title: Tr.t("Домашний экран"), icon: "go-home", webApps: true, items: [
+        { title: Tr.t("Домашний экран"), icon: "go-home-symbolic", webApps: true, items: [
             { type: "switch", store: "home", key: "showBadges", def: true,
               label: Tr.t("Значки уведомлений"), note: Tr.t("Красный счётчик непрочитанного на иконках") },
             { type: "switch", store: "home", key: "weatherOnWallpaper", def: true, label: Tr.t("Погода на обоях"),
@@ -166,7 +181,7 @@ Kirigami.ApplicationWindow {
             { type: "button", label: Tr.t("Расположение иконок"), note: Tr.t("Вернуть порядок «избранное, затем по алфавиту»"),
               button: Tr.t("Сбросить"), icon: "edit-reset", action: () => resetLayoutDialog.open() },
         ] },
-        { title: Tr.t("Сводка"), icon: "utilities-system-monitor", items: [
+        { title: Tr.t("Сводка"), icon: "office-chart-pie-symbolic", items: [
             { type: "info", store: "info", label: Tr.t("Где"), note: Tr.t("Встроенный экран, когда планшет в доке с внешним монитором"), get: () => "" },
             dash("w_cpu", true, { type: "switch", label: Tr.t("Процессор"), note: Tr.t("Загрузка, частота, история") }),
             dash("w_memory", true, { type: "switch", label: Tr.t("Память"), note: Tr.t("ОЗУ, zram, кнопка остановки Android") }),
@@ -190,7 +205,7 @@ Kirigami.ApplicationWindow {
             { type: "button", label: Tr.t("Подписчики YouTube"), note: Tr.t("Вход в Google для YouTube Аналитики"), button: Tr.t("Настроить"), icon: "media-playback-start",
               action: () => backend.start(["konsole", "-e", home + "/.local/bin/youtube-setup"]) },
         ] },
-        { title: Tr.t("Клавиатура"), icon: "input-keyboard-virtual", items: [
+        { title: Tr.t("Клавиатура"), icon: "input-keyboard-virtual-symbolic", items: [
             { type: "choice", store: "im", label: Tr.t("Экранная клавиатура"),
               options: [{ value: "own", label: Tr.t("Своя (iPad)") }, { value: "plasma", label: "Plasma" }, { value: "off", label: Tr.t("Выключена") }] },
             make(kbrc("theme", "auto"), { type: "choice", label: Tr.t("Тема"),
@@ -218,7 +233,7 @@ Kirigami.ApplicationWindow {
             { type: "button", label: Tr.t("Предпросмотр"), note: Tr.t("Клавиатура в окне, текст никуда не вводится"), button: Tr.t("Показать"), icon: "input-keyboard-virtual",
               action: () => backend.start(["env", "TABLET_KEYBOARD_DEMO=1", home + "/.local/bin/tablet-keyboard"]) },
         ] },
-        { title: Tr.t("Экран блокировки"), icon: "system-lock-screen", items: [
+        { title: Tr.t("Экран блокировки"), icon: "system-lock-screen-symbolic", items: [
             make(lockerrc("Autolock", true), { type: "switch", label: Tr.t("Блокировать автоматически") }),
             make(lockerrc("Timeout", 5), { type: "number", min: 1, max: 60, step: 1, suffix: Tr.t(" мин"), label: Tr.t("Через") }),
             make(lockerrc("LockOnResume", true), { type: "switch", label: Tr.t("Блокировать после сна") }),
@@ -231,10 +246,14 @@ Kirigami.ApplicationWindow {
             make(lockrc("Lock", "notificationText", true), { type: "switch", label: Tr.t("Показывать текст уведомлений"),
                  note: Tr.t("Иначе только приложение и «Новое уведомление»") }),
             { type: "info", store: "info", label: Tr.t("Обои"), note: Tr.t("Как на рабочем столе (Внешний вид)"), get: () => "" },
+            { type: "button", label: Tr.t("Применить оформление блокировки"),
+              note: Tr.t("Обновить Apple / Pixel и виджеты блокировки без изменения пароля"),
+              button: Tr.t("Применить"), icon: "view-refresh",
+              action: () => backend.start(["bash", home + "/.local/bin/lockscreen-sync"]) },
             { type: "button", label: Tr.t("Проверить"), note: Tr.t("Экран блокировки в тестовом режиме, закроется паролем"), button: Tr.t("Показать"), icon: "system-lock-screen",
               action: () => backend.start(["/usr/lib/kscreenlocker_greet", "--testing"]) },
         ]) },
-        { title: Tr.t("Экран входа"), icon: "system-users", items: [
+        { title: Tr.t("Экран входа"), icon: "system-users-symbolic", items: [
             { type: "info", store: "info", label: Tr.t("Состояние"),
               get: () => backend.run(["systemctl", "is-enabled", "greetd"]).trim() === "enabled"
                          ? (backend.run(["sh", "-c", "test -w /var/lib/tablet-greeter/lock.conf && echo ok"]).trim() === "ok"
@@ -245,12 +264,16 @@ Kirigami.ApplicationWindow {
             make(lockrc("Login", "session", "/usr/share/wayland-sessions/plasma.desktop"), { type: "choice", label: Tr.t("Сеанс"),
                  options: sessionOptions() }),
             { type: "info", store: "info", label: Tr.t("Обои"), note: Tr.t("Как на экране блокировки"), get: () => "" },
+            { type: "button", label: Tr.t("Обновить системный экран входа"),
+              note: Tr.t("Только для greetd tablet-shell; запросит пароль администратора"),
+              button: Tr.t("Обновить"), icon: "view-refresh",
+              action: () => backend.start(["konsole", "--hold", "-e", "sudo", "bash", home + "/.local/share/tablet-shell/system/greeter.sh", "--refresh"]) },
             { type: "button", label: Tr.t("Предпросмотр"), note: Tr.t("Экран входа в окне; пароль для проверки — test"), button: Tr.t("Показать"), icon: "system-users",
               action: () => backend.start(["env", "TABLET_GREETER_QML=" + home + "/.local/share/tablet-greeter",
                                            "TABLET_GREETER_LOOK=" + home + "/.config/tablet-lockrc",
                                            home + "/.local/share/tablet-greeter/tablet-greeter"]) },
         ]) },
-        { title: Tr.t("Кнопки"), icon: "system-shutdown", items: [
+        { title: Tr.t("Кнопки"), icon: "system-shutdown-symbolic", items: [
             make(tabletrc("PowerButton", "tapAction", "lock"), { type: "choice", label: Tr.t("Короткое нажатие"),
               options: [{ value: "lock", label: Tr.t("Заблокировать") }, { value: "suspend", label: Tr.t("Сон") }, { value: "nothing", label: Tr.t("Ничего") }] }),
             make(tabletrc("PowerButton", "holdMenu", true), { type: "switch",
@@ -258,13 +281,13 @@ Kirigami.ApplicationWindow {
             make(tabletrc("Buttons", "windowsClaude", true), { type: "switch", needs: "windowsButton",
               label: Tr.t("Кнопка Windows открывает Claude"), note: Tr.t("Кнопка под экраном; клавиша Win на клавиатуре по-прежнему открывает меню приложений") }),
         ] },
-        { title: Tr.t("Перо"), icon: "draw-freehand", needs: "pen", items: [
+        { title: Tr.t("Перо"), icon: "draw-freehand-symbolic", needs: "pen", items: [
             make(tabletrc("Pen", "palmRejection", true), { type: "switch",
               label: Tr.t("Игнорировать ладонь"), note: Tr.t("Касания пальцами отключаются, пока перо у экрана") }),
             make(tabletrc("Pen", "quickNote", true), { type: "switch",
               label: Tr.t("Быстрая заметка из угла"), note: Tr.t("Провести пером от правого нижнего угла") }),
             make(tabletrc("Pen", "toolRing", true), { type: "switch",
-              label: Tr.t("Кольцо инструментов"), note: Tr.t("Удерживать кнопку пера над экраном: заметка, скриншот, лупа, пипетка, запись") }),
+              label: Tr.t("Кольцо инструментов"), note: Tr.t("Удерживать кнопку пера над экраном: заметка, скриншот, Krita, пипетка, запись") }),
             make(tabletrc("Pen", "button1", "quicknote"), { type: "choice", label: Tr.t("Нижняя кнопка пера"),
               note: Tr.t("Нажать, держа перо над экраном (не касаясь)"), options: [{ value: "quicknote", label: Tr.t("Быстрая заметка") }, { value: "screenshot", label: Tr.t("Снимок экрана с рисованием") }, { value: "nothing", label: Tr.t("Ничего") }] }),
             make(tabletrc("Pen", "button2", "screenshot"), { type: "choice", label: Tr.t("Верхняя кнопка пера"),
@@ -272,7 +295,7 @@ Kirigami.ApplicationWindow {
             { type: "button", label: Tr.t("Заметка"), button: Tr.t("Открыть"), icon: "draw-freehand",
               action: () => backend.start([home + "/.local/bin/quick-note"]) },
         ] },
-        { title: Tr.t("Печатная машинка"), icon: "document-edit", items: [
+        { title: Tr.t("Печатная машинка"), icon: "document-edit-symbolic", items: [
             make(typewriterrc("dailyGoal", 500), { type: "number", min: 0, max: 5000, step: 50, suffix: Tr.t(" слов"),
               label: Tr.t("Цель на день") }),
             make(typewriterrc("sounds", true), { type: "switch", label: Tr.t("Звук клавиш") }),
@@ -286,19 +309,34 @@ Kirigami.ApplicationWindow {
             { type: "button", label: Tr.t("Сценарии"), button: Tr.t("Показать папку"), icon: "folder-documents",
               action: () => backend.start(["dolphin", String(backend.read("typewriterrc", "General", "folder", home + (Tr.ru ? "/Сценарии" : "/Screenplays")))]) },
         ] },
-        { title: Tr.t("Режим чтения"), icon: "view-readermode", items: [
+        { title: Tr.t("Режим кодинга"), icon: "code-context-symbolic", items: [
+            { type: "info", store: "info", label: "LazyVim (Neovim)", note: Tr.t("Запускается в полноэкранном терминале Konsole; установка выполняется автоматически"), get: () => "" },
+            make({ store: "kconfig", file: "codingrc", group: "General", key: "focus", def: true },
+                 { type: "switch", label: Tr.t("Не беспокоить во время кодинга") }),
+            make({ store: "kconfig", file: "codingrc", group: "General", key: "powerSaver", def: true },
+                 { type: "switch", label: Tr.t("Энергосбережение во время кодинга") }),
+            make({ store: "kconfig", file: "codingrc", group: "General", key: "reduceEffects", def: true },
+                 { type: "switch", label: Tr.t("Отключать эффекты рабочего стола") }),
+            make({ store: "kconfig", file: "codingrc", group: "General", key: "brightness", def: 55 },
+                 { type: "number", min: 10, max: 100, step: 5, suffix: " %", label: Tr.t("Яркость не выше") }),
+            { type: "button", label: "LazyVim", button: Tr.t("Открыть"), icon: "applications-development",
+              action: () => backend.start([home + "/.local/bin/coding-mode"]) },
+            { type: "button", label: Tr.t("Проекты"), button: Tr.t("Показать папку"), icon: "folder-documents",
+              action: () => backend.start(["dolphin", String(backend.read("codingrc", "General", "folder", home + (Tr.ru ? "/Проекты" : "/Projects")))]) },
+        ] },
+        { title: Tr.t("Режим чтения"), icon: "view-readermode-symbolic", items: [
             make(tabletrc("Reading", "temperature", 3400), { type: "number", min: 2700, max: 6500, step: 100, suffix: " K",
               label: Tr.t("Тёплый цвет экрана"), note: Tr.t("Меньше — теплее") }),
             make(tabletrc("Reading", "brightness", 50), { type: "number", min: 10, max: 100, step: 5, suffix: " %",
               label: Tr.t("Яркость не выше") }),
         ] },
-        { title: Tr.t("Экранное время"), icon: "chronometer", items: [
+        { title: Tr.t("Экранное время"), icon: "chronometer-symbolic", items: [
             { type: "button", label: Tr.t("Статистика за неделю"), button: Tr.t("Показать"), icon: "view-statistics",
               action: () => qdbus("org.ipad.TabletShell", "/", "org.ipad.TabletShell.ToggleScreenTime") },
             { type: "button", label: Tr.t("Очистить статистику"), note: Tr.t("Удалить всю историю экранного времени"),
               button: Tr.t("Очистить"), icon: "edit-clear-history", action: () => clearStatsDialog.open() },
         ] },
-        { title: "Android", icon: "waydroid", needs: "waydroid", items: [
+        { title: "Android", icon: "smartphone-symbolic", needs: "waydroid", items: [
             { type: "info", store: "info", label: Tr.t("Состояние"),
               get: () => /Session:\s*RUNNING/.test(backend.run(["waydroid", "status"])) ? Tr.t("Запущен") : Tr.t("Остановлен") },
             { type: "button", label: Tr.t("Android целиком"), button: Tr.t("Открыть"), icon: "waydroid",
@@ -308,13 +346,14 @@ Kirigami.ApplicationWindow {
             { type: "button", label: Tr.t("Остановить Android"), note: Tr.t("Освобождает память; запустится сам при открытии приложения"),
               button: Tr.t("Остановить"), icon: "media-playback-stop", action: () => backend.start(["waydroid", "session", "stop"]) },
         ] },
-        { title: Tr.t("Батарея"), icon: "battery-good", battery: true, items: [] },
-        { title: Tr.t("Восстановление"), icon: "edit-undo-history", recovery: true, items: [] },
-        { title: Tr.t("Хранилище"), icon: "drive-harddisk", storage: true, items: [
+        { title: Tr.t("Батарея"), icon: "battery-good-symbolic", battery: true, items: [] },
+        { title: Tr.t("Восстановление"), icon: "edit-undo-history-symbolic", recovery: true, items: [] },
+        { title: Tr.t("Хранилище"), icon: "drive-harddisk-symbolic", storage: true, items: [
             make(tabletrc("Cleanup", "auto", true), { type: "switch", label: Tr.t("Автоочистка раз в неделю"),
               note: Tr.t("Корзина и миниатюры старше месяца, отчёты о сбоях. Загрузки не трогаются") }),
         ] },
-        { title: Tr.t("О системе"), icon: "help-about", items: [
+        { title: Tr.t("Обновление"), icon: "system-software-update-symbolic", updates: true, items: [] },
+        { title: Tr.t("О системе"), icon: "help-about-symbolic", items: [
             { type: "info", store: "info", label: Tr.t("Устройство"), get: () => sysinfo.model },
             { type: "info", store: "info", label: Tr.t("Процессор"), get: () => sysinfo.cpu },
             { type: "info", store: "info", label: Tr.t("Память"), get: () => sysinfo.memory },
@@ -544,23 +583,43 @@ Kirigami.ApplicationWindow {
                         text: sectionRow.modelData.kde ? Tr.t("Система") : Tr.t("Планшет")
                     }
                     QQC2.ItemDelegate {
+                    id: sectionButton
+                    background: Rectangle {
+                        radius: app.pixel ? Kirigami.Units.gridUnit * 1.6 : Kirigami.Units.gridUnit * 0.65
+                        color: sectionRow.current
+                               ? (app.pixel ? Qt.alpha(Kirigami.Theme.highlightColor, 0.26) : Kirigami.Theme.highlightColor)
+                               : (sectionButton.hovered ? Qt.alpha(Kirigami.Theme.highlightColor, 0.08) : "transparent")
+                        border.color: app.pixel && sectionRow.current ? Qt.alpha(Kirigami.Theme.highlightColor, 0.25) : "transparent"
+                        Behavior on color { ColorAnimation { duration: 180 } }
+                    }
                     readonly property var modelData: sectionRow.modelData
                     readonly property int index: sectionRow.index
                     width: parent.width
-                    implicitHeight: app.touch ? Kirigami.Units.gridUnit * 3.4 : Kirigami.Units.gridUnit * 2
+                    implicitHeight: app.touch ? Kirigami.Units.gridUnit * (app.pixel ? 4.0 : 3.4)
+                                                      : Kirigami.Units.gridUnit * (app.pixel ? 2.75 : 2)
                     highlighted: sectionRow.current
                     onClicked: app.openSection(index)
                     contentItem: RowLayout {
                         spacing: Kirigami.Units.largeSpacing
-                        Kirigami.Icon {
-                            source: modelData.icon
-                            implicitWidth: app.touch ? Kirigami.Units.iconSizes.medium : Kirigami.Units.iconSizes.smallMedium
+                        Rectangle {
+                            implicitWidth: app.touch ? Kirigami.Units.gridUnit * 2.35 : Kirigami.Units.gridUnit * 1.8
                             implicitHeight: implicitWidth
+                            radius: app.pixel ? implicitHeight / 2 : implicitHeight * 0.28
+                            color: app.pixel ? Qt.alpha(Kirigami.Theme.highlightColor, sectionRow.current ? 0.25 : 0.13) : "transparent"
+                            Kirigami.Icon {
+                                anchors.centerIn: parent
+                                width: parent.width * 0.57
+                                height: width
+                                source: modelData.icon
+                                color: app.pixel ? Kirigami.Theme.highlightColor : Kirigami.Theme.textColor
+                                isMask: app.pixel
+                            }
                         }
                         QQC2.Label {
                             Layout.fillWidth: true
                             text: modelData.title
-                            font.pointSize: Kirigami.Theme.defaultFont.pointSize * (app.touch ? 1.2 : 1)
+                            font.pointSize: Kirigami.Theme.defaultFont.pointSize * (app.touch ? 1.2 : app.pixel ? 1.07 : 1)
+                            font.weight: app.pixel && sectionRow.current ? Font.DemiBold : Font.Normal
                             elide: Text.ElideRight
                         }
                         QQC2.Label {
@@ -678,6 +737,13 @@ Kirigami.ApplicationWindow {
                     active: !!page.section.recovery
                     visible: active
                     sourceComponent: RecoveryPage { touch: app.touch }
+                }
+                Loader {
+                    Layout.fillWidth: true
+                    Layout.topMargin: Kirigami.Units.largeSpacing
+                    active: !!page.section.updates
+                    visible: active
+                    sourceComponent: UpdatePage { touch: app.touch }
                 }
                 Loader {
                     Layout.fillWidth: true

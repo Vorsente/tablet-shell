@@ -22,6 +22,7 @@
 #include <pwd.h>
 
 #include "tr.h"
+#include <QtCore/qlogging.h>
 
 class Greeter : public QObject
 {
@@ -55,6 +56,12 @@ public:
         const QString session = m_config.value(QStringLiteral("session")).toString();
         m_session = sessionCommand(QFile::exists(session) ? session
                                    : cfg.value(QStringLiteral("session"), QStringLiteral("/usr/share/wayland-sessions/plasma.desktop")).toString());
+        // greetd gives the session the login VT as stdout: the wrapper (system/session-launch.sh)
+        // keeps startplasma/KWin/libseat messages off the screen, whatever session was chosen
+        const QString quiet = QStringLiteral("/usr/local/libexec/tablet-shell-session");
+        if (QFileInfo(quiet).isExecutable() && m_session.value(0) != quiet) {
+            m_session.prepend(quiet);
+        }
         if (const passwd *pw = getpwnam(m_user.toLocal8Bit().constData())) {
             m_fullName = QString::fromLocal8Bit(pw->pw_gecos).section(QLatin1Char(','), 0, 0);
         }
@@ -226,6 +233,9 @@ private:
 
 int main(int argc, char *argv[])
 {
+    // Keep Qt diagnostics silent without an app-local helper declaration.
+    // TABLET_SHELL_DEBUG=1 keeps Qt/QML messages for troubleshooting
+    if (!qEnvironmentVariableIsSet("TABLET_SHELL_DEBUG")) qInstallMessageHandler([](QtMsgType, const QMessageLogContext &, const QString &) {});
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("tablet-greeter"));
     Greeter greeter;

@@ -3,6 +3,8 @@
 #pragma once
 
 #include <QHash>
+#include <QByteArray>
+#include <QStringList>
 #include <QObject>
 #include <QVariant>
 
@@ -10,11 +12,13 @@
 
 class QQmlEngine;
 class KQuickConfigModule;
+class QProcess;
 
 class Backend : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(bool tabletMode READ tabletMode NOTIFY tabletModeChanged)
+    Q_PROPERTY(QVariantMap updateInfo READ updateInfo NOTIFY updateInfoChanged)
 
 public:
     explicit Backend(QObject *parent = nullptr);
@@ -51,6 +55,12 @@ public:
     Q_INVOKABLE QVariantMap systemInfo() const;
     Q_INVOKABLE QString home() const;
 
+    // Asynchronous GitHub updates. All stages are reported to QML, without log files.
+    QVariantMap updateInfo() const { return m_updateInfo; }
+    Q_INVOKABLE void checkForUpdates();
+    Q_INVOKABLE void installGitHubUpdate();
+    Q_INVOKABLE void cancelUpdate();
+
     // standard KDE settings modules (KCMs), embedded like System Settings does
     Q_INVOKABLE QVariantList modules() const;                 // [{id, name, icon, group, groupName, qml}]
     Q_INVOKABLE QObject *loadModule(const QString &id);       // QML module: the KQuickConfigModule
@@ -68,6 +78,7 @@ public Q_SLOTS:
 Q_SIGNALS:
     void tabletModeChanged();
     void webAppsChanged();
+    void updateInfoChanged();
     void moduleRequested(const QString &id);
 
 private Q_SLOTS:
@@ -78,4 +89,10 @@ private:
     std::shared_ptr<QQmlEngine> m_engine;
     QHash<QString, KQuickConfigModule *> m_modules;
     QString m_startModule;
+    QVariantMap m_updateInfo{{QStringLiteral("stage"), QStringLiteral("idle")},
+                             {QStringLiteral("installed"), QStringLiteral("local")}};
+    QProcess *m_updateProcess = nullptr;
+    QByteArray m_updateBuffer;
+    void launchUpdater(const QStringList &args);
+    void consumeUpdaterOutput();
 };

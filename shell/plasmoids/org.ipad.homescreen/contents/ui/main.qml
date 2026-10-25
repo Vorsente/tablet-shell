@@ -3,6 +3,7 @@
 // Long press enters edit mode (icons jiggle): drag to move, drop onto another icon to make a folder,
 // drag an app out of an open folder to take it out. In PC mode icons are dragged with the mouse
 // (widgets are not shown there).
+// PC mode desktop: the files and folders of ~/Desktop (DesktopFolder.qml) instead of the apps.
 import QtQuick
 import QtQml
 import QtCore
@@ -21,6 +22,15 @@ ContainmentItem {
 
     // PC mode (keyboard/dock attached): Samsung DeX-like desktop with small icons in columns
     readonly property bool pcMode: Plasmoid.configuration.pcMode
+    // Legacy releases reserved 88 px regardless of dock height, leaving a big gap.
+    // Keep explicit custom values; the old shipped default tracks the actual dock.
+    readonly property real dockReserve: [64, 72, 88].indexOf(Number(Plasmoid.configuration.dockSpace)) !== -1
+                                        ? (pixel ? 80 : 72)
+                                        : Math.max(0, Number(Plasmoid.configuration.dockSpace) || 0)
+    // Floating Plasma dock overlaps its nominal height by a few pixels (shadow/touch area).
+    // The dots must sit visibly ABOVE it, without changing a user's explicitly chosen reserve.
+    readonly property real pageDotsClearance: Kirigami.Units.smallSpacing * 3
+    readonly property bool pixel: Plasmoid.configuration.shellStyle === "pixel"
     readonly property bool showBadges: Plasmoid.configuration.showBadges
     readonly property string weatherCity: Plasmoid.configuration.weatherCity
 
@@ -31,25 +41,58 @@ ContainmentItem {
     // their light variant too)
     readonly property bool dark: Kirigami.ColorUtils.brightnessForColor(Kirigami.Theme.textColor) === Kirigami.ColorUtils.Light
     readonly property QtObject pal: QtObject {
-        readonly property color card: root.dark ? Qt.rgba(28 / 255, 28 / 255, 30 / 255, 0.74) : Qt.rgba(1, 1, 1, 0.72)
-        readonly property color cardBorder: root.dark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.08)
-        readonly property color sheet: root.dark ? Qt.rgba(0.16, 0.16, 0.19, 0.92) : Qt.rgba(0.97, 0.97, 0.98, 0.94)
-        readonly property color sheetBorder: root.dark ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(0, 0, 0, 0.1)
-        readonly property color text: root.dark ? "white" : "black"
-        readonly property color secondary: root.dark ? Qt.rgba(235 / 255, 235 / 255, 245 / 255, 0.6) : Qt.rgba(60 / 255, 60 / 255, 67 / 255, 0.6)
+        readonly property color card: root.pixel ? (root.dark ? "#292831" : "#F3F1FA") : root.dark ? Qt.rgba(28 / 255, 28 / 255, 30 / 255, 0.74) : Qt.rgba(1, 1, 1, 0.72)
+        // Liquid Glass: a light rim around cards in both looks
+        readonly property color cardBorder: root.pixel ? (root.dark ? "#58555F" : "#D9D3E1") : root.dark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(1, 1, 1, 0.65)
+        readonly property color sheet: root.pixel ? (root.dark ? "#2B2932" : "#F6F2FA") : root.dark ? Qt.rgba(0.16, 0.16, 0.19, 0.92) : Qt.rgba(0.97, 0.97, 0.98, 0.94)
+        readonly property color sheetBorder: root.pixel ? (root.dark ? "#53505B" : "#D6D0DD") : root.dark ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(0, 0, 0, 0.1)
+        readonly property color text: root.pixel ? (root.dark ? "#E7E1EC" : "#1D1B20") : root.dark ? "white" : "black"
+        readonly property color secondary: root.pixel ? (root.dark ? "#CAC4D0" : "#625B71") : root.dark ? Qt.rgba(235 / 255, 235 / 255, 245 / 255, 0.6) : Qt.rgba(60 / 255, 60 / 255, 67 / 255, 0.6)
         readonly property color tertiary: root.dark ? Qt.rgba(1, 1, 1, 0.4) : Qt.rgba(0, 0, 0, 0.3)
-        readonly property color fill: root.dark ? Qt.rgba(1, 1, 1, 0.15) : Qt.rgba(0, 0, 0, 0.08)
-        readonly property color fillStrong: root.dark ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(0, 0, 0, 0.14)
-        readonly property color fillWeak: root.dark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.04)
-        readonly property color control: root.dark ? Qt.rgba(0.35, 0.35, 0.38, 0.95) : Qt.rgba(0.82, 0.82, 0.84, 0.95)
-        readonly property color green: root.dark ? "#30D158" : "#34C759"
-        readonly property color red: root.dark ? "#FF453A" : "#FF3B30"
-        readonly property color orange: root.dark ? "#FF9F0A" : "#FF9500"
-        readonly property color blue: root.dark ? "#0A84FF" : "#007AFF"
-        readonly property color yellow: root.dark ? "#FFD60A" : "#FFCC00"
-        readonly property color purple: root.dark ? "#BF5AF2" : "#AF52DE"
-        readonly property color cyan: root.dark ? "#64D2FF" : "#32ADE6"
+        readonly property color fill: root.pixel ? (root.dark ? "#49454F" : "#E8DEF8") : root.dark ? Qt.rgba(1, 1, 1, 0.15) : Qt.rgba(0, 0, 0, 0.08)
+        readonly property color fillStrong: root.pixel ? (root.dark ? "#605D67" : "#D0C9D9") : root.dark ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(0, 0, 0, 0.14)
+        readonly property color fillWeak: root.pixel ? (root.dark ? "#33313B" : "#F3EDF7") : root.dark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.04)
+        readonly property color control: root.pixel ? (root.dark ? "#49454F" : "#E6E0E9") : root.dark ? Qt.rgba(0.35, 0.35, 0.38, 0.95) : Qt.rgba(0.82, 0.82, 0.84, 0.95)
+        readonly property color green: root.pixel ? (root.dark ? "#81C995" : "#146C2E") : root.dark ? "#30D158" : "#34C759"
+        readonly property color red: root.pixel ? (root.dark ? "#F2B8B5" : "#B3261E") : root.dark ? "#FF453A" : "#FF3B30"
+        readonly property color orange: root.pixel ? "#FFB86C" : root.dark ? "#FF9F0A" : "#FF9500"
+        readonly property color blue: root.pixel ? (root.dark ? "#D0BCFF" : "#6750A4") : root.dark ? "#0A84FF" : "#007AFF"
+        readonly property color yellow: root.pixel ? "#F9DE81" : root.dark ? "#FFD60A" : "#FFCC00"
+        readonly property color purple: root.pixel ? "#B69DF8" : root.dark ? "#BF5AF2" : "#AF52DE"
+        readonly property color cyan: root.pixel ? "#7EC9D9" : root.dark ? "#64D2FF" : "#32ADE6"
     }
+
+    // ---- Material (Pixel) look -----------------------------------------------------------------
+    // Roboto Flex when installed (install-material-icons.sh), else the Plasma font
+    readonly property bool materialFont: Qt.fontFamilies().indexOf("Roboto Flex") >= 0
+    readonly property string fontFamily: pixel && materialFont ? "Roboto Flex" : Kirigami.Theme.defaultFont.family
+    // Material 3 tonal colour roles per widget kind: Pixel widgets are colourful containers, each
+    // kind in its own hue, with "on" content and an accent for icons and progress.
+    function tone(kind) {
+        const d = dark;
+        const sets = {
+            primary:   d ? ["#4F378B", "#EADDFF", "#D0BCFF"] : ["#EADDFF", "#21005D", "#6750A4"],
+            secondary: d ? ["#4A4458", "#E8DEF8", "#CCC2DC"] : ["#E8DEF8", "#1D192B", "#625B71"],
+            tertiary:  d ? ["#633B48", "#FFD8E4", "#EFB8C8"] : ["#FFD8E4", "#31111D", "#7D5260"],
+            blue:      d ? ["#0F4A73", "#D1E4FF", "#9ECAFF"] : ["#D1E4FF", "#001D36", "#1A63A0"],
+            green:     d ? ["#1D4E2C", "#C2EFCB", "#8FD6A1"] : ["#C4EED0", "#072711", "#1E6C3B"],
+            teal:      d ? ["#0B4F4E", "#BCEDEA", "#80D5D2"] : ["#C5ECE9", "#00201F", "#006A67"],
+            orange:    d ? ["#6A3A0F", "#FFDCC2", "#FFB77C"] : ["#FFDCC2", "#2E1500", "#8B4F1C"],
+            red:       d ? ["#7A2921", "#FFDAD5", "#FFB4A9"] : ["#FFDAD5", "#410001", "#A63A2E"],
+            indigo:    d ? ["#2F3778", "#DFE0FF", "#BAC3FF"] : ["#DFE0FF", "#000F5C", "#4A55A2"],
+            neutral:   d ? ["#2B2930", "#E6E0E9", "#D0BCFF"] : ["#ECE6F0", "#1D1B20", "#6750A4"],
+        };
+        const byKind = {
+            weather: "blue", calendar: "primary", clock: "tertiary", battery: "green",
+            typewriter: "secondary", screentime: "teal", youtube: "red", linux: "neutral",
+            russia: "neutral", rates: "green", claude: "orange", onthisday: "tertiary",
+            sky: "indigo", weekly: "secondary", note: "orange",
+        };
+        const t = sets[byKind[kind] || kind] || sets.neutral;
+        return { container: t[0], on: t[1], accent: t[2] };
+    }
+    readonly property real glanceHeight: pixel && !pcMode ? Kirigami.Units.gridUnit * 4.4 : 0
+    readonly property real searchHeight: pixel && !pcMode ? Kirigami.Units.gridUnit * 2.8 : 0
 
     // Grid geometry: 7 columns in landscape, 5 in portrait, as many rows as fit
     readonly property bool portrait: pages.height > pages.width
@@ -64,6 +107,49 @@ ContainmentItem {
     readonly property real iconSize: pcMode ? Kirigami.Units.gridUnit * 2.6 : Math.round(Math.min(cellWidth, cellHeight) * 0.56)
 
     property bool editing: false
+
+    // ---- icon shapes (AppIcon.qml) ----------------------------------------------------------
+    // Each icon is measured once from its pixels: { shape: "native" (the theme's rounded square),
+    // "square" (full-bleed, gets rounded corners), "round" (a disc) or "free" (a logo, goes on a plate),
+    // scale / dx / dy: how to blow the visible square up to the whole icon box }.
+    property var iconShapes: ({})
+    property var iconQueue: []
+    // O(1) duplicate detection while hundreds of icons are being classified.
+    property var iconPending: ({})
+    readonly property var nativeIcon: ({ shape: "native", scale: 1, dx: 0, dy: 0 })
+    function iconShape(name) {
+        if (!name) return nativeIcon;
+        const known = iconShapes[name];
+        if (known === undefined && !iconPending[name]) {
+            iconPending[name] = true;
+            iconQueue.push(name);
+            Qt.callLater(iconProbe.next);
+        }
+        return known || nativeIcon;
+    }
+    function classifyIcon(d, n) {
+        let minX = n, minY = n, maxX = -1, maxY = -1, opaque = 0;
+        for (let y = 0; y < n; ++y) {
+            for (let x = 0; x < n; ++x) {
+                if (d[(y * n + x) * 4 + 3] > 128) {
+                    ++opaque;
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+            }
+        }
+        if (opaque === 0) return nativeIcon;
+        const w = maxX - minX + 1, h = maxY - minY + 1;
+        const fill = opaque / (w * h);                 // squircle ~0.95, circle 0.79, square 1
+        const squareBox = Math.abs(w - h) <= n * 0.08;
+        // a disc covers pi/4 = 0.785 of its box: "round" (Material icons; on a plate in the Apple look)
+        const shape = squareBox && fill >= 0.975 ? "square" : squareBox && fill > 0.86 ? "native"
+                    : squareBox && fill > 0.74 ? "round" : "free";
+        const side = Math.max(w, h);
+        return { shape: shape, scale: n / side, dx: 0.5 - (minX + maxX + 1) / 2 / n, dy: 0.5 - (minY + maxY + 1) / 2 / n };
+    }
     // top of the icon grid: lower in edit mode, under the "+ Виджет" / "Готово" buttons
     readonly property real gridTop: Kirigami.Units.gridUnit * (editing ? 2.6 : 1)
     onPcModeChanged: {
@@ -86,21 +172,26 @@ ContainmentItem {
         }
         return [Math.min(columns, e.size === "wide" ? 4 : 2), Math.min(rows, 2)];
     }
+    // First-fit packing with one bit mask per row. Each collision check is a
+    // single integer AND, instead of walking every occupied cell of each tile.
+    // Preserve the exact existing row-major first-fit layout and widget spans.
     readonly property var placement: {
         const pos = [];
+        const byPage = [[]];
         let page = 0;
-        let occ = [];
-        const free = (c, r, w, h) => {
-            if (c + w > columns || r + h > rows) return false;
-            for (let y = r; y < r + h; ++y)
-                for (let x = c; x < c + w; ++x)
-                    if (occ[y * columns + x]) return false;
-            return true;
-        };
+        let occupied = new Array(rows).fill(0);
         const fit = (w, h) => {
-            for (let r = 0; r < rows; ++r)
-                for (let c = 0; c < columns; ++c)
-                    if (free(c, r, w, h)) return [c, r];
+            const bits = (1 << w) - 1;
+            for (let r = 0; r <= rows - h; ++r) {
+                for (let c = 0; c <= columns - w; ++c) {
+                    const mask = bits << c;
+                    let free = true;
+                    for (let y = r; y < r + h; ++y) {
+                        if (occupied[y] & mask) { free = false; break; }
+                    }
+                    if (free) return [c, r];
+                }
+            }
             return null;
         };
         for (let i = 0; i < layout.length; ++i) {
@@ -108,24 +199,21 @@ ContainmentItem {
             let at = fit(w, h);
             if (!at) {
                 ++page;
-                occ = [];
+                occupied.fill(0);
+                byPage.push([]);
                 at = [0, 0];
             }
-            for (let y = at[1]; y < at[1] + h; ++y)
-                for (let x = at[0]; x < at[0] + w; ++x)
-                    occ[y * columns + x] = true;
+            const mask = ((1 << w) - 1) << at[0];
+            for (let y = at[1]; y < at[1] + h; ++y) occupied[y] |= mask;
             pos.push({ page: page, col: at[0], row: at[1], w: w, h: h });
+            byPage[page].push(i);
         }
-        return { pos: pos, pages: layout.length > 0 ? page + 1 : 1 };
+        return { pos: pos, byPage: byPage, pages: Math.max(1, page + 1) };
     }
+    // Reuse the precomputed per-page index instead of rescanning every icon
+    // on each drag movement or page render.
     function pageEntries(p) {
-        const out = [];
-        for (let i = 0; i < placement.pos.length; ++i) {
-            if (placement.pos[i].page === p) {
-                out.push(i);
-            }
-        }
-        return out;
+        return placement.byPage[p] || [];
     }
     // swipe view page of the first app page (the Today page is left of it)
     readonly property int firstAppPage: 1
@@ -157,8 +245,9 @@ ContainmentItem {
         anchors.fill: parent
         z: -1
         shown: !root.pcMode
+        // Day/night wallpaper remains live; expensive moving weather is independent.
         style: !Plasmoid.configuration.weatherOnWallpaper ? "off"
-             : Plasmoid.configuration.liveWallpaper ? "animated" : "static"
+             : Plasmoid.configuration.weatherAnimation ? "animated" : "static"
         wallpaper: Plasmoid.wallpaperGraphicsObject
         code: homeDataObject.weather && homeDataObject.weather.code !== undefined
               ? Number(homeDataObject.weather.code) : -1
@@ -578,32 +667,23 @@ ContainmentItem {
             }
         }
 
-        // DeX desktop: every icon in columns from the top-left corner
-        Grid {
+        // PC desktop: the Desktop folder's files and folders (DesktopFolder.qml), not the apps
+        DesktopFolder {
             id: deskGrid
             visible: root.pcMode
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.margins: Kirigami.Units.largeSpacing
-            flow: Grid.TopToBottom
-            rows: root.pcRows
-
-            Repeater {
-                model: root.pcMode ? root.pcEntries : []
-                delegate: Tile {
-                    required property int modelData
-                    home: root
-                    entry: root.layout[modelData]
-                    layoutIndex: modelData
-                }
-            }
+            enabled: root.pcMode
+            anchors.fill: parent
+            home: root
+            onWallpaperRequested: wallpaperPicker.show()
         }
 
         QQC2.SwipeView {
             id: pages
             visible: !root.pcMode
             anchors.fill: parent
-            anchors.bottomMargin: Plasmoid.configuration.dockSpace + dots.height
+            anchors.topMargin: root.glanceHeight
+            anchors.bottomMargin: root.dockReserve + dots.height + root.pageDotsClearance
+                                  + (root.pixel ? root.searchHeight + root.pageDotsClearance : 0)
             clip: true
             interactive: !root.editing
 
@@ -693,36 +773,209 @@ ContainmentItem {
 
         }
 
-        QQC2.PageIndicator {
+        // Page dots like iOS: the dot of the page under the finger stretches into a pill and slides
+        // along with the swipe; a glass capsule shows behind them while swiping and in edit mode.
+        // Tap or drag along the dots to jump between pages.
+        Item {
             id: dots
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
-            anchors.bottomMargin: Plasmoid.configuration.dockSpace
-            count: pages.count
-            currentIndex: pages.currentIndex
-            interactive: root.editing
-            visible: count > 1 && !root.pcMode
-            onCurrentIndexChanged: if (interactive) pages.currentIndex = currentIndex
-            delegate: Item {
-                required property int index
-                // the Today page gets its own glyph instead of a dot, like Spotlight on iOS
-                readonly property bool today: index < root.firstAppPage
-                implicitWidth: today ? Kirigami.Units.iconSizes.small : Kirigami.Units.smallSpacing * 2
-                implicitHeight: implicitWidth
-                opacity: index === pages.currentIndex ? 0.95 : 0.4
-                Rectangle {
-                    anchors.fill: parent
-                    visible: !parent.today
-                    radius: width / 2
+            anchors.bottomMargin: root.dockReserve + root.pageDotsClearance
+                                  + (root.pixel ? root.searchHeight + root.pageDotsClearance : 0)
+            visible: pages.count > 1 && !root.pcMode
+            readonly property real dot: Kirigami.Units.smallSpacing * 2
+            readonly property real gap: dot * 0.9
+            // page position, continuous while swiping (2.5 = halfway between pages 2 and 3)
+            readonly property real pos: {
+                const list = pages.contentItem;
+                const step = pages.width + pages.spacing;
+                return list && step > 0 ? (list.contentX - list.originX) / step : pages.currentIndex;
+            }
+            readonly property bool active: (pages.contentItem && pages.contentItem.moving) || scrub.pressed || root.editing
+            width: row.width + dot * 2.4
+            height: dot * 3
+
+            Glass {
+                anchors.fill: parent
+                home: root
+                visible: !root.pixel        // Material: bare dashes, no capsule
+                opacity: dots.active ? 1 : 0
+                scale: dots.active ? 1 : 0.85
+                Behavior on opacity { NumberAnimation { duration: dots.active ? 150 : 600; easing.type: Easing.OutCubic } }
+                Behavior on scale { NumberAnimation { duration: 250; easing.type: Easing.OutBack } }
+            }
+
+            Row {
+                id: row
+                anchors.centerIn: parent
+                spacing: dots.gap
+                Repeater {
+                    model: pages.count
+                    delegate: Item {
+                        required property int index
+                        // the Today page gets its own glyph instead of a dot, like Spotlight on iOS
+                        readonly property bool today: index < root.firstAppPage
+                        // 1 on the page, falling to 0 one page away
+                        readonly property real near: Math.max(0, 1 - Math.abs(dots.pos - index))
+                        // Material: thin dashes, the current one long (Pixel launcher)
+                        width: today ? Kirigami.Units.iconSizes.small
+                             : root.pixel ? dots.dot * (1.2 + 2.4 * near) : dots.dot * (1 + 1.6 * near)
+                        height: today ? width : root.pixel ? dots.dot * 0.55 : dots.dot
+                        anchors.verticalCenter: parent.verticalCenter
+                        opacity: 0.4 + 0.55 * near
+                        Rectangle {
+                            anchors.fill: parent
+                            visible: !parent.today
+                            radius: height / 2
+                            color: "white"
+                        }
+                        Kirigami.Icon {
+                            anchors.fill: parent
+                            visible: parent.today
+                            source: root.pixel ? "view-list-details-symbolic" : "view-calendar-day-symbolic"
+                            isMask: true
+                            color: "white"
+                            scale: 0.9 + 0.15 * parent.near
+                        }
+                    }
+                }
+            }
+
+            MouseArea {
+                id: scrub
+                anchors.fill: parent
+                anchors.margins: -Kirigami.Units.smallSpacing
+                function go(x) {
+                    const p = mapToItem(row, x, 0).x;
+                    let best = 0, dist = Infinity;
+                    for (let i = 0; i < row.children.length; ++i) {
+                        const c = row.children[i];
+                        if (c.width === undefined || c.index === undefined) continue;
+                        const d = Math.abs(c.x + c.width / 2 - p);
+                        if (d < dist) { dist = d; best = c.index; }
+                    }
+                    if (best !== pages.currentIndex) pages.currentIndex = best;
+                }
+                onPressed: m => go(m.x)
+                onPositionChanged: m => { if (pressed) go(m.x); }
+            }
+        }
+
+        // Material: "At a glance" over the pages (date, weather, battery when it matters), like the
+        // Pixel launcher
+        Item {
+            id: glance
+            visible: root.pixel && !root.pcMode && !root.editing
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: (pages.width - root.columns * root.cellWidth) / 2 + root.cellWidth * 0.18
+            height: root.glanceHeight
+            // stays on the Today page too: there it is the page's date line (TodayPage has no own)
+            readonly property var w: homeDataObject.weather
+            readonly property var d: homeDataObject
+            Column {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: Kirigami.Units.smallSpacing
+                Text {
+                    text: {
+                        const t = glance.d.now.toLocaleDateString(Tr.locale(), "ddd, d MMMM");
+                        return t.charAt(0).toUpperCase() + t.slice(1);
+                    }
                     color: "white"
+                    font.family: root.fontFamily
+                    font.pixelSize: Kirigami.Units.gridUnit * 1.9
+                    font.weight: Font.Normal
+                    style: Text.Raised
+                    styleColor: Qt.rgba(0, 0, 0, 0.25)
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: pages.setCurrentIndex(0)
+                    }
+                }
+                Row {
+                    spacing: Kirigami.Units.smallSpacing * 1.5
+                    Kirigami.Icon {
+                        visible: !!glance.w && glance.w.code !== undefined
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Kirigami.Units.iconSizes.smallMedium
+                        height: width
+                        source: glance.w ? glance.d.weatherIcon(glance.w.code, glance.w.day) : ""
+                        isMask: true
+                        color: "white"
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: {
+                            const w = glance.w;
+                            let parts = [];
+                            if (w && w.temp !== undefined) parts.push(Math.round(w.temp) + "°  " + glance.d.weatherInfo(w.code, w.day)[1]);
+                            if (glance.d.charging && glance.d.battery >= 0) parts.push(Tr.t("Заряжается · ") + glance.d.battery + "%");
+                            else if (glance.d.battery >= 0 && glance.d.battery <= 20) parts.push(Tr.t("Батарея ") + glance.d.battery + "%");
+                            return parts.join("   ·   ");
+                        }
+                        color: "white"
+                        font.family: root.fontFamily
+                        font.pixelSize: Kirigami.Units.gridUnit * 0.95
+                        font.weight: Font.Medium
+                        style: Text.Raised
+                        styleColor: Qt.rgba(0, 0, 0, 0.25)
+                    }
+                }
+            }
+        }
+
+        // Material: the search bar above the dock (KRunner), like the Pixel launcher's
+        Rectangle {
+            id: searchBar
+            visible: root.pixel && !root.pcMode && !root.editing
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: root.dockReserve + root.pageDotsClearance
+            width: Math.min(parent.width - Kirigami.Units.gridUnit * 4, Kirigami.Units.gridUnit * 34)
+            height: root.searchHeight
+            radius: height / 2
+            color: root.dark ? Qt.rgba(0x2B / 255, 0x29 / 255, 0x30 / 255, 0.94) : Qt.rgba(0xEC / 255, 0xE6 / 255, 0xF0 / 255, 0.96)
+            scale: searchArea.pressed ? 0.98 : 1
+            Behavior on scale { NumberAnimation { duration: 120 } }
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: parent.height * 0.42
+                anchors.rightMargin: parent.height * 0.42
+                spacing: Kirigami.Units.largeSpacing
+                Kirigami.Icon {
+                    Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
+                    Layout.preferredHeight: Layout.preferredWidth
+                    source: "search-symbolic"
+                    isMask: true
+                    color: root.pal.blue
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: Tr.t("Поиск приложений, файлов и в интернете")
+                    color: root.pal.secondary
+                    elide: Text.ElideRight
+                    font.family: root.fontFamily
+                    font.pixelSize: Kirigami.Units.gridUnit * 0.95
                 }
                 Kirigami.Icon {
-                    anchors.fill: parent
-                    visible: parent.today
-                    source: "view-calendar-day-symbolic"
+                    Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
+                    Layout.preferredHeight: Layout.preferredWidth
+                    source: "view-app-grid-symbolic"
                     isMask: true
-                    color: "white"
+                    color: root.pal.secondary
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -Kirigami.Units.smallSpacing
+                        onClicked: root.runCommand(["qdbus6", "org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell.activateLauncherMenu"])
+                    }
                 }
+            }
+            MouseArea {
+                id: searchArea
+                anchors.fill: parent
+                z: -1
+                onClicked: root.runCommand(["qdbus6", "org.kde.krunner", "/App", "org.kde.krunner.App.display"])
             }
         }
 
@@ -733,27 +986,112 @@ ContainmentItem {
             anchors.margins: Kirigami.Units.largeSpacing
             spacing: Kirigami.Units.largeSpacing
             visible: root.editing
-            PC3.Button {
+            GlassButton {
+                home: root
                 visible: !root.pcMode
-                icon.name: "list-add"
+                iconName: "list-add-symbolic"
                 text: Tr.t("Виджет")
                 onClicked: widgetPicker.show()
             }
-            PC3.Button {
-                icon.name: "list-add"
+            GlassButton {
+                home: root
+                iconName: "list-add-symbolic"
                 text: Tr.t("Веб-приложение")
                 onClicked: webAppDialog.show()
             }
         }
 
         // "Done" button in edit mode, like iPadOS
-        PC3.Button {
+        GlassButton {
             anchors.top: parent.top
             anchors.right: parent.right
             anchors.margins: Kirigami.Units.largeSpacing
+            home: root
             visible: root.editing
+            prominent: true
             text: Tr.t("Готово")
             onClicked: root.editing = false
+        }
+    }
+
+    // measures icon shapes off screen: renders the icon, reads its pixels through a Canvas
+    Item {
+        id: iconProbe
+        x: -200
+        y: -200
+        width: 64
+        height: 64
+        property string current: ""
+        property var grab: null
+        function next() {
+            if (current !== "" || root.iconQueue.length === 0) return;
+            current = root.iconQueue[0];
+            probeTimer.restart();
+        }
+        function finish(shape) {
+            if (current === "") return;
+            const m = Object.assign({}, root.iconShapes);
+            m[current] = shape;
+            delete root.iconPending[current];
+            root.iconQueue.shift();
+            current = "";
+            grab = null;
+            shot.source = "";
+            root.iconShapes = m;
+            next();
+        }
+        Kirigami.Icon {
+            id: probeIcon
+            anchors.fill: parent
+            animated: false
+            roundToIconSize: false
+            source: iconProbe.current
+        }
+        // let the icon load, then take its picture
+        Timer {
+            id: probeTimer
+            interval: 120
+            onTriggered: {
+                if (!probeIcon.valid) {
+                    iconProbe.finish(root.nativeIcon);
+                    return;
+                }
+                const started = probeIcon.grabToImage(r => {
+                    iconProbe.grab = r;
+                    shot.source = r.url;
+                }, Qt.size(64, 64));
+                if (!started) {
+                    // window not shown yet (login): try again in a moment
+                    interval = 2000;
+                    restart();
+                } else {
+                    interval = 120;
+                }
+            }
+        }
+        Image {
+            id: shot
+            x: 70
+            width: 64
+            height: 64
+            cache: false
+            onStatusChanged: {
+                if (status === Image.Ready) probeCanvas.requestPaint();
+                else if (status === Image.Error) iconProbe.finish(root.nativeIcon);
+            }
+        }
+        Canvas {
+            id: probeCanvas
+            x: 140
+            width: 64
+            height: 64
+            onPaint: {
+                if (shot.status !== Image.Ready || iconProbe.current === "") return;
+                const ctx = getContext("2d");
+                ctx.clearRect(0, 0, 64, 64);
+                ctx.drawImage(shot, 0, 0, 64, 64);
+                iconProbe.finish(root.classifyIcon(ctx.getImageData(0, 0, 64, 64).data, 64));
+            }
         }
     }
 
@@ -799,6 +1137,8 @@ ContainmentItem {
         home: root
         onWallpaperRequested: wallpaperPicker.show()
         onWebAppRequested: webAppDialog.show()
+        onNewFolderRequested: deskGrid.create(true)
+        onNewFileRequested: deskGrid.create(false)
     }
 
     WallpaperPicker {
@@ -811,7 +1151,7 @@ ContainmentItem {
     WidgetPicker {
         id: widgetPicker
         anchors.fill: parent
-        anchors.bottomMargin: Plasmoid.configuration.dockSpace
+        anchors.bottomMargin: root.dockReserve
         z: 30
         home: root
     }
@@ -849,15 +1189,29 @@ ContainmentItem {
         Rectangle {
             id: card
             opacity: 0
-            x: launchZoom.from.x * (1 - launchZoom.p)
-            y: launchZoom.from.y * (1 - launchZoom.p)
-            width: launchZoom.from.width + (launchZoom.width - launchZoom.from.width) * launchZoom.p
-            height: launchZoom.from.height + (launchZoom.height - launchZoom.from.height) * launchZoom.p
-            radius: launchZoom.from.width * 0.22 * (1 - launchZoom.p)
-            color: "#1c1c1e"
+            // Animate a fixed-size card using the scenegraph transform, rather than
+            // resizing an image/item tree on each frame (CPU layout + GPU uploads).
+            x: (launchZoom.width - width) / 2
+            y: (launchZoom.height - height) / 2
+            width: launchZoom.width
+            height: launchZoom.height
+            transform: [
+                Translate {
+                    x: (launchZoom.from.x + launchZoom.from.width / 2 - launchZoom.width / 2) * (1 - launchZoom.p)
+                    y: (launchZoom.from.y + launchZoom.from.height / 2 - launchZoom.height / 2) * (1 - launchZoom.p)
+                },
+                Scale {
+                    origin.x: card.width / 2
+                    origin.y: card.height / 2
+                    xScale: Math.max(0.01, launchZoom.from.width / Math.max(1, launchZoom.width)) * (1 - launchZoom.p) + launchZoom.p
+                    yScale: Math.max(0.01, launchZoom.from.height / Math.max(1, launchZoom.height)) * (1 - launchZoom.p) + launchZoom.p
+                }
+            ]
+            radius: root.pixel ? 32 * (1 - launchZoom.p) : 22 * (1 - launchZoom.p)
+            color: root.pixel ? root.pal.card : "#1c1c1e"
             Kirigami.Icon {
                 anchors.centerIn: parent
-                width: launchZoom.from.width * (1 + launchZoom.p * 0.6)
+                width: Math.min(136, launchZoom.width * 0.22)
                 height: width
                 source: launchZoom.icon
             }
@@ -871,7 +1225,7 @@ ContainmentItem {
                 Timer { id: slow; property bool ready: false; interval: 1200; running: launchZoom.p === 1; onRunningChanged: ready = false; onTriggered: ready = true }
             }
         }
-        NumberAnimation { id: grow; target: launchZoom; property: "p"; to: 1; duration: 380; easing.type: Easing.OutCubic }
+        NumberAnimation { id: grow; target: launchZoom; property: "p"; to: 1; duration: 280; easing.type: Easing.OutCubic }
         // back home (the desktop is active again) or a tap: away with it
         Connections {
             target: launchZoom.Window.window
@@ -887,7 +1241,7 @@ ContainmentItem {
             onClicked: fade.start()
         }
         // the app window is over it by now; if not (slow start, other screen) fade it out
-        Timer { id: giveUp; interval: 4500; onTriggered: fade.start() }
+        Timer { id: giveUp; interval: 1800; onTriggered: fade.start() }
         NumberAnimation { id: fade; target: card; property: "opacity"; to: 0; duration: 300 }
     }
 }

@@ -1,0 +1,132 @@
+// An app icon that sits in the grid like an iOS icon (Apple) or a round adaptive icon (Material). Most icons of the theme already are rounded
+// squares; the rest are evened out by their measured shape (main.qml iconShape()):
+//   square: a full-bleed square (Haruna) gets the theme's rounded corners and size
+//   free:   a logo or a round icon (Throne, Android apps) sits on a white squircle plate
+import QtQuick
+import QtQuick.Effects
+
+import org.kde.kirigami as Kirigami
+
+Item {
+    id: appIcon
+
+    required property var home
+    property string source
+    readonly property var measured: home.iconShape(source)
+    readonly property string shape: measured.shape
+    // the theme's icons leave 1/16 free around their squircle: shaped icons match that
+    readonly property real inset: width / 16
+    readonly property real squircle: (width - inset * 2) * 0.225
+
+    // ---- Material: adaptive round icons (Pixel launcher) ----
+    // Icons that are a filled shape (the theme's rounded squares, full-bleed squares) are blown
+    // up to their visible box and cut to a circle; free-form logos sit on a light round plate,
+    // like legacy icons on Android.
+    readonly property bool roundFill: home.pixel && shape !== "free"
+    Item {
+        id: roundIcon
+        anchors.fill: parent
+        anchors.margins: appIcon.width * 0.04
+        visible: false
+        layer.enabled: appIcon.roundFill
+        Kirigami.Icon {
+            // 6 % more than the visible box: the squircle's own rim falls outside the circle
+            width: parent.width * appIcon.measured.scale * 1.06
+            height: width
+            x: (parent.width - width) / 2 + appIcon.measured.dx * width
+            y: (parent.height - height) / 2 + appIcon.measured.dy * height
+            source: appIcon.roundFill ? appIcon.source : ""
+            roundToIconSize: false
+        }
+    }
+    Rectangle {
+        id: roundMask
+        anchors.fill: roundIcon
+        radius: width / 2
+        visible: false
+        layer.enabled: appIcon.roundFill
+    }
+    MultiEffect {
+        anchors.fill: roundIcon
+        visible: appIcon.roundFill
+        source: roundIcon
+        maskEnabled: true
+        maskSource: roundMask
+        maskThresholdMin: 0.5
+        maskSpreadAtMin: 1
+    }
+    Rectangle {
+        anchors.fill: roundIcon
+        visible: appIcon.home.pixel && appIcon.shape === "free"
+        radius: width / 2
+        color: "#F3EDF7"
+        Kirigami.Icon {
+            anchors.centerIn: parent
+            width: parent.width * 0.64
+            height: width
+            source: parent.visible ? appIcon.source : ""
+            roundToIconSize: false
+        }
+    }
+
+    Kirigami.Icon {
+        anchors.fill: parent
+        source: appIcon.source
+        visible: !appIcon.home.pixel && appIcon.shape === "native"
+        roundToIconSize: false
+    }
+
+    // square: rounded corners through a mask (the icon drawn into a layer of exactly its box: the
+    // effect would otherwise take Kirigami.Icon's own texture, which is laid out differently)
+    Item {
+        id: squareIcon
+        anchors.fill: parent
+        anchors.margins: appIcon.inset
+        visible: false
+        layer.enabled: !appIcon.home.pixel && appIcon.shape === "square"
+        // blown up so the icon's visible square fills the box (its own transparent margin goes)
+        Kirigami.Icon {
+            width: parent.width * appIcon.measured.scale
+            height: width
+            x: (parent.width - width) / 2 + appIcon.measured.dx * width
+            y: (parent.height - height) / 2 + appIcon.measured.dy * height
+            source: appIcon.shape === "square" ? appIcon.source : ""
+            roundToIconSize: false
+        }
+    }
+    Rectangle {
+        id: mask
+        anchors.fill: squareIcon
+        radius: appIcon.squircle
+        visible: false
+        layer.enabled: !appIcon.home.pixel && appIcon.shape === "square"
+    }
+    MultiEffect {
+        anchors.fill: squareIcon
+        visible: !appIcon.home.pixel && appIcon.shape === "square"
+        source: squareIcon
+        maskEnabled: true
+        maskSource: mask
+        maskThresholdMin: 0.5
+        maskSpreadAtMin: 1
+    }
+
+    // free form: on a plate
+    Rectangle {
+        anchors.fill: parent
+        anchors.margins: appIcon.inset
+        visible: !appIcon.home.pixel && (appIcon.shape === "free" || appIcon.shape === "round")
+        radius: appIcon.squircle
+        // white in both looks, like the theme's own white icons (a dark plate stood out among them)
+        color: "#FFFFFF"
+        border.width: 1
+        border.color: Qt.rgba(0, 0, 0, 0.06)
+        Kirigami.Icon {
+            anchors.centerIn: parent
+            width: parent.width * 0.72
+            height: width
+            source: appIcon.source
+            visible: parent.visible
+        }
+    }
+}

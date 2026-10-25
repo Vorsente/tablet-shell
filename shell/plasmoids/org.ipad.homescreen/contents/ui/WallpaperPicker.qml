@@ -44,11 +44,12 @@ Item {
         anchors.centerIn: parent
         width: Math.min(parent.width - Kirigami.Units.gridUnit * 2, Kirigami.Units.gridUnit * 46)
         height: Math.min(parent.height - Kirigami.Units.gridUnit * 4, Kirigami.Units.gridUnit * 32)
-        radius: Kirigami.Units.gridUnit * 1.2
+        radius: picker.home.pixel ? Kirigami.Units.gridUnit * 1.6 : Kirigami.Units.gridUnit * 1.2
         color: picker.home.pal.sheet
         border.color: picker.home.pal.sheetBorder
-        border.width: 1
+        border.width: picker.home.pixel ? 0 : 1
 
+        GlassSheen { home: picker.home }
         MouseArea { anchors.fill: parent }  // keep taps inside
 
         ColumnLayout {
@@ -65,13 +66,17 @@ Item {
                     font.weight: Font.DemiBold
                     font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.4
                 }
-                PC3.Button {
+                GlassButton {
+                    home: picker.home
+                    onSheet: true
                     text: Tr.t("Выбрать фото…")
-                    icon.name: "document-open"
+                    iconName: "document-open-symbolic"
                     onClicked: fileDialog.open()
                 }
-                PC3.Button {
-                    icon.name: "window-close"
+                GlassButton {
+                    home: picker.home
+                    onSheet: true
+                    iconName: "window-close-symbolic"
                     onClicked: picker.open = false
                 }
             }

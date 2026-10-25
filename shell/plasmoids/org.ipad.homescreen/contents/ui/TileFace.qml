@@ -56,9 +56,10 @@ ColumnLayout {
         implicitWidth: face.home.iconSize
         implicitHeight: implicitWidth
 
-        Kirigami.Icon {
+        AppIcon {
             anchors.fill: parent
             visible: !face.isFolder
+            home: face.home
             source: face.app ? face.app.icon : ""
         }
 
@@ -73,7 +74,7 @@ ColumnLayout {
             height: Math.round(face.home.iconSize * 0.34)
             width: Math.max(height, badgeText.implicitWidth + height * 0.5)
             radius: height / 2
-            color: "#ff3b30"
+            color: face.home.pal.red
             Text {
                 id: badgeText
                 anchors.centerIn: parent
@@ -84,14 +85,36 @@ ColumnLayout {
             }
         }
 
-        // Folder: frosted rounded square with mini icons
+        // Material folder: a tonal circle with the first four apps, 2x2 (Pixel launcher)
         Rectangle {
             anchors.fill: parent
-            visible: face.isFolder
-            radius: width * 0.22
-            color: Qt.rgba(1, 1, 1, 0.22)
-            border.color: Qt.rgba(1, 1, 1, 0.35)
-            border.width: 1
+            anchors.margins: parent.width * 0.04
+            visible: face.isFolder && face.home.pixel
+            radius: width / 2
+            color: face.home.tone("secondary").container
+            Grid {
+                anchors.centerIn: parent
+                columns: 2
+                spacing: parent.width * 0.06
+                Repeater {
+                    model: face.isFolder && face.home.pixel ? face.entry.apps.slice(0, 4) : []
+                    delegate: Kirigami.Icon {
+                        required property var modelData
+                        width: face.home.iconSize * 0.3
+                        height: width
+                        source: face.home.catalog[modelData] ? face.home.catalog[modelData].icon : ""
+                    }
+                }
+            }
+        }
+
+        // Folder: frosted glass squircle with mini icons (Apple)
+        Glass {
+            anchors.fill: parent
+            visible: face.isFolder && !face.home.pixel
+            home: face.home
+            tone: "light"
+            radius: face.home.pixel ? width / 2 : width * 0.24
 
             Grid {
                 anchors.centerIn: parent
@@ -99,7 +122,7 @@ ColumnLayout {
                 spacing: parent.width * 0.05
 
                 Repeater {
-                    model: face.isFolder ? face.entry.apps.slice(0, 9) : []
+                    model: face.isFolder && !face.home.pixel ? face.entry.apps.slice(0, 9) : []
                     delegate: Kirigami.Icon {
                         required property var modelData
                         width: face.home.iconSize * 0.24
@@ -113,12 +136,14 @@ ColumnLayout {
 
     PC3.Label {
         Layout.alignment: Qt.AlignHCenter
+        font.family: face.home.fontFamily
+        font.weight: face.home.pixel ? Font.Medium : Font.Normal
         Layout.maximumWidth: face.home.cellWidth * 0.95
         text: face.isFolder ? face.entry.folder : (face.app ? face.app.name : "")
         color: face.onSheet ? face.home.pal.text : "white"
         elide: Text.ElideRight
         horizontalAlignment: Text.AlignHCenter
         style: face.onSheet ? Text.Normal : Text.Raised
-        styleColor: Qt.rgba(0, 0, 0, 0.45)
+        styleColor: Qt.rgba(0, 0, 0, face.home.pixel ? 0.3 : 0.45)
     }
 }

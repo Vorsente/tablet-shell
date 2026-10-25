@@ -1,0 +1,13 @@
+{
+    "KPlugin": {
+        "Id": "Material-Orbit",
+        "Name": "Orbit Material",
+        "Name[ru]": "Orbit Material",
+        "License": "CC0-1.0",
+        "Authors": [
+            {
+                "Name": "OpenAI"
+            }
+        ]
+    }
+}

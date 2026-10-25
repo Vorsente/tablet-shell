@@ -1,0 +1,11 @@
+{
+  "KPlugin": {
+    "Id": "org.tabletshell.pixel.light",
+    "Name": "Tablet Shell Pixel (light)",
+    "Description": "Material-inspired Google Pixel variant of Tablet Shell",
+    "Version": "1.0",
+    "License": "GPL-3.0"
+  },
+  "KPackageStructure": "Plasma/LookAndFeel",
+  "X-Plasma-APIVersion": "2"
+}

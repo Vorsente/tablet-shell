@@ -12,6 +12,7 @@ Rectangle {
     signal enter()
 
     property real u: 20
+    property bool pixel: false
     property bool shift: false
     property int layout: 0              // 0 latin, 1 cyrillic, 2 digits and symbols
 
@@ -23,16 +24,16 @@ Rectangle {
 
     QtObject {
         id: keyTheme
-        readonly property color key: "#56565B"
-        readonly property color keyDown: "#3A3A3E"
-        readonly property color special: "#353539"
+        readonly property color key: kb.pixel ? "#49454F" : "#56565B"
+        readonly property color keyDown: kb.pixel ? "#6750A4" : "#3A3A3E"
+        readonly property color special: kb.pixel ? "#625B71" : "#353539"
         readonly property color shadow: Qt.rgba(0, 0, 0, 0.55)
         readonly property color text: "#FFFFFF"
-        readonly property color subText: "#A1A1A8"
-        readonly property color ledOff: "#2A2A2D"
+        readonly property color subText: kb.pixel ? "#CAC4D0" : "#A1A1A8"
+        readonly property color ledOff: kb.pixel ? "#49454F" : "#2A2A2D"
     }
 
-    color: Qt.rgba(0.11, 0.11, 0.12, 0.94)
+    color: kb.pixel ? "#292631" : Qt.rgba(0.11, 0.11, 0.12, 0.94)
     implicitHeight: rows.implicitHeight + u * 1.2
 
     component Key: Item {
@@ -50,6 +51,7 @@ Rectangle {
             spec: [key.type, key.label, "", key.span, null]
             theme: keyTheme
             down: area.pressed
+            pixel: kb.pixel
             label: key.label
         }
         MouseArea {

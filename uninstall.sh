@@ -9,9 +9,10 @@ case "$(kreadconfig6 --file plasma-localerc --group Translations --key LANGUAGE 
 t() { if [ -n "$RU" ]; then printf '%s' "$1"; else printf '%s' "$2"; fi; }
 
 systemctl --user disable --now tabletd.service tabletshell.service lockscreen-sync.service lockscreen-sync.path \
-    taskswitcher-sync.service taskswitcher-sync.path greeter-wallpaper.path greeter-wallpaper.timer 2>/dev/null || true
+    taskswitcher-sync.service taskswitcher-sync.path greeter-wallpaper.path greeter-wallpaper.timer app-icons.path 2>/dev/null || true
 for u in tabletd.service tabletshell.service lockscreen-sync.service lockscreen-sync.path taskswitcher-sync.service \
-         taskswitcher-sync.path greeter-wallpaper.service greeter-wallpaper.path greeter-wallpaper.timer; do
+         taskswitcher-sync.path greeter-wallpaper.service greeter-wallpaper.path greeter-wallpaper.timer \
+         app-icons.service app-icons.path; do
     rm -f "$HOME/.config/systemd/user/$u"
 done
 systemctl --user daemon-reload

@@ -1,0 +1,8 @@
+[Unit]
+Description=Complete iPad and Pixel icon packs for newly installed applications
+
+[Service]
+StandardOutput=null
+StandardError=null
+Type=oneshot
+ExecStart=%h/.local/bin/app-icons-refresh

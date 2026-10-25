@@ -25,7 +25,7 @@ Item {
         anchors.verticalCenterOffset: -face.height / 2 + tile.home.iconSize / 2
         width: tile.home.iconSize * 1.25
         height: width
-        radius: width * 0.24
+        radius: tile.home.pixel ? width / 2 : width * 0.24
         color: Qt.rgba(1, 1, 1, 0.25)
         border.color: Qt.rgba(1, 1, 1, 0.5)
         visible: tile.dropTarget

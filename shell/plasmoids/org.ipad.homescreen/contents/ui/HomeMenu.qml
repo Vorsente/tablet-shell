@@ -1,5 +1,5 @@
 // Long press on empty home screen space: iOS-style menu with wallpaper, editing,
-// web app and light/dark/auto appearance.
+// web app and light/dark/auto appearance; in PC mode also a new folder / text file on the desktop.
 import QtQuick
 import QtQuick.Layouts
 
@@ -13,6 +13,8 @@ Item {
     required property var home
     signal wallpaperRequested()
     signal webAppRequested()
+    signal newFolderRequested()
+    signal newFileRequested()
 
     property bool open: false
     property point at: Qt.point(0, 0)
@@ -44,13 +46,14 @@ Item {
         height: column.implicitHeight + Kirigami.Units.smallSpacing * 2
         x: Math.max(Kirigami.Units.largeSpacing, Math.min(menu.at.x - width / 2, menu.width - width - Kirigami.Units.largeSpacing))
         y: Math.max(Kirigami.Units.largeSpacing, Math.min(menu.at.y, menu.height - height - Kirigami.Units.gridUnit * 5))
-        radius: Kirigami.Units.gridUnit
+        radius: menu.home.pixel ? Kirigami.Units.gridUnit * 1.6 : Kirigami.Units.gridUnit
         color: menu.home.pal.sheet
         border.color: menu.home.pal.sheetBorder
-        border.width: 1
+        border.width: menu.home.pixel ? 0 : 1
         scale: menu.open ? 1 : 0.92
         Behavior on scale { NumberAnimation { duration: Kirigami.Units.shortDuration } }
 
+        GlassSheen { home: menu.home }
         MouseArea { anchors.fill: parent }  // keep taps inside the menu
 
         ColumnLayout {
@@ -78,6 +81,27 @@ Item {
                 }
             }
 
+            // PC desktop (DesktopFolder.qml): new folder / text file in ~/Desktop
+            Entry {
+                visible: menu.home.pcMode
+                text: Tr.t("Новая папка")
+                icon.name: "folder-new"
+                onClicked: { menu.open = false; menu.newFolderRequested(); }
+            }
+            Entry {
+                visible: menu.home.pcMode
+                text: Tr.t("Новый текстовый файл")
+                icon.name: "document-new"
+                onClicked: { menu.open = false; menu.newFileRequested(); }
+            }
+            Rectangle {
+                visible: menu.home.pcMode
+                Layout.fillWidth: true
+                Layout.topMargin: Kirigami.Units.smallSpacing
+                Layout.bottomMargin: Kirigami.Units.smallSpacing
+                implicitHeight: 1
+                color: menu.home.pal.fill
+            }
             Entry {
                 text: Tr.t("Обои")
                 icon.name: "preferences-desktop-wallpaper-symbolic"

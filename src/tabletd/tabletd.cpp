@@ -32,6 +32,7 @@
 #include <QDBusConnectionInterface>
 #include <QDBusServiceWatcher>
 #include <QDBusVariant>
+#include <QDBusUnixFileDescriptor>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QStandardPaths>
@@ -44,6 +45,8 @@
 #include <QTimer>
 
 #include <array>
+#include <functional>
+#include <cmath>
 #include <cstring>
 #include <csignal>
 #include <fcntl.h>
@@ -54,6 +57,7 @@
 #include <unistd.h>
 
 #include "tr.h"
+#include <QtCore/qlogging.h>
 
 namespace
 {
@@ -157,6 +161,41 @@ public:
         return !m_fds.isEmpty();
     }
 
+    ~EvdevReader() override
+    {
+        for (int fd : m_fds) {
+            ::close(fd); // also releases any exclusive grab
+        }
+    }
+
+    // A dedicated ACPI/GPIO power-key device can be grabbed exclusively, avoiding
+    // duplicate physical events in Plasma/PowerDevil. Never grab a full keyboard,
+    // volume controller or other multipurpose input device.
+    void grabDedicatedPowerKeys()
+    {
+        for (int fd : m_fds) {
+            std::array<unsigned long, (KEY_MAX + sizeof(unsigned long) * 8) / (sizeof(unsigned long) * 8)> bits{};
+            if (::ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(bits)), bits.data()) < 0) {
+                continue;
+            }
+            bool power = false, shared = false;
+            for (int key = 0; key <= KEY_MAX; ++key) {
+                if (!(bits[size_t(key) / (sizeof(unsigned long) * 8)] &
+                      (1UL << (size_t(key) % (sizeof(unsigned long) * 8))))) {
+                    continue;
+                }
+                if (key == KEY_POWER) {
+                    power = true;
+                } else if (key != KEY_LEFTMETA) {
+                    shared = true;
+                }
+            }
+            if (power && !shared) {
+                ::ioctl(fd, EVIOCGRAB, 1); // best effort; PowerDevil is disabled below too
+            }
+        }
+    }
+
     QList<int> fds() const
     {
         return m_fds;
@@ -221,7 +260,6 @@ public:
         addr.nl_family = AF_NETLINK;
         addr.nl_groups = 1; // kernel uevents
         if (m_fd < 0 || ::bind(m_fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) < 0) {
-            qWarning("tabletd: no uevent socket, %s is not watched", m_match.constData());
             return;
         }
         auto *n = new QSocketNotifier(m_fd, QSocketNotifier::Read, this);
@@ -278,7 +316,6 @@ public:
             const QString ext = externalConnector();
             if (ext != m_external) {
                 m_external = ext;
-                qInfo("tabletd: external monitor %s", ext.isEmpty() ? "disconnected" : qPrintable(ext));
                 if (m_known) {
                     applyDock();
                 }
@@ -293,11 +330,14 @@ public:
         // was going down left half-reshaped panels
         const QString plasma = QStringLiteral("org.kde.plasmashell");
         if (bus().interface()->isServiceRegistered(plasma)) {
-            QTimer::singleShot(1500, this, [this] { checkMode("start"); });
+            QTimer::singleShot(1500, this, [this] { waitForPlasma(++m_plasmaWait, 0); });
         }
-        auto *watcher = new QDBusServiceWatcher(plasma, bus(), QDBusServiceWatcher::WatchForRegistration, this);
+        auto *watcher = new QDBusServiceWatcher(plasma, bus(), QDBusServiceWatcher::WatchForRegistration | QDBusServiceWatcher::WatchForUnregistration, this);
+        connect(watcher, &QDBusServiceWatcher::serviceUnregistered, this, [this] {
+            ++m_generation; // cancel pending panel work while Plasma is down
+        });
         connect(watcher, &QDBusServiceWatcher::serviceRegistered, this, [this] {
-            QTimer::singleShot(2500, this, [this] { checkMode("start"); });
+            QTimer::singleShot(1500, this, [this] { waitForPlasma(++m_plasmaWait, 0); });
         });
         // the keyboard/dock may have changed while the screen was locked or the tablet asleep
         // tray app icons: the ones already there, then each new one
@@ -323,7 +363,7 @@ public Q_SLOTS:
     void onTabletModeChanged(bool tablet)
     {
         apply(tablet);
-        if (!tablet && setting("Modes", "askTypewriter", true)) {
+        if (!tablet && (setting("Modes", "askTypewriter", true) || setting("Modes", "askCoding", true))) {
             askTypewriter();
         }
     }
@@ -411,7 +451,6 @@ public Q_SLOTS:
             const QString ext = externalConnector();
             if (!m_known || tablet != m_tablet || why == "start") {
                 m_external = ext;
-                qInfo("tabletd: %s: %s mode", why.constData(), tablet ? "tablet" : "PC");
                 apply(tablet);
             } else if (ext != m_external) {
                 m_external = ext;
@@ -438,7 +477,6 @@ public Q_SLOTS:
         const bool kbd = keyboardAttached();
         const QString want = choice == QLatin1String("auto") ? (kbd ? QStringLiteral("off") : QStringLiteral("on")) : choice;
         if (input.readEntry("TabletMode", QString()) != want) {
-            qInfo("tabletd: device mode %s, keyboard %s -> KWin tablet mode %s", qPrintable(choice), kbd ? "attached" : "detached", qPrintable(want));
             input.writeEntry("TabletMode", want, KConfig::Notify | KConfig::Persistent);
             kwinrc.sync();
         }
@@ -461,6 +499,18 @@ public Q_SLOTS:
         openClaude();
     }
 
+    // Answer of the KWin probe script (probeViews): "desktops,panels" = windows plasmashell has
+    Q_SCRIPTABLE void PanelViews(const QString &counts)
+    {
+        const QStringList parts = counts.split(QLatin1Char(','));
+        if (!m_probe || parts.size() != 2) {
+            return;
+        }
+        auto done = std::move(m_probe);
+        m_probe = nullptr;
+        done(parts[0].toInt(), parts[1].toInt());
+    }
+
     // D-Bus (org.ipad.TabletD /): settings changed, apply the current mode again
     Q_SCRIPTABLE void Reapply()
     {
@@ -480,18 +530,21 @@ public Q_SLOTS:
             QProcess::startDetached(typewriter, {});
         } else if (action == QLatin1String("new")) {
             QProcess::startDetached(typewriter, {QStringLiteral("new")});
+        } else if (action == QLatin1String("coding")) {
+            QProcess::startDetached(home + QStringLiteral("/.local/bin/coding-mode"), {});
         }
     }
 
 public:
     void apply(bool tablet)
     {
+        const int generation = ++m_generation;
         m_tablet = tablet;
         m_known = true;
         if (announceMode()) {
             // the animation covers the screen first, then everything changes behind it
-            QTimer::singleShot(450, this, [this, tablet] {
-                if (m_tablet == tablet) {
+            QTimer::singleShot(450, this, [this, tablet, generation] {
+                if (generation == m_generation && m_tablet == tablet) {
                     applyNow(tablet);
                 }
             });
@@ -502,8 +555,6 @@ public:
 
     void applyNow(bool tablet)
     {
-        QElapsedTimer t;
-        t.start();
         // what tablet mode changes (all on by default; see the tablet-settings app)
         const bool hideTitleBars = tablet && setting("Modes", "hideTitleBars", true);
         const bool maximize = tablet && setting("Modes", "maximizeWindows", true);
@@ -544,6 +595,18 @@ public:
             globals.group(QStringLiteral("KDE")).writeEntry("SingleClick", singleClick, KConfig::Notify | KConfig::Persistent);
             globals.sync();
         }
+        {
+            // touch has no hover: a tap left Plasma's tooltips (tray, panel) hanging on screen.
+            // Off in tablet mode (what "Display informational tooltips" in System Settings writes)
+            KConfig plasmarc(QStringLiteral("plasmarc"));
+            KConfigGroup tips = plasmarc.group(QStringLiteral("PlasmaToolTips"));
+            if (tablet) {
+                tips.writeEntry("Delay", -1.0, KConfig::Notify | KConfig::Persistent);
+            } else {
+                tips.deleteEntry("Delay", KConfig::Notify | KConfig::Persistent);
+            }
+            plasmarc.sync();
+        }
 
         // Plasma: reshape the existing panels in place (rebuilding the tray costs seconds)
         morphPanels(tablet);
@@ -567,8 +630,16 @@ public:
             asyncCall(QStringLiteral("org.kde.KWin"), QStringLiteral("/Scripting"), scripting, QStringLiteral("loadScript"),
                       {home + QStringLiteral("/.local/share/tablet-mode/maximize-all.js"), QStringLiteral("tablet-maximize")});
             asyncCall(QStringLiteral("org.kde.KWin"), QStringLiteral("/Scripting"), scripting, QStringLiteral("start"));
+        } else if (!tablet) {
+            // PC: title bars with close / minimize / maximize back on the windows already open
+            const QString scripting = QStringLiteral("org.kde.kwin.Scripting");
+            asyncCall(QStringLiteral("org.kde.KWin"), QStringLiteral("/Scripting"), scripting, QStringLiteral("unloadScript"),
+                      {QStringLiteral("tablet-borders")});
+            asyncCall(QStringLiteral("org.kde.KWin"), QStringLiteral("/Scripting"), scripting, QStringLiteral("loadScript"),
+                      {home + QStringLiteral("/.local/share/tablet-mode/restore-borders.js"), QStringLiteral("tablet-borders")});
+            asyncCall(QStringLiteral("org.kde.KWin"), QStringLiteral("/Scripting"), scripting, QStringLiteral("start"));
         }
-        qInfo("tabletd: %s mode applied in %lld ms", docked() ? "dock" : tablet ? "tablet" : "PC", static_cast<long long>(t.elapsed()));
+        applyScale(tablet);
     }
 
     // Mode change animation (tabletshell ModeTransition): only for a real change, not at login
@@ -618,7 +689,43 @@ public:
         makeExternalPrimary();
         // the monitors are rearranged asynchronously (kscreen-doctor)
         QTimer::singleShot(1500, this, [this] { modeReady(); });
-        qInfo("tabletd: dock mode %s", docked() ? "on" : "off");
+    }
+
+    // Scale of the built-in screen: big for fingers in tablet mode, denser with a keyboard and
+    // touchpad (tabletrc [Modes] tabletScale / pcScale). Apps follow it: Wayland apps at once,
+    // X11 apps through KWin's Xwayland scale. Only touches the screen when the scale differs.
+    void applyScale(bool tablet)
+    {
+        // kscreen-doctor triggers an expensive KWin/Qt relayout of every surface.
+        // Keep the display scale stable by default; users can opt in explicitly.
+        if (!setting("Modes", "changeDisplayScale", false)) {
+            return;
+        }
+        const double want = settingString("Modes", tablet ? "tabletScale" : "pcScale",
+                                          tablet ? QStringLiteral("1.5") : QStringLiteral("1.25")).toDouble();
+        if (want < 1 || want > 3) {
+            return;
+        }
+        auto *p = new QProcess(this);
+        connect(p, &QProcess::finished, this, [p, want] {
+            p->deleteLater();
+            const QJsonArray outputs = QJsonDocument::fromJson(p->readAllStandardOutput()).object().value(QStringLiteral("outputs")).toArray();
+            for (const QJsonValue &o : outputs) {
+                const QJsonObject out = o.toObject();
+                const QString name = out.value(QStringLiteral("name")).toString();
+                const bool internal = name.startsWith(QLatin1String("eDP")) || name.startsWith(QLatin1String("DSI"))
+                                      || name.startsWith(QLatin1String("LVDS"));
+                if (!internal || !out.value(QStringLiteral("enabled")).toBool()
+                    || std::abs(out.value(QStringLiteral("scale")).toDouble() - want) < 0.01) {
+                    continue;
+                }
+                QProcess::startDetached(QStringLiteral("kscreen-doctor"), {QStringLiteral("output.%1.scale.%2").arg(name).arg(want)});
+                KConfig kwinrc(QStringLiteral("kwinrc"), KConfig::SimpleConfig);
+                kwinrc.group(QStringLiteral("Xwayland")).writeEntry("Scale", want);
+                kwinrc.sync();
+            }
+        });
+        p->start(QStringLiteral("kscreen-doctor"), {QStringLiteral("-j")});
     }
 
     // Docked: the external monitor is the primary screen (Plasma puts the home screen and panel
@@ -638,7 +745,6 @@ public:
                 if (out.value(QStringLiteral("name")).toString() == ext && out.value(QStringLiteral("enabled")).toBool()
                     && out.value(QStringLiteral("priority")).toInt() != 1) {
                     QProcess::startDetached(QStringLiteral("kscreen-doctor"), {QStringLiteral("output.%1.priority.1").arg(ext)});
-                    qInfo("tabletd: %s is now the primary screen", qPrintable(ext));
                 }
             }
         });
@@ -675,14 +781,15 @@ private:
         const QString prelude = QStringLiteral(
             "var TABLET = %1;\n"
             "var PHASE = %2;\n"
-            "var HOME = '%3';\n"
+            "var HOME = %3;\n"
             // pinned apps: the live task manager's list, kept in tabletrc [Dock] launchers so it
             // survives the phases in which no task manager exists (dock removed, bar not built yet)
             "var LAUNCHERS = [];\n"
             "var FOUND = false;\n"
             "panels().forEach(function (p) { p.widgets().forEach(function (w) {\n"
             "  if (w.type == 'org.kde.plasma.icontasks') { w.currentConfigGroup = ['General'];\n"
-            "    FOUND = true; LAUNCHERS = w.readConfig('launchers', []); } }); });\n"
+            "    if (!FOUND) { FOUND = true; var raw = w.readConfig('launchers', []);\n"
+            "      LAUNCHERS = Array.isArray(raw) ? raw : String(raw || '').split(',').filter(function (x) { return x; }); } } }); });\n"
             "var SAVED = ConfigFile('tabletrc', 'Dock');\n"
             "if (FOUND) SAVED.writeEntry('launchers', LAUNCHERS.join(','));\n"
             "else { var s = SAVED.readEntry('launchers'); if (s) LAUNCHERS = String(s).split(',').filter(function (x) { return x; }); }\n"
@@ -691,8 +798,12 @@ private:
             "  'applications:org.kde.haruna.desktop', 'applications:systemsettings.desktop'];\n")
                                     .arg(tablet ? QStringLiteral("true") : QStringLiteral("false"))
                                     .arg(phase)
-                                    .arg(home);
-        QString script = prelude + readFile(dir + QStringLiteral("morph-panels.js"));
+                                    .arg(QString::fromUtf8(QJsonDocument(QJsonArray{home}).toJson(QJsonDocument::Compact)).mid(1).chopped(1));
+        const QString morph = readFile(dir + QStringLiteral("morph-panels.js"));
+        if (morph.trimmed().isEmpty()) {
+            return;
+        }
+        QString script = prelude + morph;
         if (phase == 1) {
             // home screen: iPad pages in tablet mode, DeX-style desktop icons in PC mode
             script += QStringLiteral("\ndesktops().forEach(function (d) { d.currentConfigGroup = ['General'];"
@@ -706,9 +817,18 @@ private:
             if (generation != m_generation) {
                 return;
             }
-            const QString out = reply.isValid() ? reply.value() : QString();
+            if (!reply.isValid()) {
+                if (attempt < 3) {
+                    QTimer::singleShot(1000 * (attempt + 1), this, [=, this] {
+                        if (generation == m_generation) runPhase(tablet, phase, generation, rebuilt, attempt + 1);
+                    });
+                }
+                return;
+            }
+            const QString out = reply.value();
             if (out.contains(QLatin1String("DONE"))) {
                 modeReady();
+                verifyPanels(generation);
                 return;
             }
             if (out.contains(QLatin1String("REBUILD")) && !rebuilt && attempt < 5) {
@@ -722,18 +842,28 @@ private:
                 return;
             }
             if (out.contains(QLatin1String("REBUILD")) && !rebuilt) {
-                // first run / unknown panels: build the tablet layout, then reshape from there
-                auto *build = new QDBusPendingCallWatcher(
-                    evaluate(prelude + QStringLiteral("panels().forEach(function (p) { p.remove(); });\n")
-                             + readFile(dir + QStringLiteral("layout-tablet.js"))), this);
+                // Bootstrap missing pieces without deleting unrelated or partially loaded panels.
+                const QString layout = readFile(dir + QStringLiteral("layout-tablet.js"));
+                if (layout.trimmed().isEmpty()) {
+                    return;
+                }
+                auto *build = new QDBusPendingCallWatcher(evaluate(prelude + layout), this);
                 connect(build, &QDBusPendingCallWatcher::finished, this, [=, this] {
+                    QDBusPendingReply<QString> result = *build;
                     build->deleteLater();
+                    if (generation != m_generation) return;
+                    if (!result.isValid() || !result.value().contains(QLatin1String("BUILT"))) {
+                        return;
+                    }
                     QTimer::singleShot(300, this, [=, this] {
                         if (generation == m_generation) {
                             runPhase(tablet, 1, generation, true);
                         }
                     });
                 });
+                return;
+            }
+            if (out.contains(QLatin1String("REBUILD"))) {
                 return;
             }
             if (phase == 9) {
@@ -745,7 +875,6 @@ private:
                         }
                     });
                 } else {
-                    modeReady();
                 }
                 return;
             }
@@ -767,6 +896,110 @@ private:
         });
     }
 
+    // Ask KWin which windows plasmashell has right now. The answer comes back through PanelViews();
+    // no answer within 3 s (KWin busy, scripting off) counts as "unknown" (-1, -1).
+    void probeViews(std::function<void(int desktops, int panels)> done)
+    {
+        const QString dir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+        const QString path = (dir.isEmpty() ? QDir::tempPath() : dir) + QStringLiteral("/tabletd-panel-probe.js");
+        QFile f(path);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            done(-1, -1);
+            return;
+        }
+        f.write("var d = 0, p = 0;\n"
+                "workspace.stackingOrder.forEach(function (w) {\n"
+                "    if (w.resourceClass !== 'plasmashell') return;\n"
+                "    if (w.desktopWindow) ++d; else if (w.dock) ++p;\n"
+                "});\n"
+                "callDBus('org.ipad.TabletD', '/', 'org.ipad.TabletD', 'PanelViews', d + ',' + p);\n");
+        f.close();
+        const int id = ++m_probeId;
+        m_probe = std::move(done);
+        const QString scripting = QStringLiteral("org.kde.kwin.Scripting");
+        asyncCall(QStringLiteral("org.kde.KWin"), QStringLiteral("/Scripting"), scripting, QStringLiteral("unloadScript"),
+                  {QStringLiteral("tabletd-panel-probe")});
+        asyncCall(QStringLiteral("org.kde.KWin"), QStringLiteral("/Scripting"), scripting, QStringLiteral("loadScript"),
+                  {path, QStringLiteral("tabletd-panel-probe")});
+        asyncCall(QStringLiteral("org.kde.KWin"), QStringLiteral("/Scripting"), scripting, QStringLiteral("start"));
+        QTimer::singleShot(3000, this, [this, id] {
+            if (id == m_probeId && m_probe) {
+                auto late = std::move(m_probe);
+                m_probe = nullptr;
+                late(-1, -1);
+            }
+        });
+    }
+
+    // At login plasmashell is on the bus long before its desktop and panels are on screen.
+    // Reshaping (or removing) panels while Plasma still creates their windows left a panel
+    // without a window: the panel stayed in the config but never appeared until plasmashell
+    // was restarted. So wait until KWin shows plasmashell's desktop, then a little longer.
+    void waitForPlasma(int token, int attempt)
+    {
+        if (token != m_plasmaWait) {
+            return;
+        }
+        probeViews([this, token, attempt](int desktops, int) {
+            if (token != m_plasmaWait) {
+                return;
+            }
+            if (desktops > 0 || attempt >= 40) {
+                QTimer::singleShot(1500, this, [this, token] {
+                    if (token == m_plasmaWait) checkMode("start");
+                });
+            } else {
+                QTimer::singleShot(750, this, [this, token, attempt] { waitForPlasma(token, attempt + 1); });
+            }
+        });
+    }
+
+    // After the panels were reshaped: every panel on an existing screen must have a window.
+    // If one has none (Plasma lost the view), only a plasmashell restart brings it back; at most
+    // twice in 10 minutes so a Plasma that keeps failing is not restarted in a loop.
+    void verifyPanels(int generation, int attempt = 0)
+    {
+        QTimer::singleShot(attempt == 0 ? 2500 : 2000, this, [this, generation, attempt] {
+            if (generation != m_generation) {
+                return;
+            }
+            auto *watcher = new QDBusPendingCallWatcher(evaluate(QStringLiteral(
+                "print(panels().filter(function (p) { return p.screen >= 0 && p.screen < screenCount; }).length);")), this);
+            connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, generation, attempt] {
+                QDBusPendingReply<QString> reply = *watcher;
+                watcher->deleteLater();
+                if (generation != m_generation || !reply.isValid()) {
+                    return;
+                }
+                bool ok = false;
+                const int expected = reply.value().trimmed().toInt(&ok);
+                if (!ok || expected <= 0) {
+                    return;
+                }
+                probeViews([this, generation, attempt, expected](int desktops, int panels) {
+                    if (generation != m_generation || desktops < 0 || panels >= expected) {
+                        return;
+                    }
+                    // a panel that was just added may get its window a moment later
+                    if (attempt < 2) {
+                        verifyPanels(generation, attempt + 1);
+                        return;
+                    }
+                    if (!m_restartClock.isValid() || m_restartClock.elapsed() > 10 * 60 * 1000) {
+                        m_restartClock.start();
+                        m_plasmaRestarts = 0;
+                    }
+                    if (m_plasmaRestarts >= 2) {
+                        return;
+                    }
+                    ++m_plasmaRestarts;
+                    QProcess::startDetached(QStringLiteral("systemctl"),
+                                            {QStringLiteral("--user"), QStringLiteral("restart"), QStringLiteral("plasma-plasmashell.service")});
+                });
+            });
+        });
+    }
+
     void askTypewriter()
     {
         if (m_lastAsk.isValid() && m_lastAsk.elapsed() < 10000) {
@@ -775,14 +1008,21 @@ private:
         if (processRunning("ghostwriter")) {
             return;
         }
+        const bool offerTypewriter = setting("Modes", "askTypewriter", true);
+        const bool offerCoding = setting("Modes", "askCoding", true);
+        if (!offerTypewriter && !offerCoding) return;
         m_lastAsk.start();
         QDBusMessage msg = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.Notifications"),
                                                           QStringLiteral("/org/freedesktop/Notifications"),
                                                           QStringLiteral("org.freedesktop.Notifications"), QStringLiteral("Notify"));
-        msg << T(QStringLiteral("Печатная машинка")) << uint(0) << QStringLiteral("accessories-text-editor")
-            << T(QStringLiteral("Клавиатура подключена")) << T(QStringLiteral("Открыть печатную машинку?"))
-            << QStringList{QStringLiteral("open"), T(QStringLiteral("Писать")), QStringLiteral("new"), T(QStringLiteral("Новый сценарий"))}
-            << QVariantMap() << 15000;
+        QStringList actions;
+        if (offerTypewriter) actions << QStringLiteral("open") << T(QStringLiteral("Писать"))
+                                     << QStringLiteral("new") << T(QStringLiteral("Новый сценарий"));
+        if (offerCoding) actions << QStringLiteral("coding") << T(QStringLiteral("Открыть LazyVim"));
+        msg << T(QStringLiteral("Режимы работы")) << uint(0) << QStringLiteral("applications-development")
+            << T(QStringLiteral("Клавиатура подключена."))
+            << T(QStringLiteral("Можно писать тексты или открыть LazyVim для программирования."))
+            << actions << QVariantMap() << 15000;
         auto *watcher = new QDBusPendingCallWatcher(bus().asyncCall(msg), this);
         connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher] {
             QDBusPendingReply<uint> r = *watcher;
@@ -801,6 +1041,11 @@ private:
     QStringList m_trayPending; // tray app ids waiting to be hidden
     bool m_tablet = false;
     bool m_known = false;
+    std::function<void(int, int)> m_probe; // waiting for PanelViews()
+    int m_probeId = 0;
+    int m_plasmaWait = 0;      // current waitForPlasma() run
+    int m_plasmaRestarts = 0;  // panel-recovery restarts in the current 10 minutes
+    QElapsedTimer m_restartClock;
 };
 
 // ---- Windows button -> Claude Desktop -----------------------------------------------------------
@@ -833,17 +1078,15 @@ public:
                 return;
             }
             QProcess::startDetached(QStringLiteral("kscreen-doctor"), {QStringLiteral("--dpms"), QStringLiteral("on")});
-            // the shell's own power menu (slide to power off); Plasma's prompt if it is not there
+            // Our only power menu. Never launch Plasma's logout prompt as a fallback.
             auto *watcher = new QDBusPendingCallWatcher(
                 bus().asyncCall(QDBusMessage::createMethodCall(QStringLiteral("org.ipad.TabletShell"), QStringLiteral("/"),
                                                                QStringLiteral("org.ipad.TabletShell"), QStringLiteral("PowerMenu"))),
                 this);
             connect(watcher, &QDBusPendingCallWatcher::finished, this, [watcher] {
                 watcher->deleteLater();
-                if (watcher->isError()) {
-                    asyncCall(QStringLiteral("org.kde.LogoutPrompt"), QStringLiteral("/LogoutPrompt"), QStringLiteral("org.kde.LogoutPrompt"),
-                              QStringLiteral("promptAll"));
-                }
+                // If tablet-shell is not available, stay on the desktop. A duplicate
+                // logout dialog must never be opened by this handler.
             });
         });
         connect(&m_retry, &QTimer::timeout, this, &PowerButton::tryOpen);
@@ -853,6 +1096,9 @@ public:
 
     ~PowerButton() override
     {
+        if (m_powerInhibitor >= 0) {
+            ::close(m_powerInhibitor); // releases logind's low-level inhibitor
+        }
         if (m_active) {
             setPlasmaPowerAction(1); // give the button back to Plasma (suspend)
         }
@@ -871,7 +1117,20 @@ private:
         }
         m_retry.stop();
         m_active = true;
-        setPlasmaPowerAction(0);
+        setPlasmaPowerAction(0); // PowerDevil: do nothing for short/long presses
+        m_reader.grabDedicatedPowerKeys();
+        // The logind inhibitor lives only while this handler is active. Unlike
+        // editing /etc/systemd/logind.conf, it cannot break power management
+        // after the tablet daemon exits or when another desktop is used.
+        QDBusMessage req = QDBusMessage::createMethodCall(
+            QStringLiteral("org.freedesktop.login1"), QStringLiteral("/org/freedesktop/login1"),
+            QStringLiteral("org.freedesktop.login1.Manager"), QStringLiteral("Inhibit"));
+        req << QStringLiteral("handle-power-key") << QStringLiteral("tablet-shell")
+            << QStringLiteral("Custom tablet power menu") << QStringLiteral("block");
+        QDBusReply<QDBusUnixFileDescriptor> reply = QDBusConnection::systemBus().call(req, QDBus::Block, 2000);
+        if (reply.isValid() && reply.value().isValid()) {
+            m_powerInhibitor = ::dup(reply.value().fileDescriptor());
+        }
     }
 
     void onEvent(int fd, const input_event &ev)
@@ -967,6 +1226,7 @@ private:
     }
 
     EvdevReader m_reader;
+    int m_powerInhibitor = -1;
     QTimer m_retry;
     QTimer m_hold;
     QElapsedTimer m_lastPress;
@@ -1183,7 +1443,6 @@ private:
             KConfig tabletrc(QStringLiteral("tabletrc"), KConfig::SimpleConfig);
             tabletrc.group(QStringLiteral("Cleanup")).writeEntry("lastRun", QDate::currentDate().toString(Qt::ISODate));
             tabletrc.sync();
-            qInfo("tabletd: weekly cleanup freed %lld bytes", static_cast<long long>(freed));
             if (freed < 5 * 1000 * 1000) {
                 return;
             }
@@ -1207,6 +1466,9 @@ static int signalPipe[2];
 
 int main(int argc, char *argv[])
 {
+    // Keep Qt diagnostics silent without an app-local helper declaration.
+    // TABLET_SHELL_DEBUG=1 keeps Qt/QML messages for troubleshooting
+    if (!qEnvironmentVariableIsSet("TABLET_SHELL_DEBUG")) qInstallMessageHandler([](QtMsgType, const QMessageLogContext &, const QString &) {});
     QCoreApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("tabletd"));
 
