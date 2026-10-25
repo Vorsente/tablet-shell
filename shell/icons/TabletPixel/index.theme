@@ -2,6 +2,7 @@
 Name=Tablet Pixel
 Comment=Rounded Material icons for the tablet shell, inherits installed application logos
 Inherits=Colloid,Colloid-Dark,Colloid-Light,breeze
+FollowsColorScheme=true
 Directories=scalable/apps,scalable/actions,apps/scalable,symbolic
 
 [scalable/apps]

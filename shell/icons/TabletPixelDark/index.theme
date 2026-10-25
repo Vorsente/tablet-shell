@@ -2,6 +2,7 @@
 Name=Tablet Pixel Dark
 Comment=Material icons and contrast-aware dark panel symbols
 Inherits=TabletPixel,Colloid-Dark,Colloid,breeze
+FollowsColorScheme=true
 Directories=scalable/actions,symbolic
 
 [scalable/actions]
