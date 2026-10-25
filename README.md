@@ -2,11 +2,11 @@
 
 # tablet-shell
 
-**An iPadOS-style tablet shell for KDE Plasma 6 on Arch Linux**
+**A tablet shell for KDE Plasma 6 on Arch Linux — in the style of iPadOS or Google Pixel (Material Design)**
 
 Turns Plasma into a touch-first system and back into a normal desktop the moment a keyboard is attached.
 
-[Русская версия](README.ru.md) · [Install](#install) · [Guides](#guides) · [Screenshots](#tour)
+[Русская версия](README.ru.md) · [Install](#install) · [Guides](#guides) · [Screenshots](#tour) · [What's new](#whats-new)
 
 ![Home screen in tablet mode](docs/screenshots/en/tablet-home.jpg)
 
@@ -20,7 +20,8 @@ Plasma runs well on cheap Windows tablets, but it is a desktop: small targets, w
 taskbar, a keyboard you have to summon by hand. tablet-shell keeps everything Plasma can do and puts a
 tablet on top of it: an app grid with folders and widgets, edge gestures, a control center, its own
 on-screen keyboard, lock and login screens in the same style. Attach the keyboard and it becomes a
-desktop again; plug in a monitor and the tablet turns into a dashboard next to it.
+desktop again; plug in a monitor and the tablet turns into a dashboard next to it. The whole shell
+comes in two looks — Apple / iPadOS or Google Pixel / Material Design — switched with one setting.
 
 It was built on (and for) a **Lenovo ThinkPad 10** — Atom Z3795, 4 GB RAM, eMMC — so it is written to
 stay light: the background parts are small C++ programs, the UI is QML, nothing runs in Python.
@@ -30,7 +31,8 @@ stay light: the background parts are small C++ programs, the UI is QML, nothing 
 | | |
 | --- | --- |
 | 🏠 **Home screen** | App pages, folders, widgets, a *Today* page (weather, calendar, news, exchange rates, sky, week in review), live weather on the wallpaper |
-| 🔀 **Four modes** | Tablet, PC, dock (external monitor + dashboard), plus typewriter and reading modes — switched automatically, with an animation |
+| 🔀 **Modes** | Tablet, PC, dock (external monitor + dashboard), plus typewriter, reading and coding modes — switched automatically, with an animation |
+| 🎨 **Two styles** | Apple / iPadOS (Liquid Glass) or Google Pixel / Material Design for everything: home screen, widgets, Today, panels, control center, settings, keyboard, lock and login screens, dashboard |
 | 👆 **Gestures** | Control center from the top edge, notifications from the right, *back* from the left, iPhone-style home bar at the bottom |
 | ⌨️ **Keyboard** | Own Wayland input method: Russian/English, flicks for symbols, split mode, emoji, space-bar trackpad, key clicks; hides when a real keyboard is attached |
 | 🔒 **Lock & login** | One look for both, now-playing card, notifications; own greetd greeter |
@@ -39,7 +41,9 @@ stay light: the background parts are small C++ programs, the UI is QML, nothing 
 | 🖊️ **Pen** | Palm rejection, quick note from the corner, a tool ring (note, screenshot, Krita, color picker, recording) |
 | 📊 **Dashboard** | StandBy-style clock and system widgets on the built-in screen when docked |
 | 🌗 **Light & dark** | Follows the time of day; cards, menus and sheets adapt |
-| 🎨 **Icons** | MacTahoe (macOS 26) icon theme; apps it lacks get icons drawn to match (`tablet-tools app-icons`, re-run when apps are installed) |
+| 🖼️ **Icons** | Apple: MacTahoe (macOS 26) icon theme. Material: Colloid plus round adaptive icons. Apps a theme lacks get icons drawn to match (`tablet-tools app-icons`, re-run automatically when apps are installed) |
+| 💻 **Coding mode** | LazyVim in a full-screen terminal with an isolated config, focus mode, one tap from the control center |
+| ⬆️ **Updates** | From Settings: what's new, confirm, build, install — settings and themes stay |
 | 🌍 **Russian & English** | Follows the Plasma language |
 | 🧩 **More** | Web apps, Split View, Slide Over, picture-in-picture, screen time, storage cleanup, system snapshots, Android apps (Waydroid) |
 
@@ -143,7 +147,9 @@ The installer:
 1. checks the system and offers to install the missing packages (`sudo pacman -S …`);
 2. builds the C++ programs (about 10 minutes on an Atom, a minute on a laptop);
 3. installs user components in `~/.local`; updating an existing tablet-shell greeter may use `sudo`;
-4. downloads the WhiteSur themes, icons and wallpapers and adjusts them;
+4. downloads the WhiteSur themes, MacTahoe icons and wallpapers for the Apple style, the Colloid icons
+   and the Roboto Flex font for the Material style, and adjusts them (`--no-themes` keeps your current
+   themes);
 5. sets KDE options, starts services and asks the daemon to repair the panels;
 6. if the tablet-shell greetd login is already installed, refreshes it automatically and
    silences cage/libseat (`seatd`) diagnostic output without creating log files
@@ -180,6 +186,14 @@ KDE preferences, themes, weather city or panel configuration. For ZIP installati
 new ZIP with `--from` instead of overwriting the old unpacked folder. System services
 outside this project retain their own journal behavior.
 
+The easiest way is **Settings → Updates**: it shows the latest GitHub commit and what's new, and after you
+confirm it downloads exactly that commit, checks the archive, builds first and installs with the same
+non-destructive mode. It warns when the installed copy is newer than GitHub (a local ZIP build, for
+example). The on-screen keyboard, the lock screen and the login screen are never replaced by updates —
+only by `./install.sh`; the greetd login screen is refreshed separately with
+`sudo ~/.local/share/tablet-shell/system/greeter.sh --refresh`. Files from older versions are removed only
+if the installer put them there and they are unchanged.
+
 ```sh
 ./update.sh                    # Git checkout: fast-forward and install without changing settings
 ./update.sh --offline          # rebuild and install local files only
@@ -191,6 +205,25 @@ outside this project retain their own journal behavior.
 ---
 
 ## Guides
+
+### Two styles: Apple and Material
+
+**Settings → Appearance → Whole shell style**: *Apple / iPadOS* or *Google Pixel / Material Design*
+(or `~/.local/bin/shell-style apple|pixel` in a terminal). A full-screen curtain covers the screen while
+Plasma restyles itself and opens when everything is redrawn (about ten seconds on an Atom), so you never
+see a half-switched desktop.
+
+| | Apple / iPadOS | Google Pixel / Material Design |
+| --- | --- | --- |
+| Surfaces | translucent Liquid Glass with blur | opaque tonal cards, no blur (cheaper on slow GPUs) |
+| Home screen | iPad grid, rounded-square folders, page dots | *At a glance* with date and weather, search bar, round 2×2 folders, page dashes |
+| Widgets and Today | iOS widgets | Material widgets: own colour per widget, calendar grid, progress bars |
+| Control center | round controls, tall sliders | wide tiles on a sheet, horizontal sliders |
+| Icons | MacTahoe | Colloid + round adaptive app icons |
+| Type | Inter | Roboto Flex (it has Cyrillic) |
+
+Light / dark / automatic is a separate setting and works with both. Each style remembers its own
+wallpaper. The choice survives updates.
 
 ### Gestures and buttons
 
@@ -240,6 +273,23 @@ at 1/2, 2/3, 1/3 (or hold the control center tile) · <kbd>Meta</kbd>+<kbd>Shift
 
 Screenplays live in `~/Сценарии` or `~/Screenplays` (set in `typewriterrc`).
 
+### Pen tools
+
+Hold the pen button above the screen for the tool ring: **note, screenshot, Krita, colour picker, screen
+recording**. Swipe from the bottom-right corner with the pen for a quick note. Krita is installed by
+`./install.sh`.
+
+### Coding mode
+
+*Control center → Coding* or *Settings → Coding mode* opens **LazyVim** in a full-screen Konsole with the
+mode animation; notifications are held back while it is open, and closing Konsole brings back the
+previous brightness, power profile and effects. `./install.sh` installs Neovim, ripgrep, fd, fzf,
+lazygit, tree-sitter and JetBrains Mono Nerd Font and fetches the official
+[LazyVim Starter](https://github.com/LazyVim/starter). The config lives apart in
+`~/.config/tablet-shell-lazyvim` (`NVIM_APPNAME`), so your own `~/.config/nvim` is never touched and
+reinstalling keeps your LazyVim changes. The editor opens `~/Projects` (`~/Проекты` with a Russian
+interface); it creates no files and makes no git commits. Quit with `:qa`.
+
 ### Home screen and widgets
 
 - *Edit Home Screen* (long press on empty space) → **+ Widget**: weather, calendar, battery,
@@ -252,6 +302,16 @@ Screenplays live in `~/Сценарии` or `~/Screenplays` (set in `typewriterr
 Plug in a monitor while the keyboard is attached: windows move to the monitor, the built-in screen
 shows the dashboard. Pick its widgets in *Settings → Dashboard*. If you dock for the first time after
 installing, run `./install.sh --containments` once so the built-in screen gets the dashboard.
+
+### Slow devices
+
+- *Settings → Modes → Change display scaling between modes* is off by default: switching the KScreen scale stalls
+  slow GPUs for seconds.
+- *Settings → Appearance → Animated weather on wallpaper* is off by default; *Live wallpaper* (the
+  day/night cross-fade) is separate and cheap.
+- The Material style has no blur at all, which is lighter on old GPUs than Liquid Glass.
+- `update.sh` keeps compiled programs in `~/.cache/tablet-shell/compiled` and uses `ccache` when
+  installed, so an update that only changes QML or icons takes seconds.
 
 ### Snapshots and recovery
 
@@ -268,7 +328,8 @@ booting, hold **Space** while powering on and choose *before the last update*.
 | The power button only suspends | run `sudo system/devices.sh`, then log in again |
 | Stuck at the login screen | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F2</kbd>, log in, `sudo ~/.local/share/tablet-shell/system/greeter.sh --undo` |
 | The lock screen does not take the password | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F2</kbd>, log in, `loginctl unlock-sessions` |
-| Logging | Disabled for tablet-shell apps and user services; system journal unaffected |
+| A half-switched look after changing the style | run `~/.local/bin/shell-style pixel` (or `apple`) again; if a panel is missing, log out and back in |
+| Logging | Disabled for tablet-shell apps and user services (`TABLET_SHELL_DEBUG=1` turns it on; messages go to the journal); system journal unaffected |
 
 ---
 
@@ -291,11 +352,14 @@ flowchart LR
 | Part | What it is |
 | --- | --- |
 | `src/tabletd` | daemon: modes, keyboard/monitor detection, power and Windows buttons, pen, cleanup; `tablet-tools` (web apps, wallpapers, dashboard data, typewriter export) |
-| `src/tabletshell` | layer-shell overlays: control center, notifications, screen time, back gesture, mode animations, power menu, charging, typewriter pill |
+| `src/tabletshell` | layer-shell overlays: control center, notifications, screen time, back gesture, mode and style animations, power menu, charging, typewriter pill |
 | `src/tablet-settings` | the Settings app (Kirigami), embeds every KDE settings module |
 | `src/tablet-keyboard` | the on-screen keyboard (Wayland input method) |
 | `src/tablet-greeter` | login screen (greetd) and the shared lock screen surface |
-| `shell/` | Plasma packages (home screen, dashboard, wallpaper, global themes), KWin scripts, panel layouts |
+| `shell/` | Plasma packages (home screen, dashboard, wallpaper, global themes for both styles), Material Plasma themes, colour schemes and icon themes, KWin scripts, panel layouts |
+| `bin/` | small commands: `shell-style`, `coding-mode`, `typewriter`, `reading-mode`, the GitHub updater… |
+| `scripts/` | installer helpers: themes, Material icons, LazyVim, generated Material assets |
+| `tests/` | Node.js tests for the installer, updater and style switch (`node --test tests/*.test.cjs`) |
 | `system/` | optional sudo parts |
 | `i18n/` | translations: Russian is the source, `en.py` the English table |
 
@@ -311,53 +375,27 @@ tablets are very welcome.
 
 ## Credits
 
-[WhiteSur](https://github.com/vinceliuice) theme, icons and wallpapers by vinceliuice (downloaded at
-install time) · Plasma Mobile's task switcher (patched copy made at run time) ·
-[waydroid_script](https://github.com/casualsnek/waydroid_script) · Inter and Cousine fonts ·
-weather by [Open-Meteo](https://open-meteo.com).
+[WhiteSur, MacTahoe and Colloid](https://github.com/vinceliuice) themes, icons and wallpapers by
+vinceliuice (downloaded at install time) · Breeze symbolic icons (copied into the Material icon theme at
+install time) · Plasma Mobile's task switcher and quick settings · [waydroid_script](https://github.com/casualsnek/waydroid_script) ·
+Inter, Roboto Flex and Cousine fonts · [LazyVim](https://www.lazyvim.org) · weather by
+[Open-Meteo](https://open-meteo.com).
 
 ## License
 
 [GPL-3.0-or-later](LICENSE)
 
-## Apple / Pixel whole-shell style
+## What's new
 
-Select **Settings → Appearance → Whole shell style → Apple / iPadOS or Google Pixel / Material Design**. Light/dark/automatic are independent of the style family. CLI: `~/.local/bin/shell-style pixel` and `~/.local/bin/shell-style apple`. Your selection survives `./update.sh --offline`. See [Pixel Material notes](ИЗМЕНЕНИЯ-PIXEL-MATERIAL.md).
+**October 2026**
 
+- **Material Design style** for the whole shell next to the iPadOS one, with its own Plasma themes,
+  icons, wallpapers, widgets, Today page, dashboard, control center, settings and lock screen.
+- **Style change without glitches:** a curtain covers the screen until Plasma has restyled itself.
+- **Updates from Settings** with what's new and install steps; the keyboard, lock and login screens are
+  left alone by updates.
+- **Coding mode** with LazyVim, a pen tool ring with Krita and screen recording.
+- Fixes: the panel missing after login, sliders after a live style switch, masked icons showing as
+  squares, dates in the wrong language, a false "GitHub is older" warning.
 
-## Updates in Settings
-
-Open **Tablet Settings → Update**, check the current upstream GitHub release/commit,
-and confirm before downloading. The updater pins the confirmed commit, validates the
-archive, builds first and installs using the non-destructive update mode. A local ZIP
-build may contain changes absent from GitHub, so the confirmation dialog warns before
-replacing it. Updating the greetd login screen separately requires administrator access.
-
-## Pen tools and coding mode
-
-The pen menu contains **Note, Screenshot, Krita, Color Picker, Recording**. The magnifier
-is removed; icons and button surfaces follow the Apple/Pixel appearance. Krita is
-installed automatically by `./install.sh`. **Settings → Coding Mode** opens **LazyVim**
-inside a dedicated full-screen Konsole window with the same animated mode transition
-as tablet/PC/typewriter modes. Code lines animate before the terminal appears; closing
-Konsole restores the previous power, brightness, focus and desktop effects.
-
-On `./install.sh`, Neovim 0.11.2+, Konsole, ripgrep, fd, fzf, lazygit, tree-sitter-cli
-and JetBrains Mono Nerd Font are installed automatically via pacman; the official
-[LazyVim Starter](https://github.com/LazyVim/starter) and plugins are fetched online.
-The config is isolated at `~/.config/tablet-shell-lazyvim`, using
-`NVIM_APPNAME=tablet-shell-lazyvim`. Your existing `~/.config/nvim` and its data
-remain untouched, and repeated installations keep changes to the LazyVim config.
-The editor opens `~/Projects` without creating source files or automatic git commits.
-The first system package installation requires sudo authentication in a terminal;
-subsequent upgrades can be launched from Settings, as long as dependencies exist.
-
-
-## Update safety
-
-`./update.sh --offline` does not build or replace the on-screen keyboard, lock screen or login screen. It never mixes old keyboard
-executables with new QML and still updates other components. Later installations
-remove only obsolete, unchanged files recorded in the installer-owned manifest;
-unknown or modified files are preserved. See `ИЗМЕНЕНИЯ-КЛАВИАТУРА-ОБНОВЛЕНИЕ.md`.
-
-> **Oct 24 visual update:** dock/page dots spacing, separate Pixel widgets and contrast-aware icons, optional Colloid download, and Apple/Pixel theme transition: see `ИЗМЕНЕНИЯ-ПАНЕЛИ-PIXEL-ВИДЖЕТЫ-2026-10-24.md`.
+Detailed notes (in Russian) are in the `ИЗМЕНЕНИЯ-*.md` and `ИСПРАВЛЕНИЯ*.md` files.
