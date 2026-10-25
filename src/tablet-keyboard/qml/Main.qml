@@ -81,7 +81,14 @@ Item {
     property bool split: String(keyboard.setting("split", "false")) === "true"
     property bool trackpad: false
     property string typed: ""                   // what we typed, when the app sends no surrounding text
+    // Terminals (Konsole) report the terminal line under their own cursor, not what is being typed,
+    // often an empty line: trusting it made every space look like the start of a field, so each word
+    // came out capitalized. The app's text is used only while it shows what we committed; once it
+    // does not, our own record of what was typed decides for the rest of that field.
     property bool surroundingKnown: false
+    property bool surroundingBroken: false
+    property bool surroundingVerified: false    // the app's text did show something we committed
+    property string lastCommit: ""
     property var lastSpace: 0
     property var lastShiftTap: 0
     property var pressed: ({})                  // key index -> true
@@ -107,12 +114,22 @@ Item {
         function onActiveChanged() {
             root.typed = "";
             root.surroundingKnown = false;
+            root.surroundingBroken = false;
+            root.surroundingVerified = false;
+            root.lastCommit = "";
             root.page = "letters";
             if (root.shift !== 2) root.shift = 0;
             root.updateAutoCap();
         }
         function onSurroundingChanged() {
-            root.surroundingKnown = true;
+            const before = keyboard.textBeforeCursor;
+            if (root.lastCommit !== "") {
+                if (before.endsWith(root.lastCommit)) root.surroundingVerified = true;
+                else root.surroundingBroken = true;
+            }
+            root.lastCommit = "";
+            // an empty field is believed only from an app that has shown our text before
+            root.surroundingKnown = !root.surroundingBroken && (before !== "" || root.surroundingVerified);
             root.updateAutoCap();
         }
         function onContentChanged() { root.updateAutoCap(); }
@@ -211,11 +228,13 @@ Item {
         else if (autoShift && shift === 1) { shift = 0; autoShift = false; }
     }
     function commit(text) {
+        lastCommit = text;
         keyboard.commit(text);
         typed = (typed + text).slice(-64);
         if (!surroundingKnown) updateAutoCap();
     }
     function backspace() {
+        lastCommit = "";
         keyboard.key("BackSpace");
         typed = typed.slice(0, -1);
         if (!surroundingKnown) updateAutoCap();

@@ -856,7 +856,7 @@ Window {
                 Control {
                     wideTile: true
                     label: Tr.t("Картинка в картинке")
-                    iconName: "window-restore-pip-symbolic"
+                    iconName: Qt.resolvedUrl("icons/pip.svg")
                     onActivated: {
                         win.visible = false;
                         win.kwinShortcut("Picture in Picture");

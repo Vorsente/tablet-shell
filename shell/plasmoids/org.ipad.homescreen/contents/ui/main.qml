@@ -117,6 +117,22 @@ ContainmentItem {
     // O(1) duplicate detection while hundreds of icons are being classified.
     property var iconPending: ({})
     readonly property var nativeIcon: ({ shape: "native", scale: 1, dx: 0, dy: 0 })
+    // Another style means another icon theme: the old measurements put every MacTahoe icon on a
+    // plate after a live Material -> Apple switch. Measure again once the new theme is loaded.
+    onPixelChanged: reshapeTimer.restart()
+    Timer {
+        id: reshapeTimer
+        interval: 1500
+        onTriggered: {
+            probeTimer.stop();
+            iconProbe.current = "";
+            iconProbe.grab = null;
+            shot.source = "";
+            root.iconQueue = [];
+            root.iconPending = ({});
+            root.iconShapes = ({});
+        }
+    }
     function iconShape(name) {
         if (!name) return nativeIcon;
         const known = iconShapes[name];

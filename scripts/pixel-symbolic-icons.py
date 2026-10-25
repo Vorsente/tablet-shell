@@ -2,9 +2,12 @@
 # Pixel icon theme: KDE's icon loader tries the shortened names ("input-touchscreen-symbolic" ->
 # "input-touchscreen") in Colloid before it reaches Breeze further down the inheritance chain, so a
 # colourful Colloid device or app icon wins and, drawn as a mask (isMask), becomes a solid square.
-# Copy the Breeze symbolic icon of every "*-symbolic" name the shell's QML uses into
-# TabletPixel/symbolic when Colloid has no exact symbolic icon of that name.
+# Copy the Breeze (or Adwaita) symbolic icon of every "*-symbolic" name the shell's QML uses into
+# the symbolic folder of TabletPixel and of its Dark / Light variants when Colloid has no exact
+# symbolic icon of that name. The variants need their own copy: their glyphs (notifications,
+# battery-full) would otherwise win as shortened names over the base theme's exact icon.
 # Usage: pixel-symbolic-icons.py ICONS_DIR QML_DIR...
+import filecmp
 import os
 import re
 import shutil
@@ -13,9 +16,9 @@ import sys
 
 icons, roots = sys.argv[1], sys.argv[2:]
 pixel = os.path.join(icons, "TabletPixel")
-target = os.path.join(pixel, "symbolic")
 if not os.path.isdir(pixel):
     sys.exit(0)
+themes = [d for d in (pixel, pixel + "Dark", pixel + "Light") if os.path.isfile(os.path.join(d, "index.theme"))]
 
 def index(theme_dirs):
     names = set()
@@ -26,18 +29,21 @@ def index(theme_dirs):
                     names.add(f.rsplit(".", 1)[0])
     return names
 
-colloid = index([os.path.join(icons, t) for t in ("Colloid", "Colloid-Dark", "Colloid-Light")]
-                + [os.path.join(pixel, d) for d in ("scalable", "apps")])
+own = index([os.path.join(d, sub) for d in themes for sub in ("scalable", "apps")])
 breeze = {}
-for base in ("/usr/share/icons/breeze", os.path.join(icons, "breeze")):
+# later sources win: Colloid's own symbolic drawing (the Material look), else Breeze, else Adwaita
+# for the few neither has (face-smile)
+for base in ("/usr/share/icons/Adwaita", "/usr/share/icons/breeze", os.path.join(icons, "breeze"),
+             os.path.join(icons, "Colloid")):
     for dirpath, _, files in os.walk(base):
         size = re.search(r"/(\d+)$", dirpath)
         for f in files:
             if f.endswith("-symbolic.svg"):
                 n = f[:-4]
-                # prefer the largest drawing (24 over 16)
-                if n not in breeze or (size and int(size.group(1)) >= breeze[n][0]):
-                    breeze[n] = (int(size.group(1)) if size else 0, os.path.join(dirpath, f))
+                # a later source replaces an earlier one; within one, the largest drawing wins
+                rank = (base, int(size.group(1)) if size else 0)
+                if n not in breeze or breeze[n][0][0] != base or rank[1] >= breeze[n][0][1]:
+                    breeze[n] = (rank, os.path.join(dirpath, f))
 
 used = set()
 pattern = re.compile(r'"([a-z0-9][a-z0-9-]*-symbolic)"')
@@ -48,15 +54,20 @@ for root in roots:
                 with open(os.path.join(dirpath, f), encoding="utf-8", errors="ignore") as fh:
                     used.update(pattern.findall(fh.read()))
 
-os.makedirs(target, exist_ok=True)
-copied = 0
+copied = set()
 for n in sorted(used):
-    if n in colloid or n not in breeze:
+    if n in own:
         continue
-    dst = os.path.join(target, n + ".svg")
+    if n not in breeze:
+        print("pixel-symbolic-icons: no symbolic icon for", n, file=sys.stderr)
+        continue
     src = breeze[n][1]
-    if not os.path.exists(dst) or os.path.getmtime(dst) < os.path.getmtime(src):
-        shutil.copyfile(os.path.realpath(src), dst)
-        copied += 1
-if copied and shutil.which("gtk-update-icon-cache"):
-    subprocess.run(["gtk-update-icon-cache", "-f", "-q", pixel], check=False)
+    for theme in themes:
+        os.makedirs(os.path.join(theme, "symbolic"), exist_ok=True)
+        dst = os.path.join(theme, "symbolic", n + ".svg")
+        if not os.path.exists(dst) or not filecmp.cmp(dst, os.path.realpath(src), shallow=False):
+            shutil.copyfile(os.path.realpath(src), dst)
+            copied.add(theme)
+if shutil.which("gtk-update-icon-cache"):
+    for theme in copied:
+        subprocess.run(["gtk-update-icon-cache", "-f", "-q", theme], check=False)

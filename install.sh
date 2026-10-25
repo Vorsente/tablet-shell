@@ -246,11 +246,12 @@ if [ -d shell/icons ]; then
             # keep locally-generated /apps/scalable drawings on updates
             mkdir -p "$SHARE/icons/TabletPixel"
             rsync -a --filter='P /apps/scalable/***' --filter='P /symbolic/***' "$icon_pack/" "$SHARE/icons/TabletPixel/"
-            python3 -I scripts/pixel-symbolic-icons.py "$SHARE/icons" src shell || true
         else
             sync_dir "$icon_pack" "$SHARE/icons/$(basename "$icon_pack")"
         fi
     done
+    # after all three Pixel themes are in place (syncing a variant replaces its folder)
+    python3 -I scripts/pixel-symbolic-icons.py "$SHARE/icons" src shell || true
 fi
 for p in shell/look-and-feel/*; do sync_dir "$p" "$SHARE/plasma/look-and-feel/$(basename "$p")"; done
 for p in shell/kwin/scripts/*; do sync_dir "$p" "$SHARE/kwin/scripts/$(basename "$p")"; done

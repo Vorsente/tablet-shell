@@ -3,7 +3,6 @@
 //   square: a full-bleed square (Haruna) gets the theme's rounded corners and size
 //   free:   a logo or a round icon (Throne, Android apps) sits on a white squircle plate
 import QtQuick
-import QtQuick.Effects
 
 import org.kde.kirigami as Kirigami
 
@@ -27,7 +26,8 @@ Item {
         id: roundIcon
         anchors.fill: parent
         anchors.margins: appIcon.width * 0.04
-        visible: false
+        // drawn only through the texture below (opacity 0 keeps the icon loading and the layer live)
+        opacity: 0
         layer.enabled: appIcon.roundFill
         Kirigami.Icon {
             // 6 % more than the visible box: the squircle's own rim falls outside the circle
@@ -39,21 +39,13 @@ Item {
             roundToIconSize: false
         }
     }
-    Rectangle {
-        id: roundMask
-        anchors.fill: roundIcon
-        radius: width / 2
-        visible: false
-        layer.enabled: appIcon.roundFill
-    }
-    MultiEffect {
+    // cut to a circle by Kirigami's rounded texture (MultiEffect's mask drew nothing with Qt 6.10)
+    Kirigami.ShadowedTexture {
         anchors.fill: roundIcon
         visible: appIcon.roundFill
-        source: roundIcon
-        maskEnabled: true
-        maskSource: roundMask
-        maskThresholdMin: 0.5
-        maskSpreadAtMin: 1
+        radius: width / 2
+        color: "transparent"
+        source: appIcon.roundFill ? roundIcon : null
     }
     Rectangle {
         anchors.fill: roundIcon
@@ -76,13 +68,13 @@ Item {
         roundToIconSize: false
     }
 
-    // square: rounded corners through a mask (the icon drawn into a layer of exactly its box: the
-    // effect would otherwise take Kirigami.Icon's own texture, which is laid out differently)
+    // square: rounded corners through a rounded texture (the icon drawn into a layer of exactly its
+    // box: the texture would otherwise be Kirigami.Icon's own, which is laid out differently)
     Item {
         id: squareIcon
         anchors.fill: parent
         anchors.margins: appIcon.inset
-        visible: false
+        opacity: 0
         layer.enabled: !appIcon.home.pixel && appIcon.shape === "square"
         // blown up so the icon's visible square fills the box (its own transparent margin goes)
         Kirigami.Icon {
@@ -94,21 +86,12 @@ Item {
             roundToIconSize: false
         }
     }
-    Rectangle {
-        id: mask
-        anchors.fill: squareIcon
-        radius: appIcon.squircle
-        visible: false
-        layer.enabled: !appIcon.home.pixel && appIcon.shape === "square"
-    }
-    MultiEffect {
+    Kirigami.ShadowedTexture {
         anchors.fill: squareIcon
         visible: !appIcon.home.pixel && appIcon.shape === "square"
-        source: squareIcon
-        maskEnabled: true
-        maskSource: mask
-        maskThresholdMin: 0.5
-        maskSpreadAtMin: 1
+        radius: appIcon.squircle
+        color: "transparent"
+        source: visible ? squareIcon : null
     }
 
     // free form: on a plate

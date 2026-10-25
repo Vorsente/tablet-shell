@@ -36,6 +36,7 @@ if [ "$(getstyle)" != "$style" ] && [ -x "$HOME/.local/bin/tabletshell" ] &&
    [ "$(kreadconfig6 --file tabletrc --group Modes --key transitionAnimation 2>/dev/null || true)" != false ]; then
     rm -f "$rt/tablet-style-covered" "$rt/tablet-style-ready"
     trap 'echo 1 > "$rt/tablet-style-ready"' EXIT
+    curtain=1
     TABLET_SHELL_THEME_TARGET="$style" "$HOME/.local/bin/tabletshell" theme-transition >/dev/null 2>&1 &
     for _ in $(seq 25); do
         [ -e "$rt/tablet-style-covered" ] && break
@@ -62,7 +63,8 @@ esac
 wallpaper_target=${saved_wp:-$default_wp}
 # Choose the corresponding KDE look without reconfiguring desktop containments or wallpapers.
 if command -v plasma-apply-lookandfeel >/dev/null; then
-    plasma-apply-lookandfeel -a "${!mode}" >/dev/null 2>&1 || true
+    # low priority: the curtain above keeps moving smoothly while this works
+    nice -n 10 plasma-apply-lookandfeel -a "${!mode}" >/dev/null 2>&1 || true
 fi
 # Reapply after the look-and-feel action, which can override its own icon theme.
 if [ "$style" = pixel ]; then
@@ -89,16 +91,39 @@ if command -v qdbus6 >/dev/null; then
 fi
 # Apply the style-specific wallpaper before syncing dependent surfaces.
 if [ -n "${wallpaper_target:-}" ] && [ -e "$wallpaper_target" ] && [ -x "$HOME/.local/bin/wallpaper" ]; then
-    "$HOME/.local/bin/wallpaper" set "$wallpaper_target" >/dev/null 2>&1 || true
+    nice -n 10 "$HOME/.local/bin/wallpaper" set "$wallpaper_target" >/dev/null 2>&1 || true
 fi
 # plasmashell reloads its config, colours and icons asynchronously: a script call is answered only
 # after the events queued before it, so it marks when the restyled desktop is being drawn.
 if command -v qdbus6 >/dev/null; then
     timeout 15 qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "" >/dev/null 2>&1 || true
 fi
-# Everything visible is restyled: let the curtain open (the lock screen copy below is not seen).
-echo 1 > "$rt/tablet-style-ready" 2>/dev/null || true
-# Refresh the copy used by kscreenlocker and the login manager (if configured).
+# Refresh the copy used by kscreenlocker and the login manager (if configured). Done before the
+# curtain opens: its half second of image work made the first frame of the opening hang.
 if [ -x "$HOME/.local/bin/lockscreen-sync" ]; then
-    "$HOME/.local/bin/lockscreen-sync" >/dev/null 2>&1 || true
+    nice -n 10 "$HOME/.local/bin/lockscreen-sync" >/dev/null 2>&1 || true
 fi
+# plasmashell keeps working after that (icons reload, the home screen measures every icon again)
+# and KWin reloads its own theme for a few seconds: opening the curtain meanwhile made it stutter.
+# Wait until both have calmed down - plasmashell under 15 % and KWin under 35 % of one core in
+# three 0.25 s samples in a row - for at most 8 s.
+ps_pid=$(pgrep -x plasmashell | head -1 || true)
+kw_pid=$(pgrep -x kwin_wayland | head -1 || true)
+if [ -n "${curtain:-}" ] && [ -n "$ps_pid" ] && [ -r "/proc/$ps_pid/stat" ]; then
+    ticks() { awk '{print $14 + $15}' "/proc/$1/stat" 2>/dev/null || echo 0; }
+    hz=$(getconf CLK_TCK 2>/dev/null || echo 100)
+    calm=0; ps_last=$(ticks "$ps_pid"); kw_last=$(ticks "${kw_pid:-self}")
+    for _ in $(seq 32); do
+        sleep 0.25
+        ps_now=$(ticks "$ps_pid"); kw_now=$(ticks "${kw_pid:-self}")
+        if [ $(( (ps_now - ps_last) * 400 )) -lt $(( hz * 15 )) ] && [ $(( (kw_now - kw_last) * 400 )) -lt $(( hz * 35 )) ]; then
+            calm=$((calm + 1))
+        else
+            calm=0
+        fi
+        ps_last=$ps_now; kw_last=$kw_now
+        [ "$calm" -ge 3 ] && break
+    done
+fi
+# Everything is restyled: let the curtain open.
+echo 1 > "$rt/tablet-style-ready" 2>/dev/null || true
