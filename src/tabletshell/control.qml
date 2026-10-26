@@ -114,6 +114,12 @@ Window {
         PowerMenu {}
     }
 
+    // volume / brightness bars when a key changes them (Osd.qml), built on first use
+    property var osd: null
+    Component {
+        id: osdComponent
+        Osd {}
+    }
     // charging animation; when the charger comes with a mode change it waits for that animation
     property var charge: null
     Component {
@@ -186,6 +192,12 @@ Window {
                 powerMenu = powerMenuComponent.createObject(null);
             }
             powerMenu.open();
+        }
+        function onOsdRequested(member, args) {
+            if (!win.osd) {
+                win.osd = osdComponent.createObject(null);
+            }
+            win.osd.show(member, args);
         }
         function onChargingStarted() {
             win.showCharging();

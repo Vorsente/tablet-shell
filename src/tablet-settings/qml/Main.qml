@@ -80,6 +80,8 @@ Kirigami.ApplicationWindow {
         } else if (item.apply === "livewallpaper") {
             backend.start([home + "/.local/bin/wallpaper", "live", v ? "on" : "off"]);
             backend.setHomeScreen("liveWallpaper", v);   // weather on the wallpaper moves only then
+        } else if (item.apply === "tabletshell") {
+            backend.start(["systemctl", "--user", "restart", "tabletshell.service"]);
         } else if (item.apply === "screenlocker") {
             qdbus("org.freedesktop.ScreenSaver", "/ScreenSaver", "configure");
         }
@@ -144,6 +146,8 @@ Kirigami.ApplicationWindow {
               label: Tr.t("Звук смены режима"), note: Tr.t("Щелчок клавиатуры, перезвон монитора, удары клавиш печатной машинки") }),
             make(tabletrc("Effects", "chargeAnimation", true), { type: "switch",
               label: Tr.t("Анимация зарядки"), note: Tr.t("Зелёное кольцо с процентом и звук при подключении зарядки") }),
+            make(tabletrc("Effects", "osd", true), { type: "switch", apply: "tabletshell",
+              label: Tr.t("Индикатор громкости и яркости"), note: Tr.t("Полосы уровня вверху экрана, когда громкость или яркость меняют клавишами") }),
             make(tabletrc("Effects", "unlockSound", true), { type: "switch",
               label: Tr.t("Звук разблокировки"), note: Tr.t("Мягкий щелчок, когда экран разблокирован") }),
             make(tabletrc("Effects", "lockSound", true), { type: "switch",

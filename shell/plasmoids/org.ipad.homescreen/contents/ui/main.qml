@@ -9,12 +9,14 @@ import QtQml
 import QtCore
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
+import QtQuick.Window
 
 import org.kde.plasma.plasmoid
 import org.kde.plasma.components as PC3
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.private.kicker as Kicker
 import org.kde.plasma.plasma5support as P5Support
+import org.kde.milou as Milou
 import "Tr.js" as Tr
 
 ContainmentItem {
@@ -941,19 +943,60 @@ ContainmentItem {
             }
         }
 
-        // Material: the search bar above the dock (KRunner), like the Pixel launcher's
+        // Material: the search bar above the dock, like the Pixel launcher's. Typing searches right
+        // here (KRunner's runners through Milou): the results open upwards from the bar, the bar
+        // rises above the on-screen keyboard while it is up. Enter runs the first result.
         Rectangle {
             id: searchBar
             visible: root.pixel && !root.pcMode && !root.editing
+            readonly property bool searching: searchField.activeFocus || searchField.text.length > 0
+            // the on-screen keyboard: KWin says whether it is up, its height is the share of the
+            // screen set in tablet-keyboardrc (height = landscape, heightPortrait = portrait)
+            property bool keyboardUp: false
+            property real keyboardShare: 0.4
+            readonly property real keyboardLift: keyboardUp && searchField.activeFocus
+                                                 ? Screen.height * keyboardShare + Kirigami.Units.largeSpacing : 0
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
-            anchors.bottomMargin: root.dockReserve + root.pageDotsClearance
+            anchors.bottomMargin: Math.max(root.dockReserve + root.pageDotsClearance, keyboardLift)
+            Behavior on anchors.bottomMargin { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
             width: Math.min(parent.width - Kirigami.Units.gridUnit * 4, Kirigami.Units.gridUnit * 34)
             height: root.searchHeight
             radius: height / 2
             color: root.dark ? Qt.rgba(0x2B / 255, 0x29 / 255, 0x30 / 255, 0.94) : Qt.rgba(0xEC / 255, 0xE6 / 255, 0xF0 / 255, 0.96)
+            border.width: searchField.activeFocus ? 2 : 0
+            border.color: root.pal.blue
             scale: searchArea.pressed ? 0.98 : 1
             Behavior on scale { NumberAnimation { duration: 120 } }
+
+            function clear() {
+                searchField.text = "";
+                searchField.focus = false;
+            }
+
+            onSearchingChanged: {
+                if (searching) {
+                    const portrait = Screen.height > Screen.width;
+                    root.runCommand(["kreadconfig6", "--file", "tablet-keyboardrc", "--group", "General",
+                                     "--key", portrait ? "heightPortrait" : "height", "--default", portrait ? "26" : "40"],
+                                    out => keyboardShare = Math.max(0.15, Math.min(0.6, (parseFloat(out) || 40) / 100)));
+                }
+            }
+            Timer {
+                interval: 350
+                repeat: true
+                running: searchField.activeFocus
+                triggeredOnStart: true
+                onTriggered: root.runCommand(["qdbus6", "org.kde.KWin", "/VirtualKeyboard", "org.kde.kwin.VirtualKeyboard.visible"],
+                                             out => searchBar.keyboardUp = out.trim() === "true")
+                onRunningChanged: if (!running) searchBar.keyboardUp = false
+            }
+
+            MouseArea {
+                id: searchArea
+                anchors.fill: parent
+                onClicked: searchField.forceActiveFocus()
+            }
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: parent.height * 0.42
@@ -966,32 +1009,168 @@ ContainmentItem {
                     isMask: true
                     color: root.pal.blue
                 }
-                Text {
+                QQC2.TextField {
+                    id: searchField
                     Layout.fillWidth: true
-                    text: Tr.t("Поиск приложений, файлов и в интернете")
-                    color: root.pal.secondary
-                    elide: Text.ElideRight
+                    background: null
+                    leftPadding: 0
+                    rightPadding: 0
+                    placeholderText: Tr.t("Поиск приложений, файлов и в интернете")
+                    placeholderTextColor: root.pal.secondary
+                    color: root.pal.text
+                    selectionColor: root.pal.blue
+                    selectedTextColor: root.dark ? "#211A2E" : "white"
                     font.family: root.fontFamily
                     font.pixelSize: Kirigami.Units.gridUnit * 0.95
+                    inputMethodHints: Qt.ImhNoPredictiveText
+                    onAccepted: searchResults.runFirst()
+                    Keys.onEscapePressed: searchBar.clear()
+                    Keys.onUpPressed: searchResults.forceFocus()
                 }
                 Kirigami.Icon {
                     Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
                     Layout.preferredHeight: Layout.preferredWidth
-                    source: "view-app-grid-symbolic"
+                    source: searchBar.searching ? "edit-clear-symbolic" : "view-app-grid-symbolic"
                     isMask: true
                     color: root.pal.secondary
                     MouseArea {
                         anchors.fill: parent
                         anchors.margins: -Kirigami.Units.smallSpacing
-                        onClicked: root.runCommand(["qdbus6", "org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell.activateLauncherMenu"])
+                        onClicked: {
+                            if (searchBar.searching) {
+                                searchBar.clear();
+                            } else {
+                                root.runCommand(["qdbus6", "org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell.activateLauncherMenu"]);
+                            }
+                        }
                     }
                 }
             }
-            MouseArea {
-                id: searchArea
-                anchors.fill: parent
-                z: -1
-                onClicked: root.runCommand(["qdbus6", "org.kde.krunner", "/App", "org.kde.krunner.App.display"])
+        }
+
+        // the search results, a sheet growing upwards from the search bar. The runners are only
+        // loaded while searching (they hold memory and threads of their own).
+        Loader {
+            id: searchResults
+            active: searchBar.visible && searchBar.searching
+            anchors.horizontalCenter: searchBar.horizontalCenter
+            anchors.bottom: searchBar.top
+            anchors.bottomMargin: Kirigami.Units.smallSpacing * 2
+            width: searchBar.width
+            height: Math.max(0, searchBar.y - Kirigami.Units.gridUnit * 2)
+            function runFirst() {
+                if (item) {
+                    item.run(0);
+                }
+            }
+            function forceFocus() {
+                if (item) {
+                    item.list.currentIndex = 0;
+                    item.list.forceActiveFocus();
+                }
+            }
+            sourceComponent: Item {
+                id: resultsBox
+                property alias list: results
+                function run(row) {
+                    if (row >= 0 && row < results.count) {
+                        milou.run(milou.index(row, 0));
+                        searchBar.clear();
+                    }
+                }
+                Milou.ResultsModel {
+                    id: milou
+                    queryString: searchField.text
+                    limit: 24
+                }
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: Math.min(parent.height, results.contentHeight + Kirigami.Units.largeSpacing * 2)
+                    visible: results.count > 0
+                    radius: Kirigami.Units.gridUnit * 1.4
+                    color: root.pal.sheet
+                    border.width: 1
+                    border.color: root.pal.sheetBorder
+                    clip: true
+                    ListView {
+                        id: results
+                        anchors.fill: parent
+                        anchors.margins: Kirigami.Units.largeSpacing
+                        model: milou
+                        // best match next to the bar, like the launcher
+                        verticalLayoutDirection: ListView.BottomToTop
+                        boundsBehavior: Flickable.StopAtBounds
+                        keyNavigationEnabled: true
+                        currentIndex: -1
+                        Keys.onReturnPressed: resultsBox.run(currentIndex)
+                        Keys.onEnterPressed: resultsBox.run(currentIndex)
+                        Keys.onEscapePressed: searchBar.clear()
+                        // bottom to top: Up goes on to the next result, Down back towards the bar
+                        Keys.onDownPressed: event => {
+                            if (currentIndex <= 0) {
+                                searchField.forceActiveFocus();
+                            } else {
+                                event.accepted = false;
+                            }
+                        }
+                        delegate: Rectangle {
+                            id: result
+                            required property int index
+                            required property var model
+                            width: ListView.view.width
+                            height: Kirigami.Units.gridUnit * 2.8
+                            radius: height / 2
+                            color: hit.pressed || ListView.isCurrentItem ? root.pal.fill : "transparent"
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: Kirigami.Units.largeSpacing
+                                anchors.rightMargin: Kirigami.Units.largeSpacing
+                                spacing: Kirigami.Units.largeSpacing
+                                Kirigami.Icon {
+                                    Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                                    Layout.preferredHeight: Layout.preferredWidth
+                                    source: result.model.decoration || "application-x-executable"
+                                }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 0
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: result.model.display || ""
+                                        color: root.pal.text
+                                        elide: Text.ElideRight
+                                        textFormat: Text.PlainText
+                                        font.family: root.fontFamily
+                                        font.pixelSize: Kirigami.Units.gridUnit * 0.9
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        visible: text.length > 0
+                                        text: String(result.model.subtext || "")
+                                        color: root.pal.secondary
+                                        elide: Text.ElideRight
+                                        textFormat: Text.PlainText
+                                        font.family: root.fontFamily
+                                        font.pixelSize: Kirigami.Units.gridUnit * 0.72
+                                    }
+                                }
+                                Text {
+                                    text: String(result.model.category || "")
+                                    color: root.pal.secondary
+                                    font.family: root.fontFamily
+                                    font.pixelSize: Kirigami.Units.gridUnit * 0.7
+                                }
+                            }
+                            MouseArea {
+                                id: hit
+                                anchors.fill: parent
+                                onClicked: resultsBox.run(result.index)
+                            }
+                        }
+                    }
+                }
             }
         }
 

@@ -248,6 +248,68 @@ public:
         notifications.call(QStringLiteral("Inhibit"), QStringLiteral("typewriter"), reason, QVariantMap());
     }
 
+    // Our own volume / brightness indicator (Osd.qml). Plasma keeps receiving the org.kde.osdService
+    // calls from plasma-pa, PowerDevil, the layout switcher...; we listen to them with dbus-monitor
+    // and draw the bars ourselves, Plasma's own OSD is switched off (plasmarc [OSD] Enabled).
+    // tabletrc [Effects] osd=false gives Plasma's back.
+    void watchOsd()
+    {
+        const bool own = effect("osd");
+        QProcess::startDetached(QStringLiteral("kwriteconfig6"), {QStringLiteral("--file"), QStringLiteral("plasmarc"), QStringLiteral("--group"),
+                                                                   QStringLiteral("OSD"), QStringLiteral("--key"), QStringLiteral("Enabled"),
+                                                                   QStringLiteral("--type"), QStringLiteral("bool"),
+                                                                   own ? QStringLiteral("false") : QStringLiteral("true")});
+        if (!own) {
+            return;
+        }
+        // a call's arguments follow its header line; the last call has nothing after it, so it is
+        // sent when the output pauses
+        auto *flush = new QTimer(this);
+        flush->setSingleShot(true);
+        flush->setInterval(15);
+        connect(flush, &QTimer::timeout, this, &Shell::emitOsd);
+        auto *monitor = new QProcess(this);
+        connect(monitor, &QProcess::readyReadStandardOutput, this, [this, monitor, flush] {
+            while (monitor->canReadLine()) {
+                const QString line = QString::fromUtf8(monitor->readLine()).trimmed();
+                if (line.startsWith(QLatin1String("method call ")) || line.startsWith(QLatin1String("signal "))) {
+                    emitOsd();
+                    const int at = line.indexOf(QLatin1String("member="));
+                    m_osdMember = line.startsWith(QLatin1String("method call ")) && at >= 0 ? line.mid(at + 7) : QString();
+                } else if (!m_osdMember.isEmpty()) {
+                    const int space = line.indexOf(QLatin1Char(' '));
+                    const QStringView type = QStringView(line).left(space);
+                    const QString value = line.mid(space + 1);
+                    if (type == QLatin1String("string")) {
+                        m_osdArgs << value.mid(1, value.size() - 2);
+                    } else if (type == QLatin1String("int32") || type == QLatin1String("boolean") || type == QLatin1String("double")) {
+                        m_osdArgs << value;
+                    }
+                }
+            }
+            flush->start();
+        });
+        connect(monitor, &QProcess::finished, this, [monitor] {
+            QTimer::singleShot(5000, monitor, [monitor] { startOsdMonitor(monitor); });
+        });
+        startOsdMonitor(monitor);
+    }
+
+    static void startOsdMonitor(QProcess *monitor)
+    {
+        monitor->start(QStringLiteral("stdbuf"), {QStringLiteral("-oL"), QStringLiteral("dbus-monitor"), QStringLiteral("--session"),
+                                                 QStringLiteral("type='method_call',interface='org.kde.osdService'")});
+    }
+
+    void emitOsd()
+    {
+        if (!m_osdMember.isEmpty()) {
+            Q_EMIT osdRequested(m_osdMember, m_osdArgs);
+        }
+        m_osdMember.clear();
+        m_osdArgs.clear();
+    }
+
     // Report key presses of physical keyboards (needs read access to their event devices)
     // Privacy indicator. Microphone: PipeWire's recording streams (pactl subscribe tells when they
     // change), not counting monitors of outputs and the volume meters of the shell itself.
@@ -659,6 +721,8 @@ Q_SIGNALS:
     void unlocked();
     void lockedNow();
     void keyPressed(int code);
+    // org.kde.osdService call (volumeChanged, screenBrightnessChanged, showText...) and its arguments
+    void osdRequested(const QString &member, const QStringList &args);
 
 public:
     void startScreenTime()
@@ -744,6 +808,8 @@ private:
     int m_waydroidIdle = 0;      // minutes without a Waydroid window while the session runs
     QString m_currentApp;
     bool m_locked = false;
+    QString m_osdMember;
+    QStringList m_osdArgs;
 };
 
 int main(int argc, char *argv[])
@@ -768,6 +834,7 @@ int main(int argc, char *argv[])
         shell.watchTabletMode();
         shell.watchPower();
         shell.watchRecording();
+        shell.watchOsd();
         QObject::connect(&app, &QCoreApplication::aboutToQuit, &shell, &Shell::flushScreenTime);
     } else if (mode == QLatin1String("codingfocus")) {
         // Hold notification inhibition using a persistent DBus owner. It ends when

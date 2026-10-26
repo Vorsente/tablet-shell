@@ -26,6 +26,8 @@ for s in tablet-gestures split-view slide-over picture-in-picture dock-mode; do
     kwriteconfig6 --file kwinrc --group Plugins --key "${s}Enabled" --delete
 done
 kwriteconfig6 --file kwinrc --group ModifierOnlyShortcuts --key Meta --delete
+# Plasma's own volume / brightness OSD (tabletshell draws its own and switches this one off)
+kwriteconfig6 --file plasmarc --group OSD --key Enabled --delete
 kwriteconfig6 --file kwinrc --group Input --key TabletMode auto
 rc=$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc
 systemctl --user stop plasma-plasmashell.service

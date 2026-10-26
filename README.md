@@ -389,6 +389,10 @@ Inter, Roboto Flex and Cousine fonts · [LazyVim](https://www.lazyvim.org) · we
 
 **October 2026**
 
+- **Search right in the Material bar:** the bar above the dock no longer opens KRunner at the top —
+  type in it, results open above it, Enter runs the first one; the bar rises above the on-screen keyboard.
+- **Volume and brightness indicator:** level bars at the top of the screen when keys change them (also
+  keyboard layout, microphone, Wi-Fi/Bluetooth); can be turned off in Settings → Modes.
 - **Material Design style** for the whole shell next to the iPadOS one, with its own Plasma themes,
   icons, wallpapers, widgets, Today page, dashboard, control center, settings and lock screen.
 - **Style change without glitches:** a curtain covers the screen until Plasma has restyled itself.
