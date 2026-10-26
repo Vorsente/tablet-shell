@@ -46,6 +46,8 @@ Kirigami.ApplicationWindow {
         case "device": return backend.deviceMode();
         case "home": return backend.homeScreen(item.key, item.def);
         case "dashboard": return backend.containmentConfig("org.ipad.dashboard", item.key, item.def);
+        // one city for every weather (home screen widgets and the dock dashboard)
+        case "weatherCity": return String(backend.homeScreen("weatherCity", "") || backend.containmentConfig("org.ipad.dashboard", "weatherCity", ""));
         case "appearance": return backend.run([home + "/.local/bin/appearance", "status"]).trim() || "auto";
         case "shellStyle": return uiStyle.name;
         case "info": return item.get();
@@ -63,6 +65,10 @@ Kirigami.ApplicationWindow {
         case "device": backend.setDeviceMode(v); break;
         case "home": backend.setHomeScreen(item.key, v); break;
         case "dashboard": backend.setContainmentConfig("org.ipad.dashboard", item.key, v); break;
+        case "weatherCity":
+            backend.setHomeScreen("weatherCity", v);
+            backend.setContainmentConfig("org.ipad.dashboard", "weatherCity", v);
+            break;
         case "appearance": backend.start([home + "/.local/bin/appearance", v]); break;
         case "shellStyle": backend.start([home + "/.local/bin/shell-style", v]); break;
         case "im":
@@ -213,12 +219,13 @@ Kirigami.ApplicationWindow {
             make(tabletrc("Weather", "source", "openmeteo"), { type: "choice", apply: "homeData", label: Tr.t("Источник погоды"),
                  note: Tr.t("Для виджетов, страницы «Сегодня», сводки и погоды на обоях. Все без ключа"),
                  options: [{ value: "openmeteo", label: "Open-Meteo" }, { value: "metno", label: "MET Norway (yr.no)" }, { value: "wttr", label: "wttr.in" }] }),
-            { type: "text", store: "home", key: "weatherCity", def: "", apply: "homeData", label: Tr.t("Город для погоды"), placeholder: Tr.t("Например, Москва") },
+            { type: "text", store: "weatherCity", apply: "homeData", label: Tr.t("Город для погоды"),
+              note: Tr.t("Один для виджетов, страницы «Сегодня» и сводки"), placeholder: Tr.t("Например, Москва") },
             make(tabletrc("Today", "newsCountry", "ru"), { type: "choice", apply: "homeData", label: Tr.t("Новости страны"),
                  note: Tr.t("Россия — Лента и ТАСС, другие страны — главное из Google Новостей на языке страны"),
                  options: app.newsCountries }),
             make(tabletrc("Today", "currency", "auto"), { type: "choice", apply: "homeData", label: Tr.t("Валюта курсов"),
-                 note: Tr.t("Рубль — курс ЦБ РФ, другие — ExchangeRate-API"),
+                 note: Tr.t("Рубль — курс ЦБ РФ, другие — currency-api"),
                  options: [{ value: "auto", label: Tr.t("По стране новостей") }].concat(
                      ["RUB", "UAH", "KZT", "USD", "EUR", "GBP", "CHF", "PLN", "CZK", "SEK", "NOK", "TRY", "ILS", "JPY", "KRW", "CAD", "AUD", "INR", "BRL"]
                          .map(c => ({ value: c, label: c }))) }),
@@ -239,8 +246,7 @@ Kirigami.ApplicationWindow {
             dash("w_claude", true, { type: "switch", label: Tr.t("Лимиты Claude") }),
             dash("w_youtube", true, { type: "switch", label: Tr.t("Подписчики YouTube") }),
             dash("w_network", true, { type: "switch", label: Tr.t("Сеть и диск") }),
-            dash("w_weather", false, { type: "switch", label: Tr.t("Погода"), note: Tr.t("Источник — в разделе «Сегодня и виджеты»") }),
-            dash("weatherCity", "", { type: "text", label: Tr.t("Город для погоды"), placeholder: Tr.t("Например, Москва") }),
+            dash("w_weather", false, { type: "switch", label: Tr.t("Погода"), note: Tr.t("Город и источник — в разделе «Сегодня и виджеты»") }),
             dash("w_media", false, { type: "switch", label: Tr.t("Сейчас играет"), note: Tr.t("Музыка и видео с управлением") }),
             dash("w_battery", false, { type: "switch", label: Tr.t("Аккумулятор"), note: Tr.t("Мощность и состояние батареи") }),
             dash("w_calendar", false, { type: "switch", label: Tr.t("Календарь") }),

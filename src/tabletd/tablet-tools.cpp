@@ -1399,8 +1399,8 @@ QJsonArray newsGroup(QNetworkAccessManager &net, const QString &spec, const QJso
 // Exchange rates in the chosen currency (tabletrc [Today] currency: a code, or "auto" = the news
 // country's): {base, sign, source, items: [{code, sign, value, previous}]}, value = how much of the
 // base one unit of the foreign currency costs. Roubles: the Bank of Russia (cbr-xml-daily.ru mirror,
-// with yesterday's rate); others: ExchangeRate-API's free daily rates (open.er-api.com, no key),
-// yesterday's value kept from the cache of an earlier day.
+// with yesterday's rate); others: the free daily rates of fawazahmed0/currency-api (no key), with
+// the day before for the change.
 struct Currency {
     const char *code, *sign;
 };
@@ -1457,32 +1457,32 @@ QJsonObject exchangeRates(QNetworkAccessManager &net, const QString &base, const
         }
         source = T(QStringLiteral("ЦБ РФ"));
     } else {
-        const Response r = request(net, browserRequest(QStringLiteral("https://open.er-api.com/v6/latest/") + base));
-        const QJsonObject o = QJsonDocument::fromJson(r.data).object();
-        const QJsonObject rates = o.value(QStringLiteral("rates")).toObject();
-        const QString day = QDateTime::fromSecsSinceEpoch(o.value(QStringLiteral("time_last_update_unix")).toInteger()).date().toString(Qt::ISODate);
-        // yesterday's values: what the cache had on an earlier day for the same base
-        const bool sameBase = old.value(QStringLiteral("base")).toString() == base;
-        const bool newDay = old.value(QStringLiteral("day")).toString() != day;
-        QHash<QString, double> before;
-        for (const QJsonValue &v : old.value(QStringLiteral("items")).toArray()) {
-            const QJsonObject i = v.toObject();
-            before.insert(i.value(QStringLiteral("code")).toString(),
-                          i.value(newDay ? QStringLiteral("value") : QStringLiteral("previous")).toDouble());
-        }
+        // fawazahmed0/currency-api: daily rates for every currency with their history by date
+        // (jsDelivr, the project's own mirror as a fallback), so yesterday's rate is there too
+        const QString b = base.toLower();
+        auto fetch = [&](const QString &version) {
+            for (const QString &url : {QStringLiteral("https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@%1/v1/currencies/%2.json").arg(version, b),
+                                       QStringLiteral("https://%1.currency-api.pages.dev/v1/currencies/%2.json").arg(version, b)}) {
+                const QJsonObject o = QJsonDocument::fromJson(request(net, browserRequest(url)).data).object();
+                if (!o.value(b).toObject().isEmpty()) {
+                    return o;
+                }
+            }
+            return QJsonObject{};
+        };
+        const QJsonObject now = fetch(QStringLiteral("latest"));
+        const QDate day = QDate::fromString(now.value(QStringLiteral("date")).toString(), Qt::ISODate);
+        const QJsonObject before = day.isValid() ? fetch(day.addDays(-1).toString(Qt::ISODate)) : QJsonObject{};
+        const QJsonObject rates = now.value(b).toObject(), ratesBefore = before.value(b).toObject();
         for (const QString &code : codes) {
-            const double perBase = rates.value(code).toDouble();
+            const double perBase = rates.value(code.toLower()).toDouble();
             if (perBase <= 0) continue;
-            const double value = 1.0 / perBase;
+            const double perBaseBefore = ratesBefore.value(code.toLower()).toDouble();
             items.append(QJsonObject{{QStringLiteral("code"), code}, {QStringLiteral("sign"), currencySign(code)},
-                                     {QStringLiteral("value"), value},
-                                     {QStringLiteral("previous"), sameBase && before.value(code) > 0 ? before.value(code) : value}});
+                                     {QStringLiteral("value"), 1.0 / perBase},
+                                     {QStringLiteral("previous"), perBaseBefore > 0 ? 1.0 / perBaseBefore : 1.0 / perBase}});
         }
-        source = QStringLiteral("ExchangeRate-API");
-        if (!items.isEmpty()) {
-            return {{QStringLiteral("base"), base}, {QStringLiteral("sign"), currencySign(base)}, {QStringLiteral("source"), source},
-                    {QStringLiteral("day"), day}, {QStringLiteral("items"), items}};
-        }
+        source = QStringLiteral("currency-api");
     }
     if (items.isEmpty()) {
         return old.value(QStringLiteral("base")).toString() == base ? old : QJsonObject{};
@@ -1491,14 +1491,22 @@ QJsonObject exchangeRates(QNetworkAccessManager &net, const QString &base, const
             {QStringLiteral("items"), items}};
 }
 
-// a few events of this day in history (Russian Wikipedia), spread over the centuries
-QJsonArray onThisDay(QNetworkAccessManager &net)
+// a few events of this day in history from the Wikipedia in the news country's language (English
+// where that Wikipedia has no such feed), spread over the centuries
+QJsonArray onThisDay(QNetworkAccessManager &net, const QString &lang)
 {
     const QDate d = QDate::currentDate();
-    const Response r = request(net, browserRequest(QStringLiteral("https://ru.wikipedia.org/api/rest_v1/feed/onthisday/events/%1/%2")
-                                                       .arg(d.month(), 2, 10, QLatin1Char('0')).arg(d.day(), 2, 10, QLatin1Char('0'))));
+    auto feed = [&](const QString &l) {
+        const Response r = request(net, browserRequest(QStringLiteral("https://%1.wikipedia.org/api/rest_v1/feed/onthisday/events/%2/%3")
+                                                           .arg(l).arg(d.month(), 2, 10, QLatin1Char('0')).arg(d.day(), 2, 10, QLatin1Char('0'))));
+        return QJsonDocument::fromJson(r.data).object().value(QStringLiteral("events")).toArray();
+    };
+    QJsonArray found = feed(lang);
+    if (found.isEmpty() && lang != QLatin1String("en")) {
+        found = feed(QStringLiteral("en"));
+    }
     QList<QJsonObject> events;
-    for (const QJsonValue &v : QJsonDocument::fromJson(r.data).object().value(QStringLiteral("events")).toArray()) {
+    for (const QJsonValue &v : std::as_const(found)) {
         const QJsonObject e = v.toObject();
         const QJsonObject page = e.value(QStringLiteral("pages")).toArray().at(0).toObject();
         events.append({{QStringLiteral("year"), e.value(QStringLiteral("year")).toInt()},
@@ -1655,13 +1663,18 @@ int today(bool force)
         {QStringLiteral("updated"), QDateTime::currentDateTime().toString(Qt::ISODate)},
     };
     const QString day = QDate::currentDate().toString(Qt::ISODate);
-    if (cached.value(QStringLiteral("onthisdayDate")).toString() == day && !cached.value(QStringLiteral("onthisday")).toArray().isEmpty()) {
+    // the country's Wikipedia: Kazakhstan reads the Russian one
+    const QString wikiLang = QLatin1String(country.code) == QLatin1String("kz") ? QStringLiteral("ru")
+                                                                                : QString::fromLatin1(country.lang).section(QLatin1Char('-'), 0, 0);
+    if (cached.value(QStringLiteral("onthisdayDate")).toString() == day && cached.value(QStringLiteral("onthisdayLang")).toString(QStringLiteral("ru")) == wikiLang
+            && !cached.value(QStringLiteral("onthisday")).toArray().isEmpty()) {
         result.insert(QStringLiteral("onthisday"), cached.value(QStringLiteral("onthisday")));
     } else {
-        const QJsonArray events = onThisDay(net);
+        const QJsonArray events = onThisDay(net, wikiLang);
         result.insert(QStringLiteral("onthisday"), events.isEmpty() ? cached.value(QStringLiteral("onthisday")) : QJsonValue(events));
     }
     result.insert(QStringLiteral("onthisdayDate"), day);
+    result.insert(QStringLiteral("onthisdayLang"), wikiLang);
     writePrivateJson(todayCache, result);
     out(QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact)) + QLatin1Char('\n'));
     return 0;

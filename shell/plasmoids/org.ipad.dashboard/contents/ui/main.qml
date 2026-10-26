@@ -1007,7 +1007,7 @@ ContainmentItem {
                 Caption {
                     anchors.centerIn: parent
                     visible: !Plasmoid.configuration.weatherCity || (!!weatherW.w.error && weatherW.w.temp === undefined)
-                    text: Plasmoid.configuration.weatherCity ? (weatherW.w.error || "") : Tr.t("Укажите город в Настройках → Сводка")
+                    text: Plasmoid.configuration.weatherCity ? (weatherW.w.error || "") : Tr.t("Укажите город в Настройках → Сегодня и виджеты")
                 }
                 RowLayout {
                     anchors.fill: parent

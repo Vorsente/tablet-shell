@@ -755,4 +755,8 @@ EN = {
     'Сборка': 'Build',
     'Установка': 'Install',
     'Сон отключён до конца обновления': 'Sleep is off until the update finishes',
+    'Один для виджетов, страницы «Сегодня» и сводки': 'One for the widgets, the Today page and the dashboard',
+    'Город и источник — в разделе «Сегодня и виджеты»': 'City and source: see “Today and widgets”',
+    'Рубль — курс ЦБ РФ, другие — currency-api': 'Rouble: Bank of Russia rates; others: currency-api',
+    'Укажите город в Настройках → Сегодня и виджеты': 'Set the city in Settings → Today and widgets',
 }

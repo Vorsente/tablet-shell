@@ -430,12 +430,16 @@ Item {
     Component {
         id: newsView
         Item {
+            id: news
             readonly property var items: material.kind === "linux" ? material.d.linuxNews
                                        : material.kind === "custom" ? material.d.customNews : material.d.russiaNews
+            // a low card (the medium size): one-line headlines, so two or three fit on a page
+            readonly property bool compact: height < material.u * 8
+            readonly property real rowHeight: material.u * (compact ? 2.3 : 3.4)
             Pager {
                 anchors.fill: parent
                 items: parent.items
-                rowHeight: material.u * 3.4
+                rowHeight: news.rowHeight
                 dotColor: material.on
                 swipe: material.swipe
                 onHeld: material.held()
@@ -443,7 +447,7 @@ Item {
                     required property var modelData
                     required property int index
                     width: parent ? parent.width : 0
-                    height: material.u * 3.4
+                    height: news.rowHeight
                     Rectangle {
                         visible: index > 0
                         width: parent.width
@@ -461,7 +465,7 @@ Item {
                             font.pixelSize: material.u * 0.92
                             font.weight: Font.Medium
                             wrapMode: Text.WordWrap
-                            maximumLineCount: 2
+                            maximumLineCount: news.compact ? 1 : 2
                         }
                         Muted {
                             width: parent.width
