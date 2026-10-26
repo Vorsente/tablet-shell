@@ -407,5 +407,3 @@ Inter, Roboto Flex and Cousine fonts · [LazyVim](https://www.lazyvim.org) · we
 - **Coding mode** with LazyVim, a pen tool ring with Krita and screen recording.
 - Fixes: the panel missing after login, sliders after a live style switch, masked icons showing as
   squares, dates in the wrong language, a false "GitHub is older" warning.
-
-Detailed notes (in Russian) are in the `ИЗМЕНЕНИЯ-*.md` and `ИСПРАВЛЕНИЯ*.md` files.
