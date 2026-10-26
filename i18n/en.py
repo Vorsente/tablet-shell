@@ -750,4 +750,9 @@ EN = {
     'Рубль — курс ЦБ РФ, другие — ExchangeRate-API': 'Rouble: Bank of Russia rates; others: ExchangeRate-API',
     'Свои RSS-ленты': 'Your RSS feeds',
     'ЦБ РФ': 'Bank of Russia',
+    'Скачивание': 'Download',
+    'Проверка': 'Check',
+    'Сборка': 'Build',
+    'Установка': 'Install',
+    'Сон отключён до конца обновления': 'Sleep is off until the update finishes',
 }

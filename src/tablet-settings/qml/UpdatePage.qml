@@ -61,13 +61,14 @@ ColumnLayout {
         color: root.stage === "error" ? Kirigami.Theme.negativeTextColor
              : root.stage === "available" && root.info.older ? Kirigami.Theme.neutralTextColor : Kirigami.Theme.textColor
     }
-    QQC2.ProgressBar {
+    UpdateAnimation {
         Layout.fillWidth: true
-        visible: root.busy
-        indeterminate: !["downloading", "installing"].includes(root.stage) || !info.progress
-        from: 0
-        to: 100
-        value: Number(info.progress || 0)
+        Layout.topMargin: Kirigami.Units.largeSpacing
+        Layout.bottomMargin: Kirigami.Units.largeSpacing
+        visible: root.busy || root.stage === "done"
+        stage: root.stage
+        progress: Number(root.info.progress || 0)
+        step: Number(root.info.step || 0)
     }
     QQC2.Label {
         Layout.fillWidth: true
