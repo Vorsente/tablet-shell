@@ -21,9 +21,12 @@ test('greeter startup discards cage/libseat output and never creates a session l
         assert.doesNotMatch(source, />.*session\.log/);
     } finally { fs.rmSync(tmp, {recursive:true, force:true}); }
 });
-test('installer retains explicit greeter opt-in and refresh without enabling another manager', () => {
+test('installer asks for sudo once, installs the greeter unless --no-greeter and refreshes it', () => {
     const install = fs.readFileSync(path.join(__dirname, '../install.sh'), 'utf8');
     assert.match(install, /--install-greeter/);
+    assert.match(install, /--no-greeter\) GREETER= ;;/);
+    assert.match(install, /sudo -v/);
+    assert.ok(install.indexOf('sudo -v') < install.indexOf('# ---- 1. what this needs'));
     assert.match(install, /--refresh/);
     assert.match(install, /tablet-shell-greeter/);
     const greeter = fs.readFileSync(path.join(__dirname, '../system/greeter.sh'), 'utf8');

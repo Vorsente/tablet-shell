@@ -1,7 +1,8 @@
 // tabletshell: small always-on-top tablet UI pieces drawn on the layer-shell overlay layer.
 //   tabletshell control   control center (D-Bus org.ipad.TabletShell: ToggleControlCenter, Back,
 //                         ModeTransition/ModeReady = mode change animation, ShowCharging = charging
-//                         animation, PowerMenu, PenRing; it also plays the lock/unlock sounds)
+//                         animation, PowerMenu, PenRing; it also plays the lock/unlock sounds;
+//                         a long press on text shows the phone-style text menu)
 //   tabletshell pill      typewriter status pill: battery, clock, words today; while it runs
 //                         notifications are inhibited (focus) and key presses are reported for sounds
 // The QML files next to this binary describe the UI; `shell` gives them process and file helpers.
@@ -33,6 +34,8 @@
 #include <QQuickWindow>
 #include <QPainterPath>
 #include <QRegion>
+#include <QLineF>
+#include <QScreen>
 
 #include <KWindowEffects>
 
@@ -447,6 +450,234 @@ public:
         }
     }
 
+    // Text menu like on a phone (TextMenu.qml): hold a finger on a text field, or select text with a
+    // held finger, and Cut / Copy / Paste / Select all appear where the finger was lifted. The touch
+    // screen is only read (KWin still gets every touch); it needs the uaccess rule of
+    // system/devices.sh. A text field = KWin says the active window takes text input
+    // (/VirtualKeyboard); a selection = the primary selection changed during the touch.
+    // Off with tabletrc [Effects] textMenu=false.
+    void watchTouch()
+    {
+        for (const QString &ev : QDir(QStringLiteral("/sys/class/input")).entryList({QStringLiteral("event*")})) {
+            const QString dev = QStringLiteral("/sys/class/input/%1/device/").arg(ev);
+            const quint64 props = readFile(dev + QStringLiteral("properties")).toULongLong(nullptr, 16);
+            const quint64 abs = readFile(dev + QStringLiteral("capabilities/abs")).split(QLatin1Char(' ')).last().toULongLong(nullptr, 16);
+            // a touch screen: direct input with multi-touch positions (the pen has no MT axes)
+            if (!(props & (1ULL << INPUT_PROP_DIRECT)) || !(abs & (1ULL << ABS_MT_POSITION_X))) {
+                continue;
+            }
+            m_touchFd = open(QStringLiteral("/dev/input/%1").arg(ev).toLocal8Bit().constData(), O_RDONLY | O_NONBLOCK);
+            if (m_touchFd < 0) {
+                continue;   // no access yet (system/devices.sh not run)
+            }
+            ioctl(m_touchFd, EVIOCGABS(ABS_MT_POSITION_X), &m_touchX);
+            ioctl(m_touchFd, EVIOCGABS(ABS_MT_POSITION_Y), &m_touchY);
+            break;
+        }
+        if (m_touchFd < 0) {
+            return;
+        }
+        m_holdTimer = new QTimer(this);
+        m_holdTimer->setSingleShot(true);
+        m_holdTimer->setInterval(500);
+        connect(m_holdTimer, &QTimer::timeout, this, [this] { m_held = true; });
+        auto *notifier = new QSocketNotifier(m_touchFd, QSocketNotifier::Read, this);
+        connect(notifier, &QSocketNotifier::activated, this, [this] {
+            input_event ev;
+            while (read(m_touchFd, &ev, sizeof(ev)) == sizeof(ev)) {
+                if (ev.type == EV_ABS && ev.code == ABS_MT_SLOT) {
+                    m_slot = qBound(0, ev.value, kTouchSlots - 1);
+                } else if (ev.type == EV_ABS && ev.code == ABS_MT_TRACKING_ID) {
+                    m_contacts[m_slot].id = ev.value;
+                } else if (ev.type == EV_ABS && ev.code == ABS_MT_POSITION_X) {
+                    m_contacts[m_slot].x = ev.value;
+                } else if (ev.type == EV_ABS && ev.code == ABS_MT_POSITION_Y) {
+                    m_contacts[m_slot].y = ev.value;
+                } else if (ev.type == EV_SYN && ev.code == SYN_REPORT) {
+                    touchFrame();
+                }
+            }
+        });
+        // the primary selection changes whenever text gets selected (text only: no image transfers)
+        auto *primary = new QProcess(this);
+        connect(primary, &QProcess::readyReadStandardOutput, this, [this, primary] {
+            m_primaryChanges += primary->readAllStandardOutput().count('\n');
+        });
+        connect(primary, &QProcess::finished, this, [primary] {
+            QTimer::singleShot(5000, primary, [primary] { startPrimaryWatch(primary); });
+        });
+        startPrimaryWatch(primary);
+        // touches come in the panel's own orientation; follow the screen's rotation
+        auto watchScreen = [this](QScreen *s) {
+            connect(s, &QScreen::geometryChanged, this, &Shell::readRotation);
+        };
+        for (QScreen *s : QGuiApplication::screens()) {
+            watchScreen(s);
+        }
+        connect(qApp, &QGuiApplication::screenAdded, this, watchScreen);
+        readRotation();
+    }
+
+    static void startPrimaryWatch(QProcess *p)
+    {
+        p->start(QStringLiteral("wl-paste"), {QStringLiteral("--primary"), QStringLiteral("--type"), QStringLiteral("text"),
+                                             QStringLiteral("--watch"), QStringLiteral("echo")});
+    }
+
+    // KScreen rotation of the built-in screen (1 none, 2 left, 4 inverted, 8 right)
+    void readRotation()
+    {
+        auto *p = new QProcess(this);
+        connect(p, &QProcess::finished, this, [this, p] {
+            p->deleteLater();
+            const QJsonArray outputs = QJsonDocument::fromJson(p->readAllStandardOutput()).object().value(QStringLiteral("outputs")).toArray();
+            for (const QJsonValue &v : outputs) {
+                const QJsonObject o = v.toObject();
+                const QString name = o.value(QStringLiteral("name")).toString();
+                if (name.startsWith(QLatin1String("eDP")) || name.startsWith(QLatin1String("LVDS")) || name.startsWith(QLatin1String("DSI"))) {
+                    m_rotation = o.value(QStringLiteral("rotation")).toInt(1);
+                }
+            }
+        });
+        p->start(QStringLiteral("kscreen-doctor"), {QStringLiteral("-j")});
+    }
+
+    // where a contact is, as fractions of the (rotated) built-in screen
+    QPointF touchPoint(int slot) const
+    {
+        const double rx = double(m_contacts[slot].x - m_touchX.minimum) / qMax(1, m_touchX.maximum - m_touchX.minimum);
+        const double ry = double(m_contacts[slot].y - m_touchY.minimum) / qMax(1, m_touchY.maximum - m_touchY.minimum);
+        switch (m_rotation) {
+        case 2: return {1 - ry, rx};
+        case 4: return {1 - rx, 1 - ry};
+        case 8: return {ry, 1 - rx};
+        default: return {rx, ry};
+        }
+    }
+
+    // one complete touch frame: a single finger held still for 500 ms makes a long press (after
+    // that it may move: dragging selects text); it counts when the finger is lifted
+    void touchFrame()
+    {
+        int down = 0;
+        int first = -1;
+        for (int i = 0; i < kTouchSlots; ++i) {
+            if (m_contacts[i].id >= 0) {
+                ++down;
+                if (first < 0) {
+                    first = i;
+                }
+            }
+        }
+        if (!m_touching) {
+            if (down == 0) {
+                return;
+            }
+            m_touching = true;
+            m_held = false;
+            m_cancelled = down > 1;
+            m_touchSlot = first;
+            m_touchStart = m_touchLast = touchPoint(first);
+            m_primaryAtDown = m_primaryChanges;
+            Q_EMIT touchStarted(m_touchStart.x(), m_touchStart.y());
+            if (!m_cancelled) {
+                m_holdTimer->start();
+            }
+            return;
+        }
+        if (down == 0) {
+            m_touching = false;
+            m_holdTimer->stop();
+            if (m_held && !m_cancelled) {
+                // let the app take focus / finish its selection first
+                QTimer::singleShot(150, this, [this, at = m_touchLast] { offerTextMenu(at); });
+            }
+            return;
+        }
+        if (down > 1) {
+            m_cancelled = true;   // pinch, two-finger scroll
+            m_holdTimer->stop();
+            return;
+        }
+        if (m_contacts[m_touchSlot].id >= 0) {
+            m_touchLast = touchPoint(m_touchSlot);
+        }
+        if (!m_held && QLineF(m_touchStart, m_touchLast).length() > 0.015) {
+            m_cancelled = true;   // a swipe or scroll
+            m_holdTimer->stop();
+        }
+    }
+
+    // apps that bring their own long-press text menu: browsers, Electron, GTK, Kirigami (Qt Quick
+    // Controls show MobileTextActionsToolBar in tablet mode), Android; plus tabletrc [TextMenu] skip
+    bool ownTextMenu(const QString &app) const
+    {
+        const QSettings tabletrc(QDir::homePath() + QStringLiteral("/.config/tabletrc"), QSettings::IniFormat);
+        const QStringList skip = tabletrc.value(QStringLiteral("TextMenu/skip"),
+            QStringList{QStringLiteral("firefox"), QStringLiteral("chromium"), QStringLiteral("chrome"), QStringLiteral("brave"),
+                        QStringLiteral("waydroid"), QStringLiteral("claude"), QStringLiteral("org.kde.plasmashell")}).toStringList();
+        for (const QString &s : skip) {
+            if (!s.isEmpty() && app.contains(s, Qt::CaseInsensitive)) {
+                return true;
+            }
+        }
+        QFile maps(QStringLiteral("/proc/%1/maps").arg(m_windowPid));
+        if (!maps.open(QIODevice::ReadOnly)) {
+            return true;   // not ours to look at (another user, gone): stay out of the way
+        }
+        const QByteArray libs = maps.readAll();
+        for (const char *lib : {"libKirigami", "libgtk-3", "libgtk-4", "libxul", "libcef", "libQt6WebEngineCore", "libelectron"}) {
+            if (libs.contains(lib)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void offerTextMenu(QPointF at)
+    {
+        if (m_locked || !effect("textMenu") || m_currentApp.isEmpty()) {
+            return;
+        }
+        // panels, the dock and our own overlays lie outside the active window
+        if (m_windowPid <= 0 || !m_windowArea.contains(at) || ownTextMenu(m_currentApp)) {
+            return;
+        }
+        const bool selected = m_primaryChanges != m_primaryAtDown;
+        auto *watcher = new QDBusPendingCallWatcher(
+            QDBusConnection::sessionBus().asyncCall(QDBusMessage::createMethodCall(
+                QStringLiteral("org.kde.KWin"), QStringLiteral("/VirtualKeyboard"), QStringLiteral("org.freedesktop.DBus.Properties"),
+                QStringLiteral("GetAll")) << QStringLiteral("org.kde.kwin.VirtualKeyboard")),
+            this);
+        connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, at, selected] {
+            watcher->deleteLater();
+            const QDBusReply<QVariantMap> reply = *watcher;
+            const QVariantMap vk = reply.isValid() ? reply.value() : QVariantMap();
+            const bool editable = vk.value(QStringLiteral("activeClientSupportsTextInput")).toBool();
+            if (!editable && !selected) {
+                return;
+            }
+            // a long press on the on-screen keyboard (its own alternates) is not for us
+            if (vk.value(QStringLiteral("visible")).toBool()) {
+                const QSettings kb(QDir::homePath() + QStringLiteral("/.config/tablet-keyboardrc"), QSettings::IniFormat);
+                const bool portrait = m_rotation == 2 || m_rotation == 8;
+                const double share = portrait ? kb.value(QStringLiteral("General/heightPortrait"), 26).toDouble()
+                                              : kb.value(QStringLiteral("General/height"), 40).toDouble();
+                if (at.y() > 1 - share / 100) {
+                    return;
+                }
+            }
+            // Paste only with something on the clipboard (types only: no data is transferred)
+            auto *types = new QProcess(this);
+            connect(types, &QProcess::finished, this, [this, types, at, editable, selected] {
+                types->deleteLater();
+                const bool canPaste = !types->readAllStandardOutput().trimmed().isEmpty();
+                Q_EMIT textMenuRequested(at.x(), at.y(), editable, selected, canPaste, m_currentApp);
+            });
+            types->start(QStringLiteral("wl-paste"), {QStringLiteral("--list-types")});
+        });
+    }
+
 public Q_SLOTS:
     Q_SCRIPTABLE void ToggleControlCenter()
     {
@@ -581,6 +812,17 @@ public Q_SLOTS:
         return m_currentApp;
     }
 
+    // The active window for the text menu (tablet-gestures KWin script): "pid x y width height",
+    // the rectangle as fractions of the built-in screen; pid 0 = no app window in front
+    Q_SCRIPTABLE void WindowArea(const QString &area)
+    {
+        const QStringList v = area.split(QLatin1Char(' '));
+        if (v.size() == 5) {
+            m_windowPid = v[0].toLongLong();
+            m_windowArea = QRectF(v[1].toDouble(), v[2].toDouble(), v[3].toDouble(), v[4].toDouble());
+        }
+    }
+
     Q_SCRIPTABLE void ScreenLocked(bool locked)
     {
         flushScreenTime();
@@ -626,6 +868,12 @@ public Q_SLOTS:
                 QStringLiteral("setClipboardContents")) << hex);
             Q_EMIT colorPicked(hex);
         });
+    }
+
+    // The text menu at x, y (fractions of the built-in screen) with every button, for testing
+    Q_SCRIPTABLE void ShowTextMenu(double x, double y)
+    {
+        Q_EMIT textMenuRequested(x, y, true, true, true, QString());
     }
 
     // Held power button (tabletd): the power menu (PowerMenu.qml)
@@ -730,6 +978,10 @@ Q_SIGNALS:
     void keyPressed(int code);
     // org.kde.osdService call (volumeChanged, screenBrightnessChanged, showText...) and its arguments
     void osdRequested(const QString &member, const QStringList &args);
+    // touch screen (watchTouch): a finger went down / a long press for the text menu, as fractions
+    // of the built-in screen
+    void touchStarted(double x, double y);
+    void textMenuRequested(double x, double y, bool editable, bool selected, bool canPaste, const QString &app);
 
 public:
     void startScreenTime()
@@ -817,6 +1069,30 @@ private:
     bool m_locked = false;
     QString m_osdMember;
     QStringList m_osdArgs;
+    // text menu: touch screen state
+    static constexpr int kTouchSlots = 16;
+    struct Contact {
+        int id = -1;
+        int x = 0;
+        int y = 0;
+    };
+    Contact m_contacts[kTouchSlots];
+    int m_touchFd = -1;
+    input_absinfo m_touchX{};
+    input_absinfo m_touchY{};
+    int m_slot = 0;
+    int m_touchSlot = 0;
+    bool m_touching = false;
+    bool m_held = false;
+    bool m_cancelled = false;
+    QPointF m_touchStart;
+    QPointF m_touchLast;
+    QTimer *m_holdTimer = nullptr;
+    int m_primaryChanges = 0;
+    int m_primaryAtDown = 0;
+    int m_rotation = 1;
+    qint64 m_windowPid = 0;
+    QRectF m_windowArea;
 };
 
 int main(int argc, char *argv[])
@@ -842,6 +1118,7 @@ int main(int argc, char *argv[])
         shell.watchPower();
         shell.watchRecording();
         shell.watchOsd();
+        shell.watchTouch();
         QObject::connect(&app, &QCoreApplication::aboutToQuit, &shell, &Shell::flushScreenTime);
     } else if (mode == QLatin1String("codingfocus")) {
         // Hold notification inhibition using a persistent DBus owner. It ends when

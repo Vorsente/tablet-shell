@@ -3,6 +3,7 @@
 #   uinput           tabletshell's virtual keys (back gesture, shortcuts)
 #   power buttons    tabletd handles the power button and the Windows/home button under the screen
 #   pens             tabletd: palm rejection, pen buttons, the corner quick note
+#   touch screen     tabletshell: long press on text -> the phone-style text menu (read only)
 #   keyboards        the typewriter's key sounds and the keyboard-dock detection
 # Also installs the pen apps (Rnote, Xournal++).
 # Run: sudo ./system/devices.sh            Undo: sudo ./system/devices.sh --undo
@@ -25,6 +26,7 @@ KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinpu
 SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="Power Button", TAG+="uaccess"
 SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="gpio-keys", TAG+="uaccess"
 SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_TABLET}=="1", TAG+="uaccess"
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_TOUCHSCREEN}=="1", TAG+="uaccess"
 SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_KEYBOARD}=="1", ENV{ID_BUS}=="usb|bluetooth", TAG+="uaccess"
 RULE
 # rules from older versions of this setup

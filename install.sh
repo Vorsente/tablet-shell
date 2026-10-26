@@ -1,15 +1,18 @@
 #!/bin/bash
 # Installs the tablet shell for the current user on Arch Linux + KDE Plasma 6 (Wayland).
-#   ./install.sh                 build, files, themes, settings; sudo for packages and installed greeter
+#   ./install.sh                 asks for sudo once, then: packages, build, files, themes, settings
+#                                and the system parts (device access, login screen, network, language,
+#                                snapshots, boot splash)
 #   ./install.sh --city Berlin   weather city (default: the time zone's city)
 #   ./install.sh --no-themes     keep the current themes/icons/wallpapers
 #   ./install.sh --update-only  update installed files/services without resetting KDE settings
 #   ./install.sh --no-build      reuse build/ (after an earlier ./build.sh)
 #   ./install.sh --containments  only switch the screens to the home screen / dashboard again
 #   ./install.sh --no-greeter-update  skip refreshing an installed tablet-shell login screen
-#   ./install.sh --install-greeter  explicitly replace the system display manager with tablet greeter
-# System parts (login screen, device access, snapshots, boot splash, language, Android) are
-# separate sudo scripts in system/; the end of the run lists them.
+#   ./install.sh --no-system     no sudo: user part only (the end of the run lists the system scripts)
+#   ./install.sh --no-greeter    keep the current login screen (SDDM / Plasma Login)
+#   ./install.sh --android       also Android apps (Waydroid; downloads about 1 GB)
+# The system parts are the sudo scripts in system/; each can also be run (or undone) on its own.
 set -e
 cd "$(dirname "$(readlink -f "$0")")"
 REPO=$PWD
@@ -22,6 +25,9 @@ ONLY_CONTAINMENTS=
 GREETER_UPDATE=1
 GREETER_INSTALL=
 UPDATE_ONLY=
+SYSTEM=1
+GREETER=1
+ANDROID=
 PROTECT_INPUT_LOCK=
 SKIP_FAILED_BUILDS=${TABLET_SHELL_SKIP_FAILED_BUILDS:-0}
 while [ $# -gt 0 ]; do
@@ -34,10 +40,13 @@ while [ $# -gt 0 ]; do
         --containments) ONLY_CONTAINMENTS=1 ;;
         --no-greeter-update) GREETER_UPDATE= ;;
         --install-greeter) GREETER_INSTALL=1 ;;
+        --no-system) SYSTEM= ;;
+        --no-greeter) GREETER= ;;
+        --android) ANDROID=1 ;;
         --update-only) UPDATE_ONLY=1; PROTECT_INPUT_LOCK=1; GREETER_UPDATE=; THEMES= ;;
         --skip-failed-builds) SKIP_FAILED_BUILDS=1 ;;
         --require-all) SKIP_FAILED_BUILDS=0 ;;
-        -h|--help) sed -n '2,9p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
         *) echo "unknown option: $1"; exit 1 ;;
     esac
     shift
@@ -98,6 +107,31 @@ fi
 if [ -n "$ONLY_CONTAINMENTS" ]; then
     containments
     exit 0
+fi
+
+# ---- 0. administrator rights -------------------------------------------------------------------
+# Asked once, before anything is installed: the packages and every system part (system/*.sh) need
+# it. sudo's timestamp is kept fresh in the background until the installer exits, so a long build
+# does not ask again. Without a terminal (the Settings updater) only an already valid sudo is used.
+SUDO_OK=
+if [ -n "$SYSTEM" ]; then
+    if sudo -n true 2>/dev/null; then
+        SUDO_OK=1
+    elif [ -t 0 ]; then
+        say "Права администратора" "Administrator rights"
+        echo "  $(t "Пароль нужен один раз: пакеты, доступ к кнопкам, перу и сенсорному экрану, экран входа, сеть, язык, снимки системы, заставка загрузки." \
+                    "The password is asked once: packages, access to buttons, pen and touch screen, login screen, network, language, system snapshots, boot splash.")"
+        if sudo -v; then
+            SUDO_OK=1
+        else
+            echo "  $(t "Без sudo: системные части пропущены." "No sudo: the system parts are skipped.")"
+        fi
+    fi
+    if [ -n "$SUDO_OK" ]; then
+        ( while kill -0 $$ 2>/dev/null; do sudo -n -v 2>/dev/null; sleep 50; done ) &
+        SUDO_KEEPER=$!
+        trap 'kill "$SUDO_KEEPER" 2>/dev/null' EXIT
+    fi
 fi
 
 # ---- 1. what this needs ------------------------------------------------------------------------
@@ -330,31 +364,6 @@ else
 fi
 install -m755 update.sh "$SHARE/tablet-shell/update.sh"
 
-# Reinstall refreshes the installed tablet-shell greetd screen, if present.
-# It will NEVER replace an unrelated SDDM/Plasma Login configuration.
-GREETER_PENDING="$HOME/.local/state/tablet-shell/greeter-refresh-needed"
-if [ -n "$GREETER_INSTALL" ]; then
-    say "Установка экрана входа" "Installing login screen"
-    sudo "$REPO/system/greeter.sh"
-elif [ -n "$GREETER_UPDATE" ] && [ -r /etc/greetd/config.toml ] &&
-     grep -Eq 'tablet-greeter|tablet-shell-greeter' /etc/greetd/config.toml; then
-    say "Обновление экрана входа" "Updating login screen"
-    refreshed=
-    if sudo -n bash "$REPO/system/greeter.sh" --refresh; then
-        refreshed=1
-    elif [ -t 0 ] && sudo bash "$REPO/system/greeter.sh" --refresh; then
-        refreshed=1
-    fi
-    if [ -n "$refreshed" ]; then
-        rm -f "$GREETER_PENDING"
-    else
-        mkdir -p "$(dirname "$GREETER_PENDING")"
-        printf 'Login screen refresh requires administrator permission.\n' > "$GREETER_PENDING"
-        echo "  $(t 'Сеанс обновлён, но экран входа требует отдельного подтверждения sudo:' 'Session updated; login manager still needs sudo approval:')" >&2
-        echo "  sudo '$SHARE/tablet-shell/system/greeter.sh' --refresh" >&2
-    fi
-fi
-
 if [ -z "$UPDATE_ONLY" ]; then
 # ---- 4. themes ---------------------------------------------------------------------------------
 if [ -n "$THEMES" ]; then
@@ -572,6 +581,68 @@ if [ -f "$REPO/VERSION" ]; then
     tr -cd '0-9A-Za-z.+~-' < "$REPO/VERSION" | head -c 32 > "$SHARE/tablet-shell/release"
 fi
 
+# ---- 8b. system parts (sudo) ---------------------------------------------------------------------
+# At the end: base.sh may switch the network over to NetworkManager, nothing may need it after that.
+# Each part runs on its own; one that fails or does not fit this machine (no btrfs, no UKI) is
+# reported and the rest go on. Logs: ~/.local/state/tablet-shell/system-*.log
+SYSTEM_LOGS=$HOME/.local/state/tablet-shell
+SYSTEM_SKIPPED=()
+system_part() {   # system_part "русское имя" "english name" script [args...]
+    local ru=$1 en=$2 script=$3; shift 3
+    local log="$SYSTEM_LOGS/system-$(basename "$(dirname "$script")")-$(basename "$script" .sh).log"
+    printf '  %-44s ' "$(t "$ru" "$en")"
+    if sudo -n bash "$REPO/system/$script" "$@" >"$log" 2>&1; then
+        echo ok
+    else
+        echo "$(t "пропущено" "skipped") ($log)"
+        grep -v '^\s*$' "$log" | tail -n 2 | sed 's/^/      /'
+        SYSTEM_SKIPPED+=("$script")
+    fi
+}
+GREETER_PENDING="$HOME/.local/state/tablet-shell/greeter-refresh-needed"
+GREETER_INSTALLED=
+[ -r /etc/greetd/config.toml ] && grep -Eq 'tablet-greeter|tablet-shell-greeter' /etc/greetd/config.toml && GREETER_INSTALLED=1
+if [ -n "$SUDO_OK" ]; then
+    say "Системные части" "System parts"
+    mkdir -p "$SYSTEM_LOGS"
+    system_part "Доступ к кнопкам, перу, экрану" "Buttons, pen, touch access" devices.sh
+    system_part "«Настройки» вместо Параметров" "Settings instead of System Settings" settings-wrappers.sh
+    if [ -z "$UPDATE_ONLY" ]; then
+        system_part "Сеть, Bluetooth, zram, приложения" "Network, Bluetooth, zram, apps" base.sh
+        # the language Plasma already uses (plasma-localerc LANGUAGE, else LANG)
+        LANGCODE=$(kreadconfig6 --file plasma-localerc --group Translations --key LANGUAGE 2>/dev/null)
+        LANGCODE=${LANGCODE%%:*}
+        [ -n "$LANGCODE" ] || LANGCODE=${LANG%%.*}
+        case "$LANGCODE" in
+            ""|C|POSIX) ;;
+            *) system_part "Язык системы ($LANGCODE)" "System language ($LANGCODE)" language.sh "$LANGCODE" ;;
+        esac
+        system_part "Снимки системы" "System snapshots" recovery/install.sh
+        if grep -qs '^Theme=tablet-arch' /etc/plymouth/plymouthd.conf; then
+            printf '  %-44s %s\n' "$(t "Заставка загрузки" "Boot splash")" "$(t "уже стоит" "already set up")"
+        else
+            system_part "Заставка загрузки" "Boot splash" boot-splash/install.sh
+        fi
+        [ -z "$ANDROID" ] || system_part "Android (Waydroid)" "Android (Waydroid)" android/install.sh
+    fi
+    if [ -n "$GREETER_INSTALLED" ]; then
+        if [ -n "$GREETER_UPDATE" ]; then
+            system_part "Экран входа: обновление" "Login screen: refresh" greeter.sh --refresh
+        fi
+    elif [ -z "$UPDATE_ONLY" ] && { [ -n "$GREETER" ] || [ -n "$GREETER_INSTALL" ]; }; then
+        system_part "Экран входа" "Login screen" greeter.sh
+    fi
+    case " ${SYSTEM_SKIPPED[*]} " in
+        *" greeter.sh "*) ;;
+        *) rm -f "$GREETER_PENDING" ;;
+    esac
+elif [ -n "$GREETER_INSTALLED" ] && [ -n "$GREETER_UPDATE" ]; then
+    mkdir -p "$(dirname "$GREETER_PENDING")"
+    printf 'Login screen refresh requires administrator permission.\n' > "$GREETER_PENDING"
+    echo "  $(t 'Экран входа требует отдельного подтверждения sudo:' 'The login screen still needs sudo approval:')" >&2
+    echo "  sudo '$SHARE/tablet-shell/system/greeter.sh' --refresh" >&2
+fi
+
 # ---- 9. what is left -----------------------------------------------------------------------------
 say "Готово" "Done"
 if [ -n "$UPDATE_ONLY" ]; then
@@ -583,9 +654,13 @@ if [ -n "$UPDATE_ONLY" ]; then
     fi
     exit 0
 fi
-t "Оболочка установлена. Полностью она включится после выхода из сеанса и входа снова.
-Системные части (по желанию, через sudo):" "The shell is installed. Log out and back in for everything to take effect.
-System parts (optional, with sudo):"; echo
+t "Оболочка установлена. Полностью она включится после выхода из сеанса и входа снова." \
+  "The shell is installed. Log out and back in for everything to take effect."; echo
+if [ -n "$SUDO_OK" ]; then
+    [ -n "$ANDROID" ] || echo "  $(t "Android по желанию: ./install.sh --android или" "Android if wanted: ./install.sh --android or") sudo $SHARE/tablet-shell/system/android/install.sh"
+    exit 0
+fi
+t "Системные части (через sudo):" "System parts (with sudo):"; echo
 cat <<EOF
   sudo $SHARE/tablet-shell/system/devices.sh            $(t "доступ к кнопкам, перу, клавиатуре; Rnote" "access to buttons, pen, keyboard; Rnote")
   sudo $SHARE/tablet-shell/system/settings-wrappers.sh  $(t "«Настройки» вместо Параметров системы" "Tablet Settings instead of System Settings")

@@ -107,6 +107,13 @@ Window {
         PenRing {}
     }
 
+    // text menu (long press on text, Shell::watchTouch), built on first use
+    property var textMenu: null
+    Component {
+        id: textMenuComponent
+        TextMenu {}
+    }
+
     // power menu (held power button), built on first use
     property var powerMenu: null
     Component {
@@ -184,6 +191,15 @@ Window {
                 penRing = penRingComponent.createObject(null);
             }
             penRing.show(x, y);
+        }
+        function onTextMenuRequested(x, y, editable, selected, canPaste, app) {
+            if (win.visible || notificationCenter.visible || (powerMenu && powerMenu.visible)) {
+                return;   // the touch was meant for our own panel
+            }
+            if (!textMenu) {
+                textMenu = textMenuComponent.createObject(null);
+            }
+            textMenu.show(x, y, editable, selected, canPaste, app);
         }
         function onPowerMenuRequested() {
             win.visible = false;

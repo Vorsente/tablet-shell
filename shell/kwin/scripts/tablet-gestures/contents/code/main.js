@@ -26,6 +26,45 @@ function shellCall2(method, arg) {
 workspace.windowActivated.connect(reportActive);
 reportActive(workspace.activeWindow);
 
+// Text menu (long press on text): where the app in front is, so touches on panels, the dock and
+// overlays are not taken for it. "pid x y width height" as fractions of the built-in screen
+// (the touch screen), pid 0 = no app window.
+function builtInScreen() {
+    var screens = workspace.screens;
+    for (var i = 0; i < screens.length; ++i) {
+        if (/^(eDP|LVDS|DSI)/.test(screens[i].name)) {
+            return screens[i];
+        }
+    }
+    return screens[0];
+}
+var areaWindow = null;
+function reportArea() {
+    var w = areaWindow;
+    var s = builtInScreen();
+    if (!w || !s || w.desktopWindow || w.dock || w.specialWindow || !w.pid) {
+        shellCall2("WindowArea", "0 0 0 0 0");
+        return;
+    }
+    var g = w.frameGeometry;
+    var o = s.geometry;
+    shellCall2("WindowArea", [w.pid, (g.x - o.x) / o.width, (g.y - o.y) / o.height,
+                              g.width / o.width, g.height / o.height].join(" "));
+}
+function followArea(w) {
+    if (areaWindow) {
+        areaWindow.frameGeometryChanged.disconnect(reportArea);
+    }
+    areaWindow = w;
+    if (w) {
+        w.frameGeometryChanged.connect(reportArea);
+    }
+    reportArea();
+}
+workspace.windowActivated.connect(followArea);
+workspace.screensChanged.connect(reportArea);
+followArea(workspace.activeWindow);
+
 // Android on demand: tabletshell stops the Waydroid session after some idle minutes without a
 // Waydroid window (tabletrc [Android] autoStopMinutes); it needs to know how many are open
 function isWaydroid(w) {

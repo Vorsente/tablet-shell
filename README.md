@@ -138,37 +138,40 @@ keyboard dock → **PC**, keyboard + external monitor → **dock**. Each change 
 git clone https://github.com/Vorsente/tablet-shell
 cd tablet-shell
 ./install.sh                    # weather city = your time zone's; or: ./install.sh --city Berlin
-# To explicitly replace your login manager (e.g. SDDM):
-# ./install.sh --install-greeter
+# ./install.sh --no-greeter     # keep SDDM / Plasma Login
+# ./install.sh --no-system      # no sudo: user part only
+# ./install.sh --android        # plus Android apps (Waydroid, ~1 GB)
 ```
 
 The installer:
 
-1. checks the system and offers to install the missing packages (`sudo pacman -S …`);
-2. builds the C++ programs (about 10 minutes on an Atom, a minute on a laptop);
-3. installs user components in `~/.local`; updating an existing tablet-shell greeter may use `sudo`;
-4. downloads the WhiteSur themes, MacTahoe icons and wallpapers for the Apple style, the Colloid icons
+1. **asks for the `sudo` password right away**, once, and keeps it valid until it is done;
+2. installs the missing packages (`pacman -S --needed …`);
+3. builds the C++ programs (about 10 minutes on an Atom, a minute on a laptop);
+4. installs user components in `~/.local`;
+5. downloads the WhiteSur themes, MacTahoe icons and wallpapers for the Apple style, the Colloid icons
    and the Roboto Flex font for the Material style, and adjusts them (`--no-themes` keeps your current
    themes);
-5. sets KDE options, starts services and asks the daemon to repair the panels;
-6. if the tablet-shell greetd login is already installed, refreshes it automatically and
-   silences cage/libseat (`seatd`) diagnostic output without creating log files
-   (may require sudo authentication).
+6. sets KDE options, starts services and asks the daemon to repair the panels;
+7. **installs the system parts** (table below): device access, Settings, network and zram, the system
+   language, snapshots and the boot splash (with systemd-boot + UKI and a btrfs root), and its own
+   login screen instead of SDDM (`--no-greeter` keeps yours). Each part runs on its own: one that does
+   not fit the machine or fails is reported and the rest go on; logs are in
+   `~/.local/state/tablet-shell/`. Android only with `--android`, `system/cleanup.sh` only by hand.
 
-`--install-greeter` explicitly opts in to replacing SDDM / Plasma Login with greetd;
-without it the installer never replaces another display manager. Use
-`--no-greeter-update` to skip the automatic refresh of an existing tablet greeter.
+Without `sudo` (`--no-system`, or no password given) only the user part is installed and the system
+scripts are listed at the end. Updating from Settings never asks for a password.
 
 **Log out and back in.** That's it — the tablet is ready.
 
-### Optional system parts
+### System parts
 
-These change the system, so they are separate and run with `sudo`. The installer prints the list
-with full paths (they are copied to `~/.local/share/tablet-shell/system/`).
+`./install.sh` installs them (see above); each script can also be run or undone on its own with
+`sudo` (they are copied to `~/.local/share/tablet-shell/system/`).
 
 | Script | What it does | Undo |
 | --- | --- | --- |
-| `system/devices.sh` | lets the user at the seat read the power/Windows buttons, pen and keyboards (power button menu, palm rejection, typewriter sounds); installs Rnote and Xournal++ | `--undo` |
+| `system/devices.sh` | lets the user at the seat read the power/Windows buttons, pen, touch screen and keyboards (power button menu, palm rejection, long-press text menu, typewriter sounds); installs Rnote and Xournal++ | `--undo` |
 | `system/settings-wrappers.sh` | Plasma's "Configure…" links open the tablet Settings app | `--undo` |
 | `system/greeter.sh` | own login screen (greetd + cage); `--refresh` updates an existing tablet greeter | `--undo` |
 | `system/language.sh ru` | system language and formats (any locale), Firefox language pack | run with `en` |

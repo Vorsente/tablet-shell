@@ -178,6 +178,8 @@ Kirigami.ApplicationWindow {
               label: Tr.t("Индикатор громкости и яркости"), note: Tr.t("Полосы уровня вверху экрана при нажатии клавиш; по полосам можно провести пальцем") }),
             make(tabletrc("Effects", "osdPercent", true), { type: "switch",
               label: Tr.t("Проценты на индикаторе"), note: Tr.t("Число рядом с полосами громкости и яркости") }),
+            make(tabletrc("Effects", "textMenu", true), { type: "switch",
+              label: Tr.t("Меню текста при удержании"), note: Tr.t("Как на телефоне: удержите палец на поле ввода или выделите текст — появятся «Вырезать», «Копировать», «Вставить»") }),
             make(tabletrc("Effects", "unlockSound", true), { type: "switch",
               label: Tr.t("Звук разблокировки"), note: Tr.t("Мягкий щелчок, когда экран разблокирован") }),
             make(tabletrc("Effects", "lockSound", true), { type: "switch",
