@@ -9,13 +9,18 @@
 //   menus:     right click on files (open, open in Dolphin / terminal, cut / copy, copy path,
 //              duplicate, rename, compress, trash, properties) and on empty space (new folder /
 //              text file, paste, select all, sort, open the folder in Dolphin / terminal,
-//              wallpaper, display settings, system settings)
+//              add a widget (DesktopWidgets.qml), wallpaper, display settings, system settings)
+//   drag:      drag icons with the mouse to any free cell (the places are kept, containment config
+//              "deskPositions"); dropped onto a folder they move into it; files dragged in from
+//              Dolphin or another app are copied (moved with Shift) onto the desktop or into the
+//              folder under the pointer. "Упорядочить" puts everything back in order.
 // New items are named "Новая папка", "Новая папка 2"… and renamed in place.
 import QtQuick
 import QtQuick.Layouts
 import QtCore
 import Qt.labs.folderlistmodel
 
+import org.kde.plasma.plasmoid
 import org.kde.plasma.components as PC3
 import org.kde.kirigami as Kirigami
 import "Tr.js" as Tr
@@ -25,6 +30,7 @@ Item {
 
     required property var home
     signal wallpaperRequested()
+    signal widgetsRequested()
 
     readonly property string dir: String(StandardPaths.writableLocation(StandardPaths.DesktopLocation)).replace("file://", "")
     property var selection: ({})      // file name -> true
@@ -75,17 +81,163 @@ Item {
     function selectedNames() {
         return names().filter(n => selection[n]);
     }
-    // the cell of the index-th item, in desk coordinates (the grid fills columns top to bottom)
-    function cellRect(i) {
-        const rows = home.pcRows;
-        return Qt.rect(grid.x + Math.floor(i / rows) * home.cellWidth, grid.y + (i % rows) * home.cellHeight,
-                       home.cellWidth, home.cellHeight);
+    // ---- places ---------------------------------------------------------------------------------
+    // Files the user dragged somewhere keep that cell; the others fill the free cells column by
+    // column (top to bottom) in the sort order.
+    readonly property real gridX: Kirigami.Units.largeSpacing
+    readonly property real gridY: Kirigami.Units.largeSpacing
+    readonly property int rows: home.pcRows
+    readonly property int columns: Math.max(1, Math.floor((width - gridX * 2) / home.cellWidth))
+    property int revision: 0          // the folder's contents changed (also renames: same count)
+    readonly property var saved: {
+        try {
+            const p = JSON.parse(Plasmoid.configuration.deskPositions || "{}");
+            return p && typeof p === "object" ? p : {};
+        } catch (e) {
+            return {};
+        }
     }
+    readonly property var placed: {
+        revision;
+        const all = names(), out = {}, taken = {};
+        for (const n of all) {
+            const p = saved[n];
+            if (Array.isArray(p) && p[0] >= 0 && p[0] < columns && p[1] >= 0 && p[1] < rows && !taken[p[0] * rows + p[1]]) {
+                out[n] = [p[0], p[1]];
+                taken[p[0] * rows + p[1]] = true;
+            }
+        }
+        let next = 0;
+        for (const n of all) {
+            if (!out[n]) {
+                while (taken[next]) ++next;
+                out[n] = [Math.floor(next / rows), next % rows];
+                taken[next] = true;
+            }
+        }
+        return out;
+    }
+    function cellOf(name) {
+        return placed[name] || [0, 0];
+    }
+    // the cell of an item, in desk coordinates
+    function cellRect(name) {
+        const c = cellOf(name);
+        return Qt.rect(gridX + c[0] * home.cellWidth, gridY + c[1] * home.cellHeight, home.cellWidth, home.cellHeight);
+    }
+    // the cell under a point, clamped to the desk
+    function cellAt(x, y) {
+        return [Math.max(0, Math.min(columns - 1, Math.floor((x - gridX) / home.cellWidth))),
+                Math.max(0, Math.min(rows - 1, Math.floor((y - gridY) / home.cellHeight)))];
+    }
+    function nameAt(x, y) {
+        const c = cellAt(x, y);
+        for (const n in placed) {
+            if (placed[n][0] === c[0] && placed[n][1] === c[1]) return n;
+        }
+        return "";
+    }
+    function isDir(name) {
+        const i = names().indexOf(name);
+        return i >= 0 && folder.get(i, "fileIsDir");
+    }
+    // keep every icon where it is now, with `moved` (name -> cell) changed
+    function savePlaces(moved) {
+        const p = {};
+        for (const n in placed) p[n] = moved[n] || placed[n];
+        Plasmoid.configuration.deskPositions = JSON.stringify(p);
+    }
+    function arrange() {
+        Plasmoid.configuration.deskPositions = "{}";
+    }
+
+    // ---- dragging icons with the mouse ----------------------------------------------------------
+    property bool dragging: false
+    property string dragLead: ""          // the icon under the pointer when the drag started
+    property point dragFrom: Qt.point(0, 0)
+    property point dragPos: Qt.point(0, 0)
+    readonly property string dropTarget: dragging ? folderAt(dragPos.x, dragPos.y) : ""
+    // a folder under the pointer that is not being dragged itself
+    function folderAt(x, y) {
+        const n = nameAt(x, y);
+        const r = n ? cellRect(n) : Qt.rect(0, 0, 0, 0);
+        return n && !isSelected(n) && isDir(n) && x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height ? n : "";
+    }
+    function startDrag(name, p) {
+        if (!isSelected(name)) selectOnly(name);
+        dragLead = name;
+        dragFrom = p;
+        dragPos = p;
+        dragging = true;
+    }
+    function finishDrag() {
+        if (!dragging) return;
+        const list = selectedNames();
+        const into = folderAt(dragPos.x, dragPos.y);
+        if (into) {
+            // into the folder: mv refuses to overwrite (-n)
+            home.runCommand(["mv", "-n", "--"].concat(list.map(path)).concat([path(into) + "/"]));
+            clearSelection();
+            dragging = false;
+            return;
+        }
+        // to other cells: everything moves by the lead icon's step; a cell taken by an icon that
+        // stays, or off the desk, leaves that one where it was. Saved while still "dragging", so
+        // the icons glide from where they were dropped into their cells.
+        const from = cellOf(dragLead), to = cellAt(dragPos.x, dragPos.y);
+        const dc = to[0] - from[0], dr = to[1] - from[1];
+        if (dc !== 0 || dr !== 0) {
+            const staying = {};
+            for (const n in placed) if (!isSelected(n)) staying[placed[n][0] * rows + placed[n][1]] = true;
+            const moved = {};
+            for (const n of list) {
+                const c = [cellOf(n)[0] + dc, cellOf(n)[1] + dr];
+                const key = c[0] * rows + c[1];
+                if (c[0] >= 0 && c[0] < columns && c[1] >= 0 && c[1] < rows && !staying[key]) {
+                    moved[n] = c;
+                    staying[key] = true;
+                }
+            }
+            dragFrom = Qt.point(dragFrom.x + dc * home.cellWidth, dragFrom.y + dr * home.cellHeight);
+            savePlaces(moved);
+        }
+        dragging = false;
+    }
+
+    // files dropped in from other apps (Dolphin): copy, or move with Shift / when the app asks to
+    DropArea {
+        id: dropIn
+        anchors.fill: parent
+        keys: ["text/uri-list"]
+        property string target: ""
+        onPositionChanged: d => target = desk.isDir(desk.nameAt(d.x, d.y)) ? desk.nameAt(d.x, d.y) : ""
+        onExited: target = ""
+        onDropped: d => {
+            const srcs = d.urls.map(u => String(u)).filter(u => u.indexOf("file://") === 0).map(u => decodeURIComponent(u.slice(7)));
+            const where = target ? desk.path(target) : desk.dir;
+            target = "";
+            if (srcs.length === 0) return;
+            const move = d.proposedAction === Qt.MoveAction;
+            const list = srcs.filter(s => s.replace(/\/[^/]*$/, "") !== where && s !== where);
+            if (list.length > 0) {
+                desk.home.runCommand([move ? "mv" : "cp", move ? "-n" : "-an", "--"].concat(list).concat([where + "/"]));
+                // the first new file goes where it was dropped (if that cell is free)
+                const name = list[0].split("/").pop();
+                if (where === desk.dir && !desk.nameAt(d.x, d.y)) {
+                    const m = {};
+                    m[name] = desk.cellAt(d.x, d.y);
+                    desk.savePlaces(m);
+                }
+            }
+            d.acceptProposedAction();
+        }
+    }
+
     function selectInBand(r, add) {
         const s = add ? Object.assign({}, bandBase) : {};
         const all = names();
         for (let i = 0; i < all.length; ++i) {
-            const c = cellRect(i);
+            const c = cellRect(all[i]);
             // the icon and label part of the cell, not its empty margins
             const ix = c.x + c.width * 0.12, iw = c.width * 0.76;
             if (ix < r.x + r.width && ix + iw > r.x && c.y < r.y + r.height && c.y + c.height * 0.9 > r.y) {
@@ -230,7 +382,12 @@ Item {
         sortField: desk.sortBy === "time" ? FolderListModel.Time : desk.sortBy === "size" ? FolderListModel.Size
                  : desk.sortBy === "type" ? FolderListModel.Type : FolderListModel.Name
         sortReversed: desk.sortBy === "time" || desk.sortBy === "size"   // newest / biggest first
+        onRowsInserted: desk.revision++
+        onRowsRemoved: desk.revision++
+        onDataChanged: desk.revision++
+        onModelReset: desk.revision++
         onCountChanged: {
+            desk.revision++;
             if (desk.pendingRename && desk.names().indexOf(desk.pendingRename) !== -1) {
                 desk.renaming = desk.pendingRename;
                 desk.pendingRename = "";
@@ -306,12 +463,9 @@ Item {
         }
     }
 
-    Grid {
+    Item {
         id: grid
-        x: Kirigami.Units.largeSpacing
-        y: Kirigami.Units.largeSpacing
-        flow: Grid.TopToBottom
-        rows: desk.home.pcRows
+        anchors.fill: parent
 
         Repeater {
             model: folder
@@ -328,9 +482,16 @@ Item {
                 property string appName: ""
                 property string appIcon: ""
 
+                readonly property rect cell: { desk.placed; return desk.cellRect(fileName); }
+                readonly property bool lifted: desk.dragging && selected
+                x: cell.x + (lifted ? desk.dragPos.x - desk.dragFrom.x : 0)
+                y: cell.y + (lifted ? desk.dragPos.y - desk.dragFrom.y : 0)
+                z: lifted ? 5 : 0
                 width: desk.home.cellWidth
                 height: desk.home.cellHeight
-                opacity: cut ? 0.5 : 1
+                opacity: cut ? 0.5 : lifted ? 0.75 : 1
+                Behavior on x { enabled: !desk.dragging; NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                Behavior on y { enabled: !desk.dragging; NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
                 // a .desktop file shows as its app (Name= and Icon=)
                 Component.onCompleted: {
@@ -348,9 +509,11 @@ Item {
                     anchors.fill: parent
                     anchors.margins: 2
                     radius: Kirigami.Units.smallSpacing * 2
-                    color: item.selected ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.35)
-                                         : Qt.rgba(1, 1, 1, hover.hovered ? 0.1 : 0)
-                    border.width: item.selected ? 1 : 0
+                    // a folder something is dragged onto lights up
+                    readonly property bool dropHere: desk.dropTarget === item.fileName || dropIn.target === item.fileName
+                    color: item.selected || dropHere ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, dropHere ? 0.5 : 0.35)
+                                                     : Qt.rgba(1, 1, 1, hover.hovered ? 0.1 : 0)
+                    border.width: item.selected || dropHere ? 1 : 0
                     border.color: Qt.rgba(1, 1, 1, 0.35)
                 }
 
@@ -418,7 +581,23 @@ Item {
                     anchors.fill: parent
                     enabled: desk.renaming !== item.fileName
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    preventStealing: true
+                    property point start
+                    property bool dragged: false
+                    onPositionChanged: m => {
+                        if (!(pressedButtons & Qt.LeftButton)) return;
+                        const p = mapToItem(desk, m.x, m.y);
+                        if (!desk.dragging && Math.hypot(p.x - start.x, p.y - start.y) >= 8) {
+                            desk.startDrag(item.fileName, start);
+                            dragged = true;
+                        }
+                        if (desk.dragging) desk.dragPos = p;
+                    }
+                    onReleased: desk.finishDrag()
+                    onCanceled: desk.dragging = false
                     onPressed: m => {
+                        start = mapToItem(desk, m.x, m.y);
+                        dragged = false;
                         desk.forceActiveFocus();
                         if (m.modifiers & Qt.ControlModifier) {
                             desk.toggle(item.fileName);
@@ -435,7 +614,7 @@ Item {
                     }
                     onClicked: m => {
                         // a plain click on one of several selected items keeps only it
-                        if (m.button === Qt.LeftButton && !(m.modifiers & (Qt.ControlModifier | Qt.ShiftModifier))
+                        if (!dragged && m.button === Qt.LeftButton && !(m.modifiers & (Qt.ControlModifier | Qt.ShiftModifier))
                                 && desk.selectedCount > 1) {
                             desk.selectOnly(item.fileName);
                         }
@@ -560,7 +739,10 @@ Item {
                     text: modelData.label
                     checkable: true
                     checked: desk.sortBy === modelData.key
-                    onTriggered: desk.sortBy = modelData.key
+                    onTriggered: {
+                        desk.sortBy = modelData.key;
+                        desk.arrange();
+                    }
                 }
             }
         }
@@ -576,6 +758,11 @@ Item {
             onTriggered: desk.terminalAt(desk.dir)
         }
         PC3.MenuSeparator {}
+        PC3.MenuItem {
+            text: Tr.t("Добавить виджет…")
+            icon.name: "list-add"
+            onTriggered: desk.widgetsRequested()
+        }
         PC3.MenuItem {
             text: Tr.t("Обои")
             icon.name: "preferences-desktop-wallpaper"

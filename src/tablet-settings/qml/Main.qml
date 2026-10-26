@@ -82,6 +82,9 @@ Kirigami.ApplicationWindow {
             backend.setHomeScreen("liveWallpaper", v);   // weather on the wallpaper moves only then
         } else if (item.apply === "tabletshell") {
             backend.start(["systemctl", "--user", "restart", "tabletshell.service"]);
+        } else if (item.apply === "homeData") {
+            // the home screen fetches the weather and the news again (HomeData.reload)
+            backend.setHomeScreen("dataStamp", String(Date.now()));
         } else if (item.apply === "screenlocker") {
             qdbus("org.freedesktop.ScreenSaver", "/ScreenSaver", "configure");
         }
@@ -118,6 +121,25 @@ Kirigami.ApplicationWindow {
             .trim().split("\n").filter(l => l).map(l => ({ value: l.split("|")[0], label: l.split("|")[1] }));
     }
     function qdbus(service, path, method) { backend.start(["qdbus6", service, path, method]); }
+
+    // news of the Today page (tablet-tools today): countries and the English Linux feeds, the same
+    // ids and defaults as in tablet-tools.cpp
+    readonly property var newsCountries: [
+        ["ru", "🇷🇺 " + Tr.t("Россия")], ["ua", "🇺🇦 " + Tr.t("Украина")], ["kz", "🇰🇿 " + Tr.t("Казахстан")],
+        ["us", "🇺🇸 " + Tr.t("США")], ["gb", "🇬🇧 " + Tr.t("Великобритания")], ["ca", "🇨🇦 " + Tr.t("Канада")],
+        ["au", "🇦🇺 " + Tr.t("Австралия")], ["in", "🇮🇳 " + Tr.t("Индия")], ["de", "🇩🇪 " + Tr.t("Германия")],
+        ["at", "🇦🇹 " + Tr.t("Австрия")], ["ch", "🇨🇭 " + Tr.t("Швейцария")], ["fr", "🇫🇷 " + Tr.t("Франция")],
+        ["it", "🇮🇹 " + Tr.t("Италия")], ["es", "🇪🇸 " + Tr.t("Испания")], ["pt", "🇵🇹 " + Tr.t("Португалия")],
+        ["br", "🇧🇷 " + Tr.t("Бразилия")], ["nl", "🇳🇱 " + Tr.t("Нидерланды")], ["pl", "🇵🇱 " + Tr.t("Польша")],
+        ["cz", "🇨🇿 " + Tr.t("Чехия")], ["se", "🇸🇪 " + Tr.t("Швеция")], ["no", "🇳🇴 " + Tr.t("Норвегия")],
+        ["tr", "🇹🇷 " + Tr.t("Турция")], ["il", "🇮🇱 " + Tr.t("Израиль")], ["jp", "🇯🇵 " + Tr.t("Япония")],
+        ["kr", "🇰🇷 " + Tr.t("Южная Корея")],
+    ].map(c => ({ value: c[0], label: c[1] }))
+    readonly property var linuxEnglishFeeds: [
+        ["phoronix", "Phoronix", true], ["9to5linux", "9to5Linux", true], ["lwn", "LWN.net", true],
+        ["omgubuntu", "OMG! Ubuntu", false], ["itsfoss", "It's FOSS", false], ["gamingonlinux", "GamingOnLinux", false],
+        ["linuxiac", "Linuxiac", false], ["planetkde", "Planet KDE", false], ["archlinux", "Arch Linux News", false],
+    ]
 
     // ---- what can be set ------------------------------------------------------------------------
 
@@ -162,7 +184,7 @@ Kirigami.ApplicationWindow {
             { type: "choice", store: "appearance", label: Tr.t("Оформление"),
               options: [{ value: "light", label: Tr.t("Светлое") }, { value: "dark", label: Tr.t("Тёмное") }, { value: "auto", label: Tr.t("Авто (по времени)") }] },
             make(tabletrc("Appearance", "liveWallpaper", true), { type: "switch", apply: "livewallpaper",
-              label: Tr.t("Живые обои"), note: Tr.t("Днём светлый вариант, ночью тёмный — плавный переход") }),
+              label: Tr.t("Живые обои"), note: Tr.t("Светлый вариант со светлой темой, тёмный — с тёмной; плавный переход") }),
             make({store:"kconfig", file:"tabletrc", group:"Appearance", key:"weatherAnimation", def:false},
                  { type: "switch", apply: "weatherAnimation", label: Tr.t("Анимированная погода на обоях"),
                    note: Tr.t("Дополнительная нагрузка на графику; выключено по умолчанию") }),
@@ -187,6 +209,19 @@ Kirigami.ApplicationWindow {
             { type: "button", label: Tr.t("Расположение иконок"), note: Tr.t("Вернуть порядок «избранное, затем по алфавиту»"),
               button: Tr.t("Сбросить"), icon: "edit-reset", action: () => resetLayoutDialog.open() },
         ] },
+        { title: Tr.t("Сегодня и виджеты"), icon: "view-calendar-day-symbolic", items: [
+            make(tabletrc("Weather", "source", "openmeteo"), { type: "choice", apply: "homeData", label: Tr.t("Источник погоды"),
+                 note: Tr.t("Для виджетов, страницы «Сегодня», сводки и погоды на обоях. Все без ключа"),
+                 options: [{ value: "openmeteo", label: "Open-Meteo" }, { value: "metno", label: "MET Norway (yr.no)" }, { value: "wttr", label: "wttr.in" }] }),
+            { type: "text", store: "home", key: "weatherCity", def: "", apply: "homeData", label: Tr.t("Город для погоды"), placeholder: Tr.t("Например, Москва") },
+            make(tabletrc("Today", "newsCountry", "ru"), { type: "choice", apply: "homeData", label: Tr.t("Новости страны"),
+                 note: Tr.t("Россия — Лента и ТАСС, другие страны — главное из Google Новостей на языке страны"),
+                 options: app.newsCountries }),
+            make(tabletrc("Today", "linuxLanguage", "ru"), { type: "choice", apply: "homeData", label: Tr.t("Новости Linux"),
+                 options: [{ value: "ru", label: Tr.t("На русском: OpenNET, LOR") }, { value: "en", label: Tr.t("На английском") },
+                           { value: "both", label: Tr.t("На обоих языках") }] }),
+        ].concat(app.linuxEnglishFeeds.map(f => make(tabletrc("Today", "en_" + f[0], f[2]),
+                 { type: "switch", apply: "homeData", label: f[1], note: Tr.t("Лента на английском: когда выбраны английские новости Linux") }))) },
         { title: Tr.t("Сводка"), icon: "office-chart-pie-symbolic", items: [
             { type: "info", store: "info", label: Tr.t("Где"), note: Tr.t("Встроенный экран, когда планшет в доке с внешним монитором"), get: () => "" },
             dash("w_cpu", true, { type: "switch", label: Tr.t("Процессор"), note: Tr.t("Загрузка, частота, история") }),
@@ -195,7 +230,7 @@ Kirigami.ApplicationWindow {
             dash("w_claude", true, { type: "switch", label: Tr.t("Лимиты Claude") }),
             dash("w_youtube", true, { type: "switch", label: Tr.t("Подписчики YouTube") }),
             dash("w_network", true, { type: "switch", label: Tr.t("Сеть и диск") }),
-            dash("w_weather", false, { type: "switch", label: Tr.t("Погода"), note: Tr.t("Open-Meteo, без ключа") }),
+            dash("w_weather", false, { type: "switch", label: Tr.t("Погода"), note: Tr.t("Источник — в разделе «Сегодня и виджеты»") }),
             dash("weatherCity", "", { type: "text", label: Tr.t("Город для погоды"), placeholder: Tr.t("Например, Москва") }),
             dash("w_media", false, { type: "switch", label: Tr.t("Сейчас играет"), note: Tr.t("Музыка и видео с управлением") }),
             dash("w_battery", false, { type: "switch", label: Tr.t("Аккумулятор"), note: Tr.t("Мощность и состояние батареи") }),
@@ -369,6 +404,7 @@ Kirigami.ApplicationWindow {
             { type: "info", store: "info", label: Tr.t("Система"), get: () => sysinfo.system },
             { type: "info", store: "info", label: Tr.t("Ядро"), get: () => sysinfo.kernel },
             { type: "info", store: "info", label: "Plasma", get: () => sysinfo.plasma },
+            { type: "info", store: "info", label: "tablet-shell", get: () => backend.run(["cat", home + "/.local/share/tablet-shell/release"]).trim() || "—" },
         ] },
     ]
     property var sysinfo: ({})
@@ -381,12 +417,23 @@ Kirigami.ApplicationWindow {
         "security-privacy": "preferences-system-privacy", "regionalsettings": "preferences-desktop-locale",
         "system-administration": "preferences-system", "hardware": "preferences-devices-tree",
     })
+    // Material draws the list icons as one-colour masks: KDE's coloured category icons would turn
+    // into solid blobs there, so it gets symbolic ones (scripts/pixel-symbolic-icons.py copies
+    // every "*-symbolic" name used here into the Pixel icon themes)
+    readonly property var groupSymbolic: ({
+        "input-devices": "input-keyboard-symbolic", "hardware": "computer-symbolic", "network": "network-wireless-symbolic",
+        "appearance": "preferences-desktop-theme-global-symbolic", "workspace": "plasma-symbolic",
+        "applications": "applications-all-symbolic", "personalization": "user-symbolic",
+        "security-privacy": "security-high-symbolic", "regionalsettings": "preferences-desktop-locale-symbolic",
+        "system-administration": "preferences-system-symbolic",
+    })
     readonly property var kdeGroups: {
         const groups = [];
         backend.modules().forEach(m => {
             let g = groups.find(x => x.title === m.groupName);
             if (!g) {
-                g = { title: m.groupName, icon: groupIcons[m.group] || m.icon, kde: true, modules: [] };
+                g = { title: m.groupName, icon: (app.pixel ? groupSymbolic[m.group] : groupIcons[m.group]) || (app.pixel ? "preferences-other-symbolic" : m.icon),
+                      kde: true, modules: [] };
                 groups.push(g);
             }
             g.modules.push(m);

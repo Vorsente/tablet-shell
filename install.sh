@@ -567,6 +567,11 @@ else
     printf 'local\n' > "$SHARE/tablet-shell/version"
 fi
 
+# the release number (VERSION in the repository, e.g. 0.5.0), shown by Settings → Updates
+if [ -f "$REPO/VERSION" ]; then
+    tr -cd '0-9A-Za-z.+~-' < "$REPO/VERSION" | head -c 32 > "$SHARE/tablet-shell/release"
+fi
+
 # ---- 9. what is left -----------------------------------------------------------------------------
 say "Готово" "Done"
 if [ -n "$UPDATE_ONLY" ]; then

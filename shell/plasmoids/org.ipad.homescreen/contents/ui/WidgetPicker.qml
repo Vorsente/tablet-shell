@@ -1,5 +1,6 @@
 // Widget gallery ("+ Виджет" in edit mode): every widget in both sizes as a live preview;
-// a tap puts it at the start of the current home page.
+// a tap puts it at the start of the current home page. In PC mode it fills the desktop
+// (DesktopWidgets.qml) and offers the large size too.
 import QtQuick
 import QtQuick.Layouts
 
@@ -19,7 +20,7 @@ Item {
     readonly property var kinds: [
         ["weather", Tr.t("Погода")], ["calendar", Tr.t("Календарь")], ["clock", Tr.t("Часы")],
         ["typewriter", Tr.t("Печатная машинка")], ["screentime", Tr.t("Экранное время")], ["battery", Tr.t("Батарея")],
-        ["youtube", "YouTube"], ["linux", Tr.t("Новости Linux")], ["russia", Tr.t("Новости России")], ["rates", Tr.t("Курс валют")],
+        ["youtube", "YouTube"], ["linux", Tr.t("Новости Linux")], ["russia", Tr.t("Новости страны")], ["rates", Tr.t("Курс валют")],
         ["claude", Tr.t("Лимиты Claude")], ["onthisday", Tr.t("В этот день")], ["sky", Tr.t("Небо: солнце и луна")],
     ]
     readonly property real unit: Math.min(width, height) / 9
@@ -88,18 +89,19 @@ Item {
                         Row {
                             spacing: Kirigami.Units.gridUnit
                             Repeater {
-                                model: ["small", "wide"]
+                                model: picker.home.pcMode ? ["small", "wide", "large"] : ["small", "wide"]
                                 delegate: HomeWidget {
                                     required property string modelData
                                     home: picker.home
                                     kind: parent.parent.modelData[0]
-                                    wide: modelData === "wide"
-                                    height: picker.unit * 1.9
-                                    width: wide ? height * 2.1 : height
+                                    wide: modelData !== "small"
+                                    height: picker.unit * (modelData === "large" ? 1.9 * 2 + 0.2 : 1.9)
+                                    width: wide ? picker.unit * 1.9 * 2.1 : height
+                                    swipe: false
                                     MouseArea {
                                         anchors.fill: parent
                                         onClicked: {
-                                            picker.home.addWidget(parent.kind, parent.wide ? "wide" : "small");
+                                            picker.home.addWidget(parent.kind, parent.modelData);
                                             picker.visible = false;
                                         }
                                     }

@@ -26,6 +26,17 @@ QtObject {
     property var today: ({})
     readonly property var linuxNews: today.linux || []
     readonly property var russiaNews: today.russia || []
+    // the country of the news card (tabletrc [Today] newsCountry, chosen in the settings)
+    readonly property string newsCountry: today.country || "ru"
+    readonly property string newsFlag: today.countryFlag || "🇷🇺"
+    readonly property var countryNames: ({
+        ru: Tr.t("Россия"), ua: Tr.t("Украина"), kz: Tr.t("Казахстан"), us: Tr.t("США"), gb: Tr.t("Великобритания"),
+        ca: Tr.t("Канада"), au: Tr.t("Австралия"), in: Tr.t("Индия"), de: Tr.t("Германия"), at: Tr.t("Австрия"),
+        ch: Tr.t("Швейцария"), fr: Tr.t("Франция"), it: Tr.t("Италия"), es: Tr.t("Испания"), pt: Tr.t("Португалия"),
+        br: Tr.t("Бразилия"), nl: Tr.t("Нидерланды"), pl: Tr.t("Польша"), cz: Tr.t("Чехия"), se: Tr.t("Швеция"),
+        no: Tr.t("Норвегия"), tr: Tr.t("Турция"), il: Tr.t("Израиль"), jp: Tr.t("Япония"), kr: Tr.t("Южная Корея"),
+    })
+    readonly property string newsTitle: newsCountry === "ru" ? Tr.t("Новости России") : Tr.t("Новости: ") + (countryNames[newsCountry] || newsCountry.toUpperCase())
     readonly property var rates: today.rates || null
     readonly property var onThisDay: today.onthisday || []
     // week report (`tablet-tools weekly`, local and quick): refreshed with the Today data
@@ -90,6 +101,14 @@ QtObject {
             data.batteryBusy = false;
             data.charging = lines[1] === "Charging" || lines[1] === "Full";
         });
+    }
+
+    // a source changed in the settings: fetch the weather and the news now, not when the caches expire
+    function reload() {
+        lastToday = 0;
+        lastOnline = 0;
+        lastWeatherCity = "";
+        if (active) refresh();
     }
 
     onActiveChanged: if (active) refresh()

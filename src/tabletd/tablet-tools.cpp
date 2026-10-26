@@ -317,21 +317,6 @@ int wallpaperList()
     return 0;
 }
 
-// Height of the sun in degrees (NOAA approximation), as in the org.ipad.daynight wallpaper
-double sunElevation(const QDateTime &utc, double lat, double lon)
-{
-    const double rad = M_PI / 180;
-    const int day = utc.date().dayOfYear();
-    const double hours = utc.time().hour() + utc.time().minute() / 60.0;
-    const double g = 2 * M_PI / 365 * (day - 1 + (hours - 12) / 24);
-    const double eqTime = 229.18 * (0.000075 + 0.001868 * std::cos(g) - 0.032077 * std::sin(g) - 0.014615 * std::cos(2 * g) - 0.040849 * std::sin(2 * g));
-    const double decl = 0.006918 - 0.399912 * std::cos(g) + 0.070257 * std::sin(g) - 0.006758 * std::cos(2 * g) + 0.000907 * std::sin(2 * g)
-                        - 0.002697 * std::cos(3 * g) + 0.00148 * std::sin(3 * g);
-    const double hourAngle = ((hours * 60 + eqTime + 4 * lon) / 4 - 180) * rad;
-    const double cosZenith = std::sin(lat * rad) * std::sin(decl) + std::cos(lat * rad) * std::cos(decl) * std::cos(hourAngle);
-    return 90 - std::acos(std::clamp(cosZenith, -1.0, 1.0)) / rad;
-}
-
 // The built-in screen: the first connected eDP / DSI / LVDS connector, as its output name (eDP-1)
 // and native mode (the first line of "modes"). Empty when the device has none.
 struct Panel {
@@ -420,17 +405,13 @@ void syncGreeterWallpaper()
         image.chop(1);
     }
     if (QFileInfo(image).isDir()) {
-        // wallpaper package: its largest image, images_dark/ when the dark look is active, or at
-        // night (sun below the horizon at the live wallpaper's place) with live wallpapers
-        bool dark;
-        KConfigGroup live = locker.group(QStringLiteral("Greeter")).group(QStringLiteral("Wallpaper")).group(QStringLiteral("org.ipad.daynight")).group(QStringLiteral("General"));
-        if (locker.group(QStringLiteral("Greeter")).readEntry("WallpaperPlugin", QString()) == QLatin1String("org.ipad.daynight")) {
-            dark = sunElevation(QDateTime::currentDateTimeUtc(), live.readEntry("Latitude", 55.75), live.readEntry("Longitude", 37.62)) < 0;
-        } else {
-            KConfig globals(QStringLiteral("kdeglobals"));
-            const QString look = globals.group(QStringLiteral("KDE")).readEntry("LookAndFeelPackage", QString());
-            dark = !(look == QLatin1String("org.ipad.light") || look == QLatin1String("org.tabletshell.pixel.light"));
-        }
+        // wallpaper package: its largest image, images_dark/ when the dark look is active (the
+        // live wallpaper follows the theme too)
+        KConfig globals(QStringLiteral("kdeglobals"));
+        const QString look = globals.group(QStringLiteral("KDE")).readEntry("LookAndFeelPackage", QString());
+        const QString scheme = globals.group(QStringLiteral("General")).readEntry("ColorScheme", QString());
+        const bool dark = look.isEmpty() ? scheme.contains(QLatin1String("dark"), Qt::CaseInsensitive)
+                                         : !(look == QLatin1String("org.ipad.light") || look == QLatin1String("org.tabletshell.pixel.light"));
         QFileInfoList files;
         if (dark) {
             files = QDir(image + QStringLiteral("/contents/images_dark")).entryInfoList(QDir::Files, QDir::Size);
@@ -461,7 +442,7 @@ void syncGreeterWallpaper()
 
 // "Живые обои" (tabletrc [Appearance] liveWallpaper, on by default): a wallpaper package with a
 // dark variant is shown with the org.ipad.daynight plugin, which cross-fades light and dark with
-// the sun, on the home screens and the lock screen; anything else with Plasma's image plugin.
+// the theme, on the home screens and the lock screen; anything else with Plasma's image plugin.
 bool liveWallpaperWanted(const QString &abs)
 {
     KConfig rc(QStringLiteral("tabletrc"), KConfig::SimpleConfig);
@@ -1143,12 +1124,87 @@ int weekly()
     return 0;
 }
 
-// weather from Open-Meteo (free, no key): the city is geocoded once and the coordinates cached
+QNetworkRequest browserRequest(const QString &url)
+{
+    QNetworkRequest req{QUrl(url)};
+    req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("Mozilla/5.0 (X11; Linux x86_64) tablet-today/1.0 (tablet home screen)"));
+    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    return req;
+}
+
+// Height of the sun in degrees (NOAA approximation): day or night for weather sources that do not say
+double sunElevation(const QDateTime &utc, double lat, double lon)
+{
+    const double rad = M_PI / 180;
+    const int day = utc.date().dayOfYear();
+    const double hours = utc.time().hour() + utc.time().minute() / 60.0;
+    const double g = 2 * M_PI / 365 * (day - 1 + (hours - 12) / 24);
+    const double eqTime = 229.18 * (0.000075 + 0.001868 * std::cos(g) - 0.032077 * std::sin(g) - 0.014615 * std::cos(2 * g) - 0.040849 * std::sin(2 * g));
+    const double decl = 0.006918 - 0.399912 * std::cos(g) + 0.070257 * std::sin(g) - 0.006758 * std::cos(2 * g) + 0.000907 * std::sin(2 * g)
+                        - 0.002697 * std::cos(3 * g) + 0.00148 * std::sin(3 * g);
+    const double hourAngle = ((hours * 60 + eqTime + 4 * lon) / 4 - 180) * rad;
+    const double cosZenith = std::sin(lat * rad) * std::sin(decl) + std::cos(lat * rad) * std::cos(decl) * std::cos(hourAngle);
+    return 90 - std::acos(std::clamp(cosZenith, -1.0, 1.0)) / rad;
+}
+
+// MET Norway symbol ("lightrainshowers_day") -> WMO weather code, as Open-Meteo gives it
+int metnoCode(const QString &symbol)
+{
+    const QString s = symbol.section(QLatin1Char('_'), 0, 0);
+    const bool light = s.startsWith(QLatin1String("light")), heavy = s.startsWith(QLatin1String("heavy"));
+    const bool showers = s.contains(QLatin1String("showers"));
+    if (s.contains(QLatin1String("thunder"))) return 95;
+    if (s.contains(QLatin1String("sleet"))) return 66;
+    if (s.contains(QLatin1String("snow"))) return showers ? (heavy ? 86 : 85) : light ? 71 : heavy ? 75 : 73;
+    if (s.contains(QLatin1String("rain"))) return showers ? (light ? 80 : heavy ? 82 : 81) : light ? 61 : heavy ? 65 : 63;
+    if (s == QLatin1String("fog")) return 45;
+    if (s == QLatin1String("partlycloudy")) return 2;
+    if (s == QLatin1String("cloudy")) return 3;
+    if (s == QLatin1String("fair")) return 1;
+    return 0;
+}
+
+// World Weather Online code (wttr.in) -> WMO weather code
+int wwoCode(int c)
+{
+    switch (c) {
+    case 113: return 0;
+    case 116: return 2;
+    case 119: case 122: return 3;
+    case 143: case 248: case 260: return 45;
+    case 263: case 266: return 53;
+    case 176: case 353: return 80;
+    case 356: return 81;
+    case 359: return 82;
+    case 293: case 296: return 61;
+    case 299: case 302: return 63;
+    case 305: case 308: return 65;
+    case 179: case 323: case 326: return 71;
+    case 329: case 332: return 73;
+    case 227: case 230: case 335: case 338: return 75;
+    case 368: return 85;
+    case 371: return 86;
+    case 182: case 185: case 281: case 284: case 311: case 314: case 317: case 320: case 350: case 362: case 365: case 374: case 377: return 66;
+    case 200: case 386: case 389: case 392: case 395: return 95;
+    }
+    return 3;
+}
+
+// The weather source: tabletrc [Weather] source = openmeteo (default) | metno | wttr. All three are
+// free and need no key; the place is always geocoded by Open-Meteo once and the coordinates cached.
+QString weatherSource()
+{
+    KConfig rc(QStringLiteral("tabletrc"), KConfig::SimpleConfig);
+    const QString s = rc.group(QStringLiteral("Weather")).readEntry("source", QStringLiteral("openmeteo"));
+    return s == QLatin1String("metno") || s == QLatin1String("wttr") ? s : QStringLiteral("openmeteo");
+}
+
 QJsonObject weather(QNetworkAccessManager &net, const QString &city, const QJsonObject &old)
 {
     if (city.isEmpty()) {
         return {};
     }
+    const QString source = weatherSource();
     double lat = old.value(QStringLiteral("lat")).toDouble(), lon = old.value(QStringLiteral("lon")).toDouble();
     QString place = old.value(QStringLiteral("place")).toString();
     if (old.value(QStringLiteral("city")).toString() != city || (lat == 0 && lon == 0)) {
@@ -1157,12 +1213,81 @@ QJsonObject weather(QNetworkAccessManager &net, const QString &city, const QJson
         const Response r = request(net, QNetworkRequest(geo));
         const QJsonObject hit = QJsonDocument::fromJson(r.data).object().value(QStringLiteral("results")).toArray().at(0).toObject();
         if (hit.isEmpty()) {
-            return {{QStringLiteral("city"), city}, {QStringLiteral("error"), r.status == 200 ? T(QStringLiteral("город не найден")) : T(QStringLiteral("нет связи"))}};
+            return {{QStringLiteral("city"), city}, {QStringLiteral("source"), source},
+                    {QStringLiteral("error"), r.status == 200 ? T(QStringLiteral("город не найден")) : T(QStringLiteral("нет связи"))}};
         }
         lat = hit.value(QStringLiteral("latitude")).toDouble();
         lon = hit.value(QStringLiteral("longitude")).toDouble();
         place = hit.value(QStringLiteral("name")).toString();
     }
+    QJsonObject out{{QStringLiteral("city"), city}, {QStringLiteral("place"), place}, {QStringLiteral("lat"), lat}, {QStringLiteral("lon"), lon},
+                    {QStringLiteral("source"), source}};
+    const int sunUp = sunElevation(QDateTime::currentDateTimeUtc(), lat, lon) > -0.833 ? 1 : 0;
+
+    if (source == QLatin1String("metno")) {
+        // MET Norway (yr.no): asks for an identifying User-Agent; wind in m/s, no "feels like"
+        QUrl url(QStringLiteral("https://api.met.no/weatherapi/locationforecast/2.0/compact"));
+        url.setQuery(QUrlQuery{{QStringLiteral("lat"), QString::number(lat, 'f', 4)}, {QStringLiteral("lon"), QString::number(lon, 'f', 4)}});
+        QNetworkRequest req(url);
+        req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("tablet-shell/0.5 github.com/Vorsente/tablet-shell"));
+        const Response r = request(net, req);
+        const QJsonArray series = QJsonDocument::fromJson(r.data).object().value(QStringLiteral("properties")).toObject()
+                                      .value(QStringLiteral("timeseries")).toArray();
+        if (r.status != 200 || series.isEmpty()) {
+            out.insert(QStringLiteral("error"), T(QStringLiteral("нет связи")));
+            return out;
+        }
+        const QJsonObject first = series.at(0).toObject().value(QStringLiteral("data")).toObject();
+        const QJsonObject now = first.value(QStringLiteral("instant")).toObject().value(QStringLiteral("details")).toObject();
+        QString symbol = first.value(QStringLiteral("next_1_hours")).toObject().value(QStringLiteral("summary")).toObject().value(QStringLiteral("symbol_code")).toString();
+        if (symbol.isEmpty()) {
+            symbol = first.value(QStringLiteral("next_6_hours")).toObject().value(QStringLiteral("summary")).toObject().value(QStringLiteral("symbol_code")).toString();
+        }
+        const double temp = now.value(QStringLiteral("air_temperature")).toDouble();
+        double hi = temp, lo = temp;
+        const QDate today = QDate::currentDate();
+        for (const QJsonValue &v : series) {
+            const QJsonObject e = v.toObject();
+            if (QDateTime::fromString(e.value(QStringLiteral("time")).toString(), Qt::ISODate).toLocalTime().date() != today) {
+                continue;
+            }
+            const double t = e.value(QStringLiteral("data")).toObject().value(QStringLiteral("instant")).toObject()
+                                 .value(QStringLiteral("details")).toObject().value(QStringLiteral("air_temperature")).toDouble(temp);
+            hi = std::max(hi, t);
+            lo = std::min(lo, t);
+        }
+        out.insert(QStringLiteral("temp"), temp);
+        out.insert(QStringLiteral("feels"), temp);
+        out.insert(QStringLiteral("code"), metnoCode(symbol));
+        out.insert(QStringLiteral("wind"), std::round(now.value(QStringLiteral("wind_speed")).toDouble() * 36) / 10);
+        out.insert(QStringLiteral("day"), symbol.endsWith(QLatin1String("_night")) ? 0 : symbol.contains(QLatin1Char('_')) ? 1 : sunUp);
+        out.insert(QStringLiteral("max"), hi);
+        out.insert(QStringLiteral("min"), lo);
+        return out;
+    }
+
+    if (source == QLatin1String("wttr")) {
+        // wttr.in (World Weather Online data), its JSON format
+        const Response r = request(net, browserRequest(QStringLiteral("https://wttr.in/%1,%2?format=j1&lang=ru")
+                                                           .arg(lat, 0, 'f', 4).arg(lon, 0, 'f', 4)));
+        const QJsonObject w = QJsonDocument::fromJson(r.data).object();
+        const QJsonObject cur = w.value(QStringLiteral("current_condition")).toArray().at(0).toObject();
+        const QJsonObject day = w.value(QStringLiteral("weather")).toArray().at(0).toObject();
+        if (r.status != 200 || cur.isEmpty()) {
+            out.insert(QStringLiteral("error"), T(QStringLiteral("нет связи")));
+            return out;
+        }
+        auto num = [](const QJsonObject &o, const char *key) { return o.value(QLatin1String(key)).toString().toDouble(); };
+        out.insert(QStringLiteral("temp"), num(cur, "temp_C"));
+        out.insert(QStringLiteral("feels"), num(cur, "FeelsLikeC"));
+        out.insert(QStringLiteral("code"), wwoCode(cur.value(QStringLiteral("weatherCode")).toString().toInt()));
+        out.insert(QStringLiteral("wind"), num(cur, "windspeedKmph"));
+        out.insert(QStringLiteral("day"), sunUp);
+        out.insert(QStringLiteral("max"), num(day, "maxtempC"));
+        out.insert(QStringLiteral("min"), num(day, "mintempC"));
+        return out;
+    }
+
     QUrl url(QStringLiteral("https://api.open-meteo.com/v1/forecast"));
     url.setQuery(QUrlQuery{{QStringLiteral("latitude"), QString::number(lat)}, {QStringLiteral("longitude"), QString::number(lon)},
                            {QStringLiteral("current"), QStringLiteral("temperature_2m,apparent_temperature,weather_code,wind_speed_10m,is_day")},
@@ -1170,7 +1295,6 @@ QJsonObject weather(QNetworkAccessManager &net, const QString &city, const QJson
                            {QStringLiteral("timezone"), QStringLiteral("auto")}, {QStringLiteral("forecast_days"), QStringLiteral("1")}});
     const Response r = request(net, QNetworkRequest(url));
     const QJsonObject w = QJsonDocument::fromJson(r.data).object();
-    QJsonObject out{{QStringLiteral("city"), city}, {QStringLiteral("place"), place}, {QStringLiteral("lat"), lat}, {QStringLiteral("lon"), lon}};
     if (r.status != 200) {
         out.insert(QStringLiteral("error"), T(QStringLiteral("нет связи")));
         return out;
@@ -1188,17 +1312,10 @@ QJsonObject weather(QNetworkAccessManager &net, const QString &city, const QJson
 }
 
 // ---- Today page (home screen): news, exchange rates, on this day ----------------------------
-// Feeds: tabletrc [Today] linuxFeeds / russiaFeeds = "URL|Name;URL|Name". Cached 30 minutes,
+// Feeds: chosen in the settings (linuxFeedSpec, countryFeedSpec below). Cached 30 minutes,
 // "on this day" for the day; a failed source keeps its last good items.
 const QString todayCache = home + QStringLiteral("/.cache/tablet-today.json");
 
-QNetworkRequest browserRequest(const QString &url)
-{
-    QNetworkRequest req{QUrl(url)};
-    req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("Mozilla/5.0 (X11; Linux x86_64) tablet-today/1.0 (tablet home screen)"));
-    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
-    return req;
-}
 
 QJsonArray rssItems(QNetworkAccessManager &net, const QString &url, const QString &source)
 {
@@ -1208,14 +1325,14 @@ QJsonArray rssItems(QNetworkAccessManager &net, const QString &url, const QStrin
         return items;
     }
     QXmlStreamReader xml(r.data);
-    QString title, link, date;
+    QString title, link, date, outlet;
     bool inItem = false;
     while (!xml.atEnd()) {
         xml.readNext();
         const QString name = xml.name().toString();
         if (xml.isStartElement() && (name == QLatin1String("item") || name == QLatin1String("entry"))) {
             inItem = true;
-            title.clear(); link.clear(); date.clear();
+            title.clear(); link.clear(); date.clear(); outlet.clear();
         } else if (xml.isStartElement() && inItem) {
             if (name == QLatin1String("title")) {
                 title = xml.readElementText(QXmlStreamReader::IncludeChildElements).simplified();
@@ -1224,6 +1341,8 @@ QJsonArray rssItems(QNetworkAccessManager &net, const QString &url, const QStrin
                 link = href.isEmpty() ? xml.readElementText().trimmed() : href;
             } else if (name == QLatin1String("pubDate") || name == QLatin1String("published") || name == QLatin1String("updated")) {
                 date = xml.readElementText().trimmed();
+            } else if (name == QLatin1String("source")) {
+                outlet = xml.readElementText().simplified();
             }
         } else if (xml.isEndElement() && (name == QLatin1String("item") || name == QLatin1String("entry"))) {
             inItem = false;
@@ -1231,9 +1350,12 @@ QJsonArray rssItems(QNetworkAccessManager &net, const QString &url, const QStrin
             if (!t.isValid()) {
                 t = QDateTime::fromString(date, Qt::ISODate);
             }
+            if (!outlet.isEmpty() && title.endsWith(QLatin1String(" - ") + outlet)) {
+                title.chop(outlet.size() + 3);
+            }
             if (!title.isEmpty()) {
                 items.append(QJsonObject{{QStringLiteral("title"), title}, {QStringLiteral("link"), link},
-                                         {QStringLiteral("source"), source},
+                                         {QStringLiteral("source"), outlet.isEmpty() ? source : outlet},
                                          {QStringLiteral("time"), t.isValid() ? t.toSecsSinceEpoch() : 0}});
             }
         }
@@ -1245,7 +1367,8 @@ QJsonArray rssItems(QNetworkAccessManager &net, const QString &url, const QStrin
 QJsonArray newsGroup(QNetworkAccessManager &net, const QString &spec, const QJsonArray &old)
 {
     QList<QJsonObject> all;
-    for (const QString &feed : spec.split(QLatin1Char(';'), Qt::SkipEmptyParts)) {
+    const QStringList feeds = spec.split(QLatin1Char(';'), Qt::SkipEmptyParts);
+    for (const QString &feed : feeds) {
         const QString url = feed.section(QLatin1Char('|'), 0, 0).trimmed();
         const QString name = feed.section(QLatin1Char('|'), 1).trimmed();
         for (const QJsonValue &v : rssItems(net, url, name)) {
@@ -1258,12 +1381,14 @@ QJsonArray newsGroup(QNetworkAccessManager &net, const QString &spec, const QJso
     std::sort(all.begin(), all.end(), [](const QJsonObject &a, const QJsonObject &b) {
         return a.value(QStringLiteral("time")).toInteger() > b.value(QStringLiteral("time")).toInteger();
     });
-    // at most 5 of the 8 from one source, so a busy agency does not crowd out the others
+    // 16 headlines (the cards page through them), at most 6 from one source when there are
+    // several feeds, so a busy agency does not crowd out the others
     QJsonArray out;
     QHash<QString, int> perSource;
+    const int cap = feeds.size() > 1 ? 6 : 16;
     for (const QJsonObject &item : std::as_const(all)) {
         int &n = perSource[item.value(QStringLiteral("source")).toString()];
-        if (n < 5 && out.size() < 8) {
+        if (n < cap && out.size() < 16) {
             ++n;
             out.append(item);
         }
@@ -1314,24 +1439,113 @@ QJsonArray onThisDay(QNetworkAccessManager &net)
     return out;
 }
 
+// Linux news feeds: Russian ones and English ones, each switched on in the settings
+// (tabletrc [Today] linuxLanguage = ru | en | both, and en_<id> per English feed).
+// tabletrc [Today] linuxFeeds = "URL|Name;..." still overrides the whole list.
+struct Feed {
+    const char *id, *url, *name;
+    bool on;     // on by default
+};
+const Feed linuxRu[] = {
+    {"opennet", "https://www.opennet.ru/opennews/opennews_all_utf.rss", "OpenNET", true},
+    {"lor", "https://www.linux.org.ru/section-rss.jsp?section=1", "LOR", true},
+};
+const Feed linuxEn[] = {
+    {"phoronix", "https://www.phoronix.com/rss.php", "Phoronix", true},
+    {"9to5linux", "https://9to5linux.com/feed/atom", "9to5Linux", true},
+    {"lwn", "https://lwn.net/headlines/rss", "LWN", true},
+    {"omgubuntu", "https://www.omgubuntu.co.uk/feed", "OMG! Ubuntu", false},
+    {"itsfoss", "https://itsfoss.com/rss/", "It's FOSS", false},
+    {"gamingonlinux", "https://www.gamingonlinux.com/article_rss.php", "GamingOnLinux", false},
+    {"linuxiac", "https://linuxiac.com/feed/", "Linuxiac", false},
+    {"planetkde", "https://planet.kde.org/global/atom.xml", "Planet KDE", false},
+    {"archlinux", "https://archlinux.org/feeds/news/", "Arch Linux", false},
+};
+
+QString linuxFeedSpec(const KConfigGroup &g)
+{
+    const QString custom = g.readEntry("linuxFeeds", QString());
+    if (!custom.isEmpty()) {
+        return custom;
+    }
+    const QString lang = g.readEntry("linuxLanguage", QStringLiteral("ru"));
+    QStringList feeds;
+    if (lang != QLatin1String("en")) {
+        for (const Feed &f : linuxRu) {
+            feeds << QLatin1String(f.url) + QLatin1Char('|') + QLatin1String(f.name);
+        }
+    }
+    if (lang == QLatin1String("en") || lang == QLatin1String("both")) {
+        for (const Feed &f : linuxEn) {
+            if (g.readEntry(QStringLiteral("en_") + QLatin1String(f.id), f.on)) {
+                feeds << QLatin1String(f.url) + QLatin1Char('|') + QLatin1String(f.name);
+            }
+        }
+        if (feeds.isEmpty()) {   // every English feed switched off: Phoronix rather than nothing
+            feeds << QLatin1String(linuxEn[0].url) + QLatin1Char('|') + QLatin1String(linuxEn[0].name);
+        }
+    }
+    return feeds.join(QLatin1Char(';'));
+}
+
+// The country of the news card: tabletrc [Today] newsCountry (two letters, default ru).
+// Russia keeps Lenta and TASS (or tabletrc russiaFeeds); every other country gets the top
+// stories of its Google News edition, in its language.
+struct Country {
+    const char *code, *flag, *hl, *lang;
+};
+const Country countries[] = {
+    {"ru", "🇷🇺", "ru", "ru"}, {"ua", "🇺🇦", "uk", "uk"}, {"kz", "🇰🇿", "ru", "ru"}, {"us", "🇺🇸", "en-US", "en"},
+    {"gb", "🇬🇧", "en-GB", "en"}, {"ca", "🇨🇦", "en-CA", "en"}, {"au", "🇦🇺", "en-AU", "en"}, {"in", "🇮🇳", "en-IN", "en"},
+    {"de", "🇩🇪", "de", "de"}, {"at", "🇦🇹", "de", "de"}, {"ch", "🇨🇭", "de", "de"}, {"fr", "🇫🇷", "fr", "fr"},
+    {"it", "🇮🇹", "it", "it"}, {"es", "🇪🇸", "es", "es"}, {"pt", "🇵🇹", "pt-PT", "pt-150"}, {"br", "🇧🇷", "pt-BR", "pt-419"},
+    {"nl", "🇳🇱", "nl", "nl"}, {"pl", "🇵🇱", "pl", "pl"}, {"cz", "🇨🇿", "cs", "cs"}, {"se", "🇸🇪", "sv", "sv"},
+    {"no", "🇳🇴", "no", "no"}, {"tr", "🇹🇷", "tr", "tr"}, {"il", "🇮🇱", "he", "he"}, {"jp", "🇯🇵", "ja", "ja"},
+    {"kr", "🇰🇷", "ko", "ko"},
+};
+
+const Country &newsCountry(const KConfigGroup &g)
+{
+    const QString code = g.readEntry("newsCountry", QStringLiteral("ru")).toLower();
+    for (const Country &c : countries) {
+        if (code == QLatin1String(c.code)) {
+            return c;
+        }
+    }
+    return countries[0];
+}
+
+QString countryFeedSpec(const KConfigGroup &g, const Country &c)
+{
+    if (QLatin1String(c.code) == QLatin1String("ru")) {
+        return g.readEntry("russiaFeeds", QStringLiteral("https://lenta.ru/rss/news/russia|Лента;https://tass.ru/rss/v2.xml|ТАСС"));
+    }
+    const QString gl = QString::fromLatin1(c.code).toUpper();
+    return QStringLiteral("https://news.google.com/rss?hl=%1&gl=%2&ceid=%2:%3|Google News").arg(QLatin1String(c.hl), gl, QLatin1String(c.lang));
+}
+
 int today(bool force)
 {
     const QFileInfo cache(todayCache);
     const QJsonObject cached = readJson(todayCache);
-    if (!force && cache.exists() && cache.lastModified().secsTo(QDateTime::currentDateTime()) < 30 * 60) {
+    // the feeds chosen in the settings: other feeds than the cached ones -> fetch now
+    KConfig rc(QStringLiteral("tabletrc"), KConfig::SimpleConfig);
+    const KConfigGroup g = rc.group(QStringLiteral("Today"));
+    const Country &country = newsCountry(g);
+    const QString linuxSpec = linuxFeedSpec(g), countrySpec = countryFeedSpec(g, country);
+    const QString spec = linuxSpec + QLatin1Char('\n') + countrySpec;
+    const bool sameSpec = cached.value(QStringLiteral("spec")).toString() == spec;
+    if (!force && sameSpec && cache.exists() && cache.lastModified().secsTo(QDateTime::currentDateTime()) < 30 * 60) {
         out(QString::fromUtf8(QJsonDocument(cached).toJson(QJsonDocument::Compact)) + QLatin1Char('\n'));
         return 0;
     }
-    KConfig rc(QStringLiteral("tabletrc"), KConfig::SimpleConfig);
-    const KConfigGroup g = rc.group(QStringLiteral("Today"));
     QNetworkAccessManager net;
     QJsonObject result{
-        {QStringLiteral("linux"), newsGroup(net, g.readEntry("linuxFeeds", QStringLiteral(
-            "https://www.opennet.ru/opennews/opennews_all_utf.rss|OpenNET;https://www.linux.org.ru/section-rss.jsp?section=1|LOR")),
-            cached.value(QStringLiteral("linux")).toArray())},
-        {QStringLiteral("russia"), newsGroup(net, g.readEntry("russiaFeeds", QStringLiteral(
-            "https://lenta.ru/rss/news/russia|Лента;https://tass.ru/rss/v2.xml|ТАСС")),
-            cached.value(QStringLiteral("russia")).toArray())},
+        {QStringLiteral("linux"), newsGroup(net, linuxSpec, sameSpec ? cached.value(QStringLiteral("linux")).toArray() : QJsonArray())},
+        {QStringLiteral("russia"), newsGroup(net, countrySpec, sameSpec ? cached.value(QStringLiteral("russia")).toArray() : QJsonArray())},
+        {QStringLiteral("country"), QLatin1String(country.code)},
+        {QStringLiteral("countryFlag"), QString::fromUtf8(country.flag)},
+        {QStringLiteral("spec"), spec},
         {QStringLiteral("rates"), exchangeRates(net, cached.value(QStringLiteral("rates")).toObject())},
         {QStringLiteral("updated"), QDateTime::currentDateTime().toString(Qt::ISODate)},
     };
@@ -1354,7 +1568,9 @@ int dashboard(bool force, const QString &city)
     const QFileInfo cache(dashboardCache);
     const QJsonObject cached = readJson(dashboardCache);
     const int maxAge = cached.value(QStringLiteral("retry")).toBool() ? 50 : 290;
-    const bool cityChanged = cached.value(QStringLiteral("weather")).toObject().value(QStringLiteral("city")).toString() != city;
+    const QJsonObject cachedWeather = cached.value(QStringLiteral("weather")).toObject();
+    const bool cityChanged = cachedWeather.value(QStringLiteral("city")).toString() != city
+                          || (!city.isEmpty() && cachedWeather.value(QStringLiteral("source")).toString(QStringLiteral("openmeteo")) != weatherSource());
     if (!force && !cityChanged && cache.exists() && cache.lastModified().secsTo(QDateTime::currentDateTime()) < maxAge) {
         out(QString::fromUtf8(QJsonDocument(withLocal(readJson(dashboardCache))).toJson(QJsonDocument::Compact)) + QLatin1Char('\n'));
         return 0;

@@ -14,6 +14,8 @@ Item {
     required property var d
     required property string kind
     property bool wide: false
+    property bool swipe: true
+    signal held()
 
     readonly property var tone: home.tone(kind)
     readonly property color on: tone.on
@@ -136,6 +138,7 @@ Item {
             text: material.kind === "weather" && material.d.weather ? (material.d.weather.place || material.d.weather.city || material.titles.weather)
                 : material.kind === "calendar" ? material.ru.standaloneMonthName(material.d.now.getMonth()) + " " + material.d.now.getFullYear()
                 : material.kind === "youtube" && material.d.youtube && material.d.youtube.title ? material.d.youtube.title
+                : material.kind === "russia" ? material.d.newsTitle
                 : material.titles[material.kind] || material.kind
             font.pixelSize: material.u * 1.05
             font.weight: Font.Medium
@@ -421,20 +424,23 @@ Item {
         }
     }
 
-    // ---- news: a list, tap a headline to read it ----
+    // ---- news: a list in pages (swipe or the dots), tap a headline to read it ----
     Component {
         id: newsView
-        ColumnLayout {
+        Item {
             readonly property var items: material.kind === "linux" ? material.d.linuxNews : material.d.russiaNews
-            readonly property real rowHeight: material.u * 3.4
-            spacing: 0
-            Repeater {
-                model: items.slice(0, Math.max(1, Math.floor(parent.height / rowHeight)))
-                delegate: Item {
+            Pager {
+                anchors.fill: parent
+                items: parent.items
+                rowHeight: material.u * 3.4
+                dotColor: material.on
+                swipe: material.swipe
+                onHeld: material.held()
+                row: Item {
                     required property var modelData
                     required property int index
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: rowHeight
+                    width: parent ? parent.width : 0
+                    height: material.u * 3.4
                     Rectangle {
                         visible: index > 0
                         width: parent.width
@@ -460,11 +466,14 @@ Item {
                             font.pixelSize: material.u * 0.75
                         }
                     }
-                    MouseArea { anchors.fill: parent; onClicked: Qt.openUrlExternally(modelData.link) }
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: Qt.openUrlExternally(modelData.link)
+                        onPressAndHold: material.held()
+                    }
                 }
             }
-            Item { Layout.fillHeight: true }
-            Muted { visible: items.length === 0; text: Tr.t("Загружаю…") }
+            Muted { visible: parent.items.length === 0; text: Tr.t("Загружаю…") }
         }
     }
 
@@ -542,16 +551,22 @@ Item {
         }
     }
 
-    // ---- on this day ----
+    // ---- on this day, in pages ----
     Component {
         id: onThisDayView
-        ColumnLayout {
-            spacing: material.u * 0.5
-            Repeater {
-                model: material.d.onThisDay.slice(0, Math.max(1, Math.floor(parent.height / (material.u * (material.wide ? 3.2 : 4.4)))))
-                delegate: RowLayout {
+        Item {
+            Pager {
+                anchors.fill: parent
+                items: material.d.onThisDay
+                rowHeight: material.u * (material.wide ? 2.6 : 4.4)
+                spacing: material.u * 0.4
+                dotColor: material.on
+                swipe: material.swipe
+                onHeld: material.held()
+                row: RowLayout {
                     required property var modelData
-                    Layout.fillWidth: true
+                    width: parent ? parent.width : 0
+                    height: material.u * (material.wide ? 2.6 : 4.4)
                     spacing: material.u * 0.6
                     Rectangle {
                         Layout.alignment: Qt.AlignTop
@@ -570,15 +585,19 @@ Item {
                     }
                     Label {
                         Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignTop
                         text: modelData.text
                         font.pixelSize: material.u * 0.88
                         wrapMode: Text.WordWrap
                         maximumLineCount: material.wide ? 2 : 3
-                        MouseArea { anchors.fill: parent; onClicked: if (modelData.link) Qt.openUrlExternally(modelData.link) }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: if (modelData.link) Qt.openUrlExternally(modelData.link)
+                            onPressAndHold: material.held()
+                        }
                     }
                 }
             }
-            Item { Layout.fillHeight: true }
             Muted { visible: material.d.onThisDay.length === 0; text: Tr.t("Загружаю…") }
         }
     }

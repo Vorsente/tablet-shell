@@ -2,7 +2,8 @@
 // widgets chosen in its edit mode (containment config "todayWidgets", a JSON list of kinds in
 // order; "note" is the quick note, saved to ~/.local/share/today/note.txt as you type).
 // "Изменить" (or a long press on a card) edits: "−" hides a card, ↑ ↓ move it, the hidden
-// ones are listed below to add back. Two columns in landscape, one in portrait.
+// ones are listed below to add back. Two columns in landscape, one in portrait. News and "on this
+// day" cards page through their lists: swipe sideways on the card or tap its dots.
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
@@ -26,7 +27,7 @@ Item {
 
     readonly property var names: ({
         weather: Tr.t("Погода"), calendar: Tr.t("Календарь"), clock: Tr.t("Часы"), youtube: "YouTube", typewriter: Tr.t("Печатная машинка"),
-        linux: Tr.t("Новости Linux"), russia: Tr.t("Новости России"), note: Tr.t("Заметка"), rates: Tr.t("Курс валют"), sky: Tr.t("Небо"),
+        linux: Tr.t("Новости Linux"), russia: Tr.t("Новости страны"), note: Tr.t("Заметка"), rates: Tr.t("Курс валют"), sky: Tr.t("Небо"),
         onthisday: Tr.t("В этот день"), claude: Tr.t("Лимиты Claude"), screentime: Tr.t("Экранное время"), battery: Tr.t("Батарея"),
         weekly: Tr.t("Итоги недели"),
     })
@@ -180,6 +181,7 @@ Item {
                                             home: today.home
                                             kind: slot.modelData
                                             wide: true
+                                            onHeld: today.editing = true
                                             MouseArea {
                                                 anchors.fill: parent
                                                 z: -1           // under the headline links of news cards

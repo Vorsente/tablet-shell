@@ -1,12 +1,14 @@
 // Live day/night wallpaper: the light and the dark picture of a wallpaper package (images/ and
-// images_dark/, like Monterey-iPad) cross-fade with the height of the sun: light from +6° up,
-// dark from -6° down, a blend in between (about an hour around sunrise and sunset). The sun is
-// recomputed every minute and the fade follows it smoothly. Set by ~/.local/bin/wallpaper when
-// "Живые обои" is on (tabletrc [Appearance] liveWallpaper); also used by the lock screen.
+// images_dark/, like Monterey-iPad) follow the light/dark appearance: the light picture with the
+// light theme, the dark one with the dark theme, cross-faded when the theme changes (with
+// "Авто" Plasma switches the theme by time of day, and the wallpaper goes along). Set by
+// ~/.local/bin/wallpaper when "Живые обои" is on (tabletrc [Appearance] liveWallpaper); also
+// used by the lock screen.
 import QtQuick
 import Qt.labs.folderlistmodel
 
 import org.kde.plasma.plasmoid
+import org.kde.kirigami as Kirigami
 
 WallpaperItem {
     id: root
@@ -26,57 +28,13 @@ WallpaperItem {
     readonly property string lightSource: isPackage ? lightFiles.best : base
     readonly property string darkSource: isPackage ? (darkFiles.best || lightFiles.best) : base
 
-    // ---- the sun ----
-    // solar elevation in degrees (NOAA approximation, good to a fraction of a degree)
-    function sunElevation(date, lat, lon) {
-        const rad = Math.PI / 180;
-        const day = (Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) - Date.UTC(date.getUTCFullYear(), 0, 0)) / 86400000;
-        const hours = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
-        const g = 2 * Math.PI / 365 * (day - 1 + (hours - 12) / 24);
-        const eqTime = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g) - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));
-        const decl = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g)
-                     + 0.000907 * Math.sin(2 * g) - 0.002697 * Math.cos(3 * g) + 0.00148 * Math.sin(3 * g);
-        const trueSolarMinutes = hours * 60 + eqTime + 4 * lon;
-        const hourAngle = (trueSolarMinutes / 4 - 180) * rad;
-        const cosZenith = Math.sin(lat * rad) * Math.sin(decl) + Math.cos(lat * rad) * Math.cos(decl) * Math.cos(hourAngle);
-        return 90 - Math.acos(Math.max(-1, Math.min(1, cosZenith))) / rad;
-    }
-    // 0 = day picture, 1 = night picture
-    function darknessNow() {
-        const e = sunElevation(new Date(), Number(root.configuration.Latitude), Number(root.configuration.Longitude));
-        const t = Math.max(0, Math.min(1, (6 - e) / 12));
-        return t * t * (3 - 2 * t);     // smoothstep
-    }
-    property real darkness: darknessNow()
-    // every minute: glide to the new value over that minute
-    NumberAnimation {
-        id: glide
-        target: root
-        property: "darkness"
-        duration: 50000
-        easing.type: Easing.Linear
-    }
-    Timer {
-        interval: 60000
-        repeat: true
-        running: true
-        onTriggered: {
-            glide.to = root.darknessNow();
-            glide.restart();
-        }
-    }
-    // another place or a time jump (after sleep): straight there
-    function jump() {
-        glide.stop();
-        darkness = darknessNow();
-    }
-    Connections {
-        target: root.configuration
-        function onValueChanged() { root.jump(); }
-    }
-    Connections {
-        target: Qt.application
-        function onStateChanged() { root.jump(); }
+    // the theme is dark when its text is light (glass themes have a translucent black
+    // background in their light variant too, so the background colour cannot tell)
+    readonly property bool darkTheme: Kirigami.ColorUtils.brightnessForColor(Kirigami.Theme.textColor) === Kirigami.ColorUtils.Light
+    // 0 = light picture, 1 = dark picture
+    property real darkness: darkTheme ? 1 : 0
+    Behavior on darkness {
+        NumberAnimation { duration: 1200; easing.type: Easing.InOutQuad }
     }
 
     Rectangle {

@@ -391,14 +391,17 @@ QVariantList Backend::modules() const
     for (const auto &[ns, qml] : {std::pair{QStringLiteral("plasma/kcms/systemsettings"), true},
                                   std::pair{QStringLiteral("plasma/kcms/systemsettings_qwidgets"), false}}) {
         for (const KPluginMetaData &md : KPluginMetaData::findPlugins(ns)) {
-            if (seen.contains(md.pluginId()) || md.rawData().value(QStringLiteral("X-KDE-System-Settings-Parent-Category")).toString().isEmpty()) {
-                continue;   // modules without a category are not shown in System Settings either
+            const QString parentCategory = md.rawData().value(QStringLiteral("X-KDE-System-Settings-Parent-Category")).toString();
+            // modules without a category are not shown in System Settings either; the root one is
+            // its own start page ("Корень"), which this app replaces
+            if (seen.contains(md.pluginId()) || parentCategory.isEmpty() || parentCategory == QLatin1String("rootcategory")) {
+                continue;
             }
             seen.insert(md.pluginId());
             // walk up to the top-level category (the group shown in the list)
             QString cat = md.rawData().value(QStringLiteral("X-KDE-System-Settings-Parent-Category")).toString();
             int guard = 0;
-            while (cats.contains(cat) && !cats.value(cat).parent.isEmpty() && guard++ < 5) {
+            while (cats.contains(cat) && !cats.value(cat).parent.isEmpty() && cats.value(cat).parent != QLatin1String("rootcategory") && guard++ < 5) {
                 cat = cats.value(cat).parent;
             }
             const Category top = cats.value(cat);

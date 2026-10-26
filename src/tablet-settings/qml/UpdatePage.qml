@@ -29,13 +29,15 @@ ColumnLayout {
     QQC2.Label {
         Layout.fillWidth: true
         wrapMode: Text.WordWrap
-        text: Tr.t("Установленная версия: ") + (info.installed && info.installed !== "local" ? String(info.installed).slice(0, 10) : Tr.t("локальная сборка"))
+        // the release number (0.5.0) and the exact commit
+        text: Tr.t("Установленная версия: ") + (info.installedRelease ? info.installedRelease + " · " : "")
+              + (info.installed && info.installed !== "local" ? String(info.installed).slice(0, 10) : Tr.t("локальная сборка"))
     }
     QQC2.Label {
         Layout.fillWidth: true
         wrapMode: Text.WordWrap
         visible: !!info.label
-        text: Tr.t("На GitHub: ") + String(info.label || "")
+        text: Tr.t("На GitHub: ") + (info.release ? info.release + " · " : "") + String(info.label || "")
     }
     QQC2.Label {
         Layout.fillWidth: true

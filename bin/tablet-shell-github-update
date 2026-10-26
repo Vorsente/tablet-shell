@@ -134,8 +134,31 @@ def installed_version(home):
     return ''
 
 
+VERSION_RE = re.compile(r'^[0-9A-Za-z.+~-]{1,32}$')
+
+
+def installed_release(home):
+    """The installed release number (VERSION of the repository, written by install.sh)."""
+    try:
+        value = (home / '.local/share/tablet-shell/release').read_text(encoding='ascii').strip()
+    except (OSError, UnicodeError):
+        return ''
+    return value if VERSION_RE.fullmatch(value) else ''
+
+
+def remote_release(sha):
+    """VERSION at a commit on GitHub, '' when it has none (older commits)."""
+    try:
+        with urlopen_safe(API + '/contents/VERSION?ref=' + sha, 12, accept='application/vnd.github.raw') as resp:
+            value = resp.read(64).decode('ascii', 'replace').strip()
+    except (UpdateError, urllib.error.URLError, OSError, ValueError):
+        return ''
+    return value if VERSION_RE.fullmatch(value) else ''
+
+
 def check(home):
     remote = available_source()
+    remote['release'] = remote_release(remote['sha'])
     local = installed_version(home)
     equal = bool(local) and remote['sha'].startswith(local)
     changes = [] if equal else recent_changes(remote['sha'], local)
@@ -157,7 +180,7 @@ def check(home):
             older = stamp - remote_time > 86400
         except (KeyError, ValueError):
             older = False
-    return {**remote, 'installed': local or 'local',
+    return {**remote, 'installed': local or 'local', 'installedRelease': installed_release(home),
             'changes': changes, 'remoteDate': remote_date, 'installedDate': installed_date,
             'older': older,
             'updateAvailable': not equal,

@@ -2,7 +2,7 @@
 // with widgets (2x2 / 4x2 cells, WidgetTile.qml) between the icons and a Today page on the left.
 // Long press enters edit mode (icons jiggle): drag to move, drop onto another icon to make a folder,
 // drag an app out of an open folder to take it out. In PC mode icons are dragged with the mouse
-// (widgets are not shown there).
+// (the home grid's widgets are not shown there; the desktop has its own, DesktopWidgets.qml).
 // PC mode desktop: the files and folders of ~/Desktop (DesktopFolder.qml) instead of the apps.
 import QtQuick
 import QtQml
@@ -275,7 +275,14 @@ ContainmentItem {
     HomeData {
         id: homeDataObject
         home: root
-        active: !root.pcMode
+        active: !root.pcMode || deskWidgets.count > 0
+    }
+    // the settings changed a weather or news source
+    Connections {
+        target: Plasmoid.configuration
+        function onDataStampChanged() {
+            homeDataObject.reload();
+        }
     }
     readonly property string homeDir: String(StandardPaths.writableLocation(StandardPaths.HomeLocation)).replace("file://", "")
 
@@ -314,8 +321,12 @@ ContainmentItem {
         setLayout(l);
     }
 
-    // a new widget goes to the start of the current home page
+    // a new widget goes to the start of the current home page (PC mode: onto the desktop)
     function addWidget(kind, size) {
+        if (pcMode) {
+            deskWidgets.add(kind, size);
+            return;
+        }
         const l = layout.slice();
         const onPage = pageEntries(Math.max(0, pages.currentIndex - firstAppPage));
         l.splice(onPage.length > 0 ? onPage[0] : l.length, 0, { widget: kind, size: size });
@@ -694,6 +705,17 @@ ContainmentItem {
             anchors.fill: parent
             home: root
             onWallpaperRequested: wallpaperPicker.show()
+            onWidgetsRequested: widgetPicker.show()
+        }
+
+        // PC desktop: widgets over the files (macOS / ChromeOS style, by the shell style)
+        DesktopWidgets {
+            id: deskWidgets
+            visible: root.pcMode
+            enabled: root.pcMode
+            anchors.fill: parent
+            home: root
+            onGalleryRequested: widgetPicker.show()
         }
 
         QQC2.SwipeView {
@@ -732,7 +754,7 @@ ContainmentItem {
                         property point start
                         onPressed: m => {
                             start = Qt.point(m.x, m.y);
-                            searchField.focus = false;   // a tap beside the search bar lets it go
+                            searchBar.release();   // a tap beside the search bar lets it go
                         }
                         onReleased: m => {
                             if (!root.editing && m.y - start.y > Kirigami.Units.gridUnit * 4
@@ -962,7 +984,7 @@ ContainmentItem {
             // only active while used: another window in front lets it go (the text stays, its
             // results come back with the focus)
             readonly property bool windowActive: Window.active
-            onWindowActiveChanged: if (!windowActive) searchField.focus = false
+            onWindowActiveChanged: if (!windowActive) release()
             // the on-screen keyboard: KWin says whether it is up, its height is the share of the
             // screen set in tablet-keyboardrc (height = landscape, heightPortrait = portrait)
             property bool keyboardUp: false
@@ -984,7 +1006,15 @@ ContainmentItem {
 
             function clear() {
                 searchField.text = "";
-                searchField.focus = false;
+                release();
+            }
+            // let the field go: the focus moves to the home screen itself, so the keyboard and
+            // the results sheets go away with it
+            function release() {
+                if (searchField.activeFocus) {
+                    searchField.focus = false;
+                    area.forceActiveFocus();
+                }
             }
 
             // recent queries: the ones that ran a result, newest first
@@ -1037,19 +1067,18 @@ ContainmentItem {
                     isMask: true
                     color: root.pal.blue
                 }
-                QQC2.TextField {
+                // a bare TextInput, not QQC2.TextField: the desktop style's field pops a
+                // "Paste" bar on touch in tablet mode and never takes it away again
+                TextInput {
                     id: searchField
                     Layout.fillWidth: true
-                    background: null
-                    leftPadding: 0
-                    rightPadding: 0
-                    placeholderText: Tr.t("Поиск приложений, файлов и в интернете")
-                    placeholderTextColor: root.pal.secondary
+                    clip: true
                     color: root.pal.text
                     selectionColor: root.pal.blue
                     selectedTextColor: root.dark ? "#211A2E" : "white"
                     font.family: root.fontFamily
                     font.pixelSize: Kirigami.Units.gridUnit * 0.95
+                    verticalAlignment: TextInput.AlignVCenter
                     inputMethodHints: Qt.ImhNoPredictiveText
                     // focus only from a tap (or the swipe down), never by itself
                     focus: false
@@ -1057,6 +1086,15 @@ ContainmentItem {
                     onAccepted: searchResults.runFirst()
                     Keys.onEscapePressed: searchBar.clear()
                     Keys.onUpPressed: searchResults.forceFocus()
+                    Text {
+                        anchors.fill: parent
+                        verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight
+                        visible: !searchField.length && !searchField.preeditText
+                        text: Tr.t("Поиск приложений, файлов и в интернете")
+                        color: root.pal.secondary
+                        font: searchField.font
+                    }
                 }
                 Kirigami.Icon {
                     Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
@@ -1377,6 +1415,22 @@ ContainmentItem {
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // while the search bar is in use, a touch anywhere outside it and its sheets lets it go.
+        // The press is not taken, it still reaches whatever is under it (icons, pages, widgets).
+        MouseArea {
+            anchors.fill: parent
+            z: 1000
+            enabled: searchField.activeFocus
+            onPressed: m => {
+                m.accepted = false;
+                const inside = item => item && item.visible && item.width > 0
+                    && item.contains(mapToItem(item, m.x, m.y));
+                if (!inside(searchBar) && !inside(searchResults.item) && !inside(searchSuggestions.item)) {
+                    searchBar.release();
                 }
             }
         }

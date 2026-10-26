@@ -21,6 +21,14 @@
     <entry name="weatherCity" type="String"><default></default></entry>
     <!-- Today page: widgets in order (JSON list of kinds; "note" = the quick note) -->
     <entry name="todayWidgets" type="String"><default>["weather","calendar","youtube","typewriter","weekly","linux","russia","note","rates","sky","onthisday","claude","screentime","battery"]</default></entry>
+    <!-- widgets on the PC mode desktop (DesktopWidgets.qml): JSON list of
+         {"kind": "...", "size": "small|wide|large", "x": 0..1, "y": 0..1} (x/y: share of the free room) -->
+    <entry name="pcWidgets" type="String"><default>[]</default></entry>
+    <!-- PC mode desktop: where the files were dragged to (DesktopFolder.qml), JSON
+         {"file name": [column, row]}; files without a place fill the free cells in sort order -->
+    <entry name="deskPositions" type="String"><default>{}</default></entry>
+    <!-- changed by tablet-settings when a weather or news source changed: fetch again -->
+    <entry name="dataStamp" type="String"><default></default></entry>
     <!-- Material search bar: the last queries that ran a result (JSON list, newest first) -->
     <entry name="recentSearches" type="String"><default>[]</default></entry>
     <!-- the two starter widgets were put on the first page once -->

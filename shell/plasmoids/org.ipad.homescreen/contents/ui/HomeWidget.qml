@@ -13,6 +13,10 @@ Rectangle {
     required property var home
     required property string kind
     property bool wide: false
+    // lists (news, on this day) turn their pages with a swipe; off where the card itself is dragged
+    property bool swipe: true
+    // a long press on a list row (the Today page enters its edit mode)
+    signal held()
     readonly property var d: home.homeData
     readonly property real u: Math.min(width / (wide ? 2 : 1), height) / 12   // text unit
 
@@ -114,7 +118,9 @@ Rectangle {
             home: card.home
             kind: card.kind
             wide: card.wide
+            swipe: card.swipe
             d: card.d
+            onHeld: card.held()
         }
     }
 
@@ -571,28 +577,33 @@ Rectangle {
         }
     }
 
-    // ---- news (Linux or Russia): newest headlines, tap one to read it ----
+    // ---- news (Linux or the chosen country): newest headlines in pages, tap one to read it ----
     Component {
         id: newsView
         ColumnLayout {
             readonly property var items: card.kind === "linux" ? card.d.linuxNews : card.d.russiaNews
-            readonly property real lineHeight: card.u * (card.wide ? 3.0 : 3.6)
             spacing: card.u * 0.3
             RowLayout {
                 Layout.fillWidth: true
-                Text { text: card.kind === "linux" ? "🐧" : "🇷🇺"; font.pixelSize: card.u * 1.3 }
+                Text { text: card.kind === "linux" ? "🐧" : card.d.newsFlag; font.pixelSize: card.u * 1.3 }
                 Caption {
-                    text: card.kind === "linux" ? Tr.t("Новости Linux") : Tr.t("Новости России")
+                    text: card.kind === "linux" ? Tr.t("Новости Linux") : card.d.newsTitle
                     color: card.kind === "linux" ? card.home.pal.yellow : card.home.pal.cyan
                     Layout.fillWidth: true
                 }
             }
-            Repeater {
-                model: items.slice(0, Math.max(1, Math.floor((card.height - card.u * 5) / lineHeight)))
-                delegate: Item {
+            Pager {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                items: parent.items
+                rowHeight: card.u * (card.wide ? 3.0 : 3.6)
+                dotColor: card.text
+                swipe: card.swipe
+                onHeld: card.held()
+                row: Item {
                     required property var modelData
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: lineHeight
+                    width: parent ? parent.width : 0
+                    height: card.u * (card.wide ? 3.0 : 3.6)
                     Column {
                         anchors.fill: parent
                         spacing: card.u * 0.1
@@ -606,15 +617,20 @@ Rectangle {
                             elide: Text.ElideRight
                         }
                         Text {
+                            width: parent.width
                             text: modelData.source + " · " + card.d.ago(modelData.time)
                             color: card.secondary
                             font.pixelSize: card.u * 0.75
+                            elide: Text.ElideRight
                         }
                     }
-                    MouseArea { anchors.fill: parent; onClicked: Qt.openUrlExternally(modelData.link) }
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: Qt.openUrlExternally(modelData.link)
+                        onPressAndHold: card.held()
+                    }
                 }
             }
-            Item { Layout.fillHeight: true }
             Caption { visible: items.length === 0; text: Tr.t("Загружаю…") }
         }
     }
@@ -697,17 +713,25 @@ Rectangle {
         }
     }
 
-    // ---- on this day (Russian Wikipedia) ----
+    // ---- on this day (Russian Wikipedia), in pages ----
     Component {
         id: onThisDayView
         ColumnLayout {
             spacing: card.u * 0.4
             Caption { text: Tr.t("В этот день · ") + card.d.now.toLocaleDateString(card.ru, "d MMMM"); color: card.home.pal.purple; Layout.fillWidth: true }
-            Repeater {
-                model: card.d.onThisDay.slice(0, card.wide && card.height > card.width * 0.6 ? 4 : card.wide ? 2 : 1)
-                delegate: RowLayout {
+            Pager {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                items: card.d.onThisDay
+                rowHeight: card.u * (card.wide ? 3.6 : 6)
+                spacing: card.u * 0.4
+                dotColor: card.text
+                swipe: card.swipe
+                onHeld: card.held()
+                row: RowLayout {
                     required property var modelData
-                    Layout.fillWidth: true
+                    width: parent ? parent.width : 0
+                    height: card.u * (card.wide ? 3.6 : 6)
                     spacing: card.u * 0.6
                     Text {
                         Layout.alignment: Qt.AlignTop
@@ -718,17 +742,21 @@ Rectangle {
                     }
                     Text {
                         Layout.fillWidth: true
+                        Layout.fillHeight: true
                         text: modelData.text
                         color: card.text
                         font.pixelSize: card.u * 0.9
                         wrapMode: Text.WordWrap
                         maximumLineCount: card.wide ? 3 : 5
                         elide: Text.ElideRight
-                        MouseArea { anchors.fill: parent; onClicked: if (modelData.link) Qt.openUrlExternally(modelData.link) }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: if (modelData.link) Qt.openUrlExternally(modelData.link)
+                            onPressAndHold: card.held()
+                        }
                     }
                 }
             }
-            Item { Layout.fillHeight: true }
         }
     }
 
