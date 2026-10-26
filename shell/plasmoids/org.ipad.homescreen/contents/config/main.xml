@@ -21,6 +21,8 @@
     <entry name="weatherCity" type="String"><default></default></entry>
     <!-- Today page: widgets in order (JSON list of kinds; "note" = the quick note) -->
     <entry name="todayWidgets" type="String"><default>["weather","calendar","youtube","typewriter","weekly","linux","russia","note","rates","sky","onthisday","claude","screentime","battery"]</default></entry>
+    <!-- Material search bar: the last queries that ran a result (JSON list, newest first) -->
+    <entry name="recentSearches" type="String"><default>[]</default></entry>
     <!-- the two starter widgets were put on the first page once -->
     <entry name="widgetsSeeded" type="Bool"><default>false</default></entry>
   </group>

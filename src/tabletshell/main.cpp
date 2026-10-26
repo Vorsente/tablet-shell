@@ -682,6 +682,13 @@ public Q_SLOTS:
         return tabletrc.value(QStringLiteral("Effects/") + QLatin1String(key), true).toBool();
     }
 
+    // tabletrc [Effects] KEY for QML, read at each call (Osd.qml: osdPercent)
+    Q_INVOKABLE bool effectOn(const QString &key, bool fallback) const
+    {
+        const QSettings tabletrc(QDir::homePath() + QStringLiteral("/.config/tabletrc"), QSettings::IniFormat);
+        return tabletrc.value(QStringLiteral("Effects/") + key, fallback).toBool();
+    }
+
     // Settings: Жесты -> "Назад" (kwinrc [Script-tablet-gestures] leftEdge), read at each touch
     Q_INVOKABLE bool backGestureEnabled() const
     {

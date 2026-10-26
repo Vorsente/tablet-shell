@@ -6,6 +6,7 @@
 // PC mode desktop: the files and folders of ~/Desktop (DesktopFolder.qml) instead of the apps.
 import QtQuick
 import QtQml
+import QtQml.Models
 import QtCore
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
@@ -729,11 +730,19 @@ ContainmentItem {
                         anchors.fill: parent
                         pressAndHoldInterval: 500
                         property point start
-                        onPressed: m => start = Qt.point(m.x, m.y)
+                        onPressed: m => {
+                            start = Qt.point(m.x, m.y);
+                            searchField.focus = false;   // a tap beside the search bar lets it go
+                        }
                         onReleased: m => {
                             if (!root.editing && m.y - start.y > Kirigami.Units.gridUnit * 4
                                     && Math.abs(m.x - start.x) < Kirigami.Units.gridUnit * 3) {
-                                root.runCommand(["qdbus6", "org.kde.krunner", "/App", "org.kde.krunner.App.display"]);
+                                // Material: into the search bar at the bottom; Apple: Spotlight (KRunner)
+                                if (searchBar.visible) {
+                                    searchField.forceActiveFocus();
+                                } else {
+                                    root.runCommand(["qdbus6", "org.kde.krunner", "/App", "org.kde.krunner.App.display"]);
+                                }
                             }
                         }
                         onClicked: root.editing = false
@@ -950,6 +959,10 @@ ContainmentItem {
             id: searchBar
             visible: root.pixel && !root.pcMode && !root.editing
             readonly property bool searching: searchField.activeFocus || searchField.text.length > 0
+            // only active while used: another window in front lets it go (the text stays, its
+            // results come back with the focus)
+            readonly property bool windowActive: Window.active
+            onWindowActiveChanged: if (!windowActive) searchField.focus = false
             // the on-screen keyboard: KWin says whether it is up, its height is the share of the
             // screen set in tablet-keyboardrc (height = landscape, heightPortrait = portrait)
             property bool keyboardUp: false
@@ -972,6 +985,21 @@ ContainmentItem {
             function clear() {
                 searchField.text = "";
                 searchField.focus = false;
+            }
+
+            // recent queries: the ones that ran a result, newest first
+            readonly property var recent: {
+                try {
+                    const list = JSON.parse(Plasmoid.configuration.recentSearches || "[]");
+                    return Array.isArray(list) ? list : [];
+                } catch (e) {
+                    return [];
+                }
+            }
+            function remember(query) {
+                if (query) {
+                    Plasmoid.configuration.recentSearches = JSON.stringify([query].concat(recent.filter(q => q !== query)).slice(0, 8));
+                }
             }
 
             onSearchingChanged: {
@@ -1023,6 +1051,9 @@ ContainmentItem {
                     font.family: root.fontFamily
                     font.pixelSize: Kirigami.Units.gridUnit * 0.95
                     inputMethodHints: Qt.ImhNoPredictiveText
+                    // focus only from a tap (or the swipe down), never by itself
+                    focus: false
+                    activeFocusOnTab: false
                     onAccepted: searchResults.runFirst()
                     Keys.onEscapePressed: searchBar.clear()
                     Keys.onUpPressed: searchResults.forceFocus()
@@ -1052,7 +1083,7 @@ ContainmentItem {
         // loaded while searching (they hold memory and threads of their own).
         Loader {
             id: searchResults
-            active: searchBar.visible && searchBar.searching
+            active: searchBar.visible && searchField.activeFocus && searchField.text.length > 0
             anchors.horizontalCenter: searchBar.horizontalCenter
             anchors.bottom: searchBar.top
             anchors.bottomMargin: Kirigami.Units.smallSpacing * 2
@@ -1074,6 +1105,7 @@ ContainmentItem {
                 property alias list: results
                 function run(row) {
                     if (row >= 0 && row < results.count) {
+                        searchBar.remember(searchField.text.trim());
                         milou.run(milou.index(row, 0));
                         searchBar.clear();
                     }
@@ -1167,6 +1199,181 @@ ContainmentItem {
                                 id: hit
                                 anchors.fill: parent
                                 onClicked: resultsBox.run(result.index)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // the empty search bar in focus: apps used most and the recent queries above it
+        Loader {
+            id: searchSuggestions
+            active: searchBar.visible && searchField.activeFocus && searchField.text.length === 0
+            anchors.horizontalCenter: searchBar.horizontalCenter
+            anchors.bottom: searchBar.top
+            anchors.bottomMargin: Kirigami.Units.smallSpacing * 2
+            width: searchBar.width
+            sourceComponent: Rectangle {
+                readonly property real pad: Kirigami.Units.largeSpacing * 1.5
+                height: suggestions.implicitHeight + pad * 2
+                radius: Kirigami.Units.gridUnit * 1.4
+                color: root.pal.sheet
+                border.width: 1
+                border.color: root.pal.sheetBorder
+                visible: popular.count > 0 || searchBar.recent.length > 0
+
+                Kicker.RecentUsageModel {
+                    id: usage
+                    shownItems: Kicker.RecentUsageModel.OnlyApps
+                    ordering: Kicker.RecentUsageModel.Popular
+                }
+                // the most used apps that are on the home screen (they launch like their icons)
+                DelegateModel {
+                    id: popular
+                    model: usage
+                    filterOnGroup: "shown"
+                    groups: DelegateModelGroup { id: shownGroup; name: "shown" }
+                    items.onChanged: {
+                        let shown = 0;
+                        for (let i = 0; i < items.count; ++i) {
+                            const id = root.normalizeId(items.get(i).model.favoriteId);
+                            const keep = !!root.catalog[id] && shown < 6;
+                            items.setGroups(i, 1, keep ? ["items", "shown"] : ["items"]);
+                            if (keep) {
+                                ++shown;
+                            }
+                        }
+                    }
+                    delegate: Item {
+                        id: suggested
+                        required property var model
+                        readonly property string appId: root.normalizeId(model.favoriteId)
+                        width: (suggestions.width - apps.spacing * 5) / 6
+                        height: icon.height + label.implicitHeight + Kirigami.Units.smallSpacing
+                        AppIcon {
+                            id: icon
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: Math.min(parent.width, Kirigami.Units.gridUnit * 3.2)
+                            height: width
+                            home: root
+                            source: root.catalog[suggested.appId] ? root.catalog[suggested.appId].icon : ""
+                        }
+                        Text {
+                            id: label
+                            anchors.top: icon.bottom
+                            anchors.topMargin: Kirigami.Units.smallSpacing
+                            width: parent.width
+                            horizontalAlignment: Text.AlignHCenter
+                            text: root.catalog[suggested.appId] ? root.catalog[suggested.appId].name : ""
+                            color: root.pal.text
+                            elide: Text.ElideRight
+                            font.family: root.fontFamily
+                            font.pixelSize: Kirigami.Units.gridUnit * 0.72
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                root.launch(suggested.appId, icon);
+                                searchBar.clear();
+                            }
+                        }
+                    }
+                }
+
+                Column {
+                    id: suggestions
+                    anchors.fill: parent
+                    anchors.margins: parent.pad
+                    spacing: Kirigami.Units.largeSpacing
+
+                    Text {
+                        visible: popular.count > 0
+                        text: Tr.t("Часто используемые")
+                        color: root.pal.secondary
+                        font.family: root.fontFamily
+                        font.pixelSize: Kirigami.Units.gridUnit * 0.72
+                        font.weight: Font.Medium
+                    }
+                    Row {
+                        id: apps
+                        visible: popular.count > 0
+                        spacing: Kirigami.Units.largeSpacing
+                        Repeater { model: popular }
+                    }
+
+                    Item {
+                        visible: searchBar.recent.length > 0
+                        width: parent.width
+                        height: recentTitle.implicitHeight
+                        Text {
+                            id: recentTitle
+                            text: Tr.t("Недавние запросы")
+                            color: root.pal.secondary
+                            font.family: root.fontFamily
+                            font.pixelSize: Kirigami.Units.gridUnit * 0.72
+                            font.weight: Font.Medium
+                        }
+                        Text {
+                            anchors.right: parent.right
+                            text: Tr.t("Очистить")
+                            color: root.pal.blue
+                            font.family: root.fontFamily
+                            font.pixelSize: Kirigami.Units.gridUnit * 0.72
+                            font.weight: Font.Medium
+                            MouseArea {
+                                anchors.fill: parent
+                                anchors.margins: -Kirigami.Units.smallSpacing * 2
+                                onClicked: Plasmoid.configuration.recentSearches = "[]"
+                            }
+                        }
+                    }
+                    // chips: tap = search it again
+                    Flow {
+                        visible: searchBar.recent.length > 0
+                        width: parent.width
+                        spacing: Kirigami.Units.smallSpacing * 2
+                        Repeater {
+                            model: searchBar.recent
+                            Rectangle {
+                                required property string modelData
+                                width: Math.min(suggestions.width, chip.implicitWidth + Kirigami.Units.gridUnit * 2.4)
+                                height: Kirigami.Units.gridUnit * 2
+                                radius: height / 2
+                                color: chipTap.pressed ? root.pal.fillStrong : root.pal.fill
+                                Kirigami.Icon {
+                                    id: clock
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: Kirigami.Units.smallSpacing * 2
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: Kirigami.Units.iconSizes.small
+                                    height: width
+                                    source: "document-open-recent-symbolic"
+                                    isMask: true
+                                    color: root.pal.secondary
+                                }
+                                Text {
+                                    id: chip
+                                    anchors.left: clock.right
+                                    anchors.leftMargin: Kirigami.Units.smallSpacing
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: Kirigami.Units.smallSpacing * 3
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: parent.modelData
+                                    color: root.pal.text
+                                    elide: Text.ElideRight
+                                    font.family: root.fontFamily
+                                    font.pixelSize: Kirigami.Units.gridUnit * 0.8
+                                }
+                                MouseArea {
+                                    id: chipTap
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        searchField.text = parent.modelData;
+                                        searchField.forceActiveFocus();
+                                        searchField.cursorPosition = searchField.text.length;
+                                    }
+                                }
                             }
                         }
                     }

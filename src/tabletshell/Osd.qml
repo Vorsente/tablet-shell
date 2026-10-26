@@ -1,9 +1,14 @@
 // Volume / brightness indicator: while a key changes the volume, the screen or keyboard brightness
 // (or the microphone, a player), a capsule at the top shows the level as a row of bars, about 1.5 s.
 // Other Plasma OSD messages (keyboard layout, Wi-Fi on/off...) appear in the same capsule as text.
-// Touches pass through. Data: shell.osdRequested (org.kde.osdService calls seen by tabletshell).
+// Volume, microphone and screen brightness can be changed right there: drag along the bars; a tap on
+// the icon mutes / unmutes. The percentage is optional (tabletrc [Effects] osdPercent).
+// Data: shell.osdRequested (org.kde.osdService calls seen by tabletshell).
 import QtQuick
 import QtQuick.Window
+
+import org.kde.plasma.private.volume as PA
+import org.kde.plasma.private.mobileshell.screenbrightnessplugin as ScreenBrightness
 
 import org.kde.layershell as LayerShell
 import org.kde.kirigami as Kirigami
@@ -13,7 +18,6 @@ Window {
     id: win
     visible: false
     color: "transparent"
-    flags: Qt.WindowTransparentForInput
     title: Tr.t("Индикатор громкости")
     width: Math.round(gu * 21)
     height: Math.round(gu * (pixel ? 4.4 : 3.8))
@@ -41,9 +45,15 @@ Window {
     property bool textOnly: false
     property int percent: 0
     property real shown: 0
+    property bool showPercent: true
+    // what the bars stand for: "volume", "mic", "brightness" can be changed here, "" cannot
+    property string kind: ""
+    property real max: 100         // percent at full bars (volume may go to 150 %)
+
+    ScreenBrightness.ScreenBrightnessUtil { id: brightness }
 
     Behavior on level {
-        enabled: win.shown > 0.5 && !win.textOnly
+        enabled: win.shown > 0.5 && !win.textOnly && !drag.pressed
         NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
     }
 
@@ -54,25 +64,21 @@ Window {
         switch (member) {
         case "volumeChanged": {
             const max = args.length > 1 ? Math.max(n(1), 1) : 100;
-            const v = n(0);
-            bars(v <= 0 ? "audio-volume-muted-symbolic"
-                        : v < 34 ? "audio-volume-low-symbolic" : v < 67 ? "audio-volume-medium-symbolic" : "audio-volume-high-symbolic",
-                 v <= 0 ? Tr.t("Без звука") : Tr.t("Громкость"), v, max);
+            volumeBars(n(0), max);
             break;
         }
         case "microphoneVolumeChanged":
-            bars(n(0) <= 0 ? "microphone-sensitivity-muted-symbolic" : "audio-input-microphone-symbolic",
-                 n(0) <= 0 ? Tr.t("Микрофон выключен") : Tr.t("Микрофон"), n(0), 100);
+            micBars(n(0));
             break;
         case "mediaPlayerVolumeChanged":
-            bars(args[2] || "audio-volume-high-symbolic", args[1] || Tr.t("Громкость"), n(0), 100);
+            bars(args[2] || "audio-volume-high-symbolic", args[1] || Tr.t("Громкость"), n(0), 100, "");
             break;
         case "brightnessChanged":
         case "screenBrightnessChanged":
-            bars("display-brightness-symbolic", Tr.t("Яркость"), n(0), 100);
+            bars("display-brightness-symbolic", Tr.t("Яркость"), n(0), 100, "brightness");
             break;
         case "keyboardBrightnessChanged":
-            bars("input-keyboard-brightness-symbolic", Tr.t("Подсветка клавиатуры"), n(0), 100);
+            bars("input-keyboard-brightness-symbolic", Tr.t("Подсветка клавиатуры"), n(0), 100, "");
             break;
         case "showText":
             text(args[0], args[1]);
@@ -102,13 +108,58 @@ Window {
         }
     }
 
-    function bars(iconName, title, value, max) {
+    function volumeBars(v, top) {
+        bars(v <= 0 ? "audio-volume-muted-symbolic"
+                    : v < 34 ? "audio-volume-low-symbolic" : v < 67 ? "audio-volume-medium-symbolic" : "audio-volume-high-symbolic",
+             v <= 0 ? Tr.t("Без звука") : Tr.t("Громкость"), v, top, "volume");
+    }
+
+    function micBars(v) {
+        bars(v <= 0 ? "microphone-sensitivity-muted-symbolic" : "audio-input-microphone-symbolic",
+             v <= 0 ? Tr.t("Микрофон выключен") : Tr.t("Микрофон"), v, 100, "mic");
+    }
+
+    function bars(iconName, title, value, top, what) {
         percent = Math.round(value);
         icon = iconName;
         label = title;
-        level = Math.max(0, Math.min(1, value / max));   // jumps when coming from a text message
+        kind = what;
+        max = top;
+        level = Math.max(0, Math.min(1, value / top));   // jumps when coming from a text message
         textOnly = false;
         reveal();
+    }
+
+    // dragged along the bars: v = 0..1 of the bars
+    function setLevel(v) {
+        const value = Math.round(v * max);
+        if (kind === "volume" && PA.PreferredDevice.sink) {
+            PA.PreferredDevice.sink.muted = false;
+            PA.PreferredDevice.sink.volume = Math.round(value / 100 * 65536);
+            volumeBars(value, max);
+        } else if (kind === "mic" && PA.PreferredDevice.source) {
+            PA.PreferredDevice.source.muted = false;
+            PA.PreferredDevice.source.volume = Math.round(value / 100 * 65536);
+            micBars(value);
+        } else if (kind === "brightness" && brightness.maxBrightness > 0) {
+            brightness.brightness = Math.max(1, Math.round(v * brightness.maxBrightness));
+            bars("display-brightness-symbolic", Tr.t("Яркость"), Math.max(1, value), 100, "brightness");
+        }
+    }
+
+    // tap on the icon: mute / unmute the speakers or the microphone
+    function toggleMute() {
+        const device = kind === "volume" ? PA.PreferredDevice.sink : kind === "mic" ? PA.PreferredDevice.source : null;
+        if (!device) {
+            return;
+        }
+        device.muted = !device.muted;
+        const value = device.muted ? 0 : Math.round(device.volume / 65536 * 100);
+        if (kind === "volume") {
+            volumeBars(value, max);
+        } else {
+            micBars(value);
+        }
     }
 
     function text(iconName, title) {
@@ -123,11 +174,14 @@ Window {
 
     function reveal() {
         fadeOut.stop();
+        showPercent = shell.effectOn("osdPercent", true);
         visible = true;
         if (shown < 1) {
             fadeIn.start();
         }
-        hideTimer.restart();
+        if (!drag.pressed && !iconTap.pressed) {
+            hideTimer.restart();
+        }
     }
 
     NumberAnimation { id: fadeIn; target: win; property: "shown"; to: 1; duration: 140; easing.type: Easing.OutCubic }
@@ -139,7 +193,7 @@ Window {
     Timer {
         id: hideTimer
         interval: 1500
-        onTriggered: fadeOut.start()
+        onTriggered: if (!drag.pressed) fadeOut.start()
     }
 
     // Apple: KWin blurs behind the dark glass capsule
@@ -166,9 +220,41 @@ Window {
             implicitHeight: implicitWidth
             isMask: true
             color: win.pixel ? win.lit : win.ink
+            scale: iconTap.pressed ? 0.85 : 1
+            MouseArea {
+                id: iconTap
+                anchors.fill: parent
+                anchors.margins: -win.gu * 0.7
+                enabled: win.kind === "volume" || win.kind === "mic"
+                onClicked: win.toggleMute()
+                onReleased: hideTimer.restart()
+            }
+        }
+
+        // drag along the bars (the whole width right of the icon, the full height) to set the level
+        MouseArea {
+            id: drag
+            anchors.left: column.left
+            anchors.right: column.right
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            enabled: !win.textOnly && win.kind !== ""
+            preventStealing: true
+            function apply(x) {
+                const p = mapToItem(row, x, 0).x;
+                win.setLevel(Math.max(0, Math.min(1, p / row.width)));
+            }
+            onPressed: m => {
+                hideTimer.stop();
+                apply(m.x);
+            }
+            onPositionChanged: m => apply(m.x)
+            onReleased: hideTimer.restart()
+            onCanceled: hideTimer.restart()
         }
 
         Column {
+            id: column
             anchors.left: glyph.right
             anchors.leftMargin: win.gu * 0.8
             anchors.right: parent.right
@@ -192,7 +278,7 @@ Window {
                 Text {
                     id: number
                     anchors.right: parent.right
-                    visible: !win.textOnly
+                    visible: !win.textOnly && win.showPercent
                     text: win.percent + "%"
                     color: win.ink
                     opacity: 0.7

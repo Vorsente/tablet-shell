@@ -693,4 +693,9 @@ EN = {
 "Тачпад выключен": "Touchpad off",
 "Индикатор громкости и яркости": "Volume and brightness indicator",
 "Полосы уровня вверху экрана, когда громкость или яркость меняют клавишами": "Level bars at the top of the screen when keys change the volume or brightness",
+"Проценты на индикаторе": "Percentage on the indicator",
+"Число рядом с полосами громкости и яркости": "The number next to the volume and brightness bars",
+"Полосы уровня вверху экрана при нажатии клавиш; по полосам можно провести пальцем": "Level bars at the top of the screen when keys are pressed; drag along them to change the level",
+"Часто используемые": "Frequently used",
+"Недавние запросы": "Recent searches",
 }
