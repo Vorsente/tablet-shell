@@ -88,7 +88,7 @@ ContainmentItem {
         const byKind = {
             weather: "blue", calendar: "primary", clock: "tertiary", battery: "green",
             typewriter: "secondary", screentime: "teal", youtube: "red", linux: "neutral",
-            russia: "neutral", rates: "green", claude: "orange", onthisday: "tertiary",
+            russia: "neutral", custom: "teal", rates: "green", claude: "orange", onthisday: "tertiary",
             sky: "indigo", weekly: "secondary", note: "orange",
         };
         const t = sets[byKind[kind] || kind] || sets.neutral;

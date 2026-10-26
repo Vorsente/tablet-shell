@@ -6,8 +6,11 @@
 //   move:   drag with the mouse, they snap to a grid
 //   menu:   right click: size (small / medium / large), remove, add more
 // A click goes through to the card (open the headline, turn the page with the dots, the
-// widget's own action).
+// widget's own action). Apple style, like macOS: while an app window is in front the widgets fade
+// into the wallpaper (grey, translucent) and come back in colour when the desktop is clicked.
 import QtQuick
+import QtQuick.Effects
+import QtQuick.Window
 
 import org.kde.plasma.plasmoid
 import org.kde.plasma.components as PC3
@@ -28,6 +31,8 @@ Item {
         }
     }
     readonly property int count: entries.length
+    // macOS: full colour only while the desktop itself is in front
+    readonly property bool vivid: home.pixel || !Window.window || Window.window.active
 
     // macOS sizes: small square, medium = two small side by side, large = four
     readonly property real cell: Kirigami.Units.gridUnit * 9
@@ -116,6 +121,16 @@ Item {
                 wide: slot.modelData.size !== "small"
                 swipe: false
                 scale: mover.dragging ? 1.03 : 1
+                opacity: widgets.vivid || mover.containsMouse ? 1 : 0.72
+                Behavior on opacity { NumberAnimation { duration: 250 } }
+                // the grey "desktop tint" (Apple style only; the layer exists only then)
+                layer.enabled: !widgets.home.pixel
+                layer.effect: MultiEffect {
+                    saturation: widgets.vivid || mover.containsMouse ? 0 : -0.9
+                    brightness: widgets.vivid || mover.containsMouse ? 0 : 0.06
+                    Behavior on saturation { NumberAnimation { duration: 250 } }
+                    Behavior on brightness { NumberAnimation { duration: 250 } }
+                }
                 Behavior on scale { NumberAnimation { duration: 120 } }
                 // a click that no row or dot took: the widget's own action
                 MouseArea {

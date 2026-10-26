@@ -217,6 +217,15 @@ Kirigami.ApplicationWindow {
             make(tabletrc("Today", "newsCountry", "ru"), { type: "choice", apply: "homeData", label: Tr.t("Новости страны"),
                  note: Tr.t("Россия — Лента и ТАСС, другие страны — главное из Google Новостей на языке страны"),
                  options: app.newsCountries }),
+            make(tabletrc("Today", "currency", "auto"), { type: "choice", apply: "homeData", label: Tr.t("Валюта курсов"),
+                 note: Tr.t("Рубль — курс ЦБ РФ, другие — ExchangeRate-API"),
+                 options: [{ value: "auto", label: Tr.t("По стране новостей") }].concat(
+                     ["RUB", "UAH", "KZT", "USD", "EUR", "GBP", "CHF", "PLN", "CZK", "SEK", "NOK", "TRY", "ILS", "JPY", "KRW", "CAD", "AUD", "INR", "BRL"]
+                         .map(c => ({ value: c, label: c }))) }),
+            make(tabletrc("Today", "customFeeds", ""), { type: "text", apply: "homeData", label: Tr.t("Свои RSS-ленты"),
+                 note: Tr.t("Адреса через пробел или запятую; карточка «Моя лента»"), placeholder: "https://example.com/feed" }),
+            make(tabletrc("Today", "customTitle", ""), { type: "text", apply: "homeData", label: Tr.t("Название своей ленты"),
+                 placeholder: Tr.t("Моя лента") }),
             make(tabletrc("Today", "linuxLanguage", "ru"), { type: "choice", apply: "homeData", label: Tr.t("Новости Linux"),
                  options: [{ value: "ru", label: Tr.t("На русском: OpenNET, LOR") }, { value: "en", label: Tr.t("На английском") },
                            { value: "both", label: Tr.t("На обоих языках") }] }),
@@ -495,6 +504,8 @@ Kirigami.ApplicationWindow {
         }
         currentSection = i;
         sectionList.currentIndex = i;
+        // a section opened from outside ("section:…", a module id) may be far down the list
+        if (sectionList.reveal) sectionList.reveal();
         while (pageStack.depth > 1) {
             pageStack.pop();
         }
@@ -619,7 +630,20 @@ Kirigami.ApplicationWindow {
                 currentIndex: app.currentSection
                 keyNavigationEnabled: true
                 focus: !app.touch
-                Component.onCompleted: app.sectionListRef = list
+                Component.onCompleted: {
+                    app.sectionListRef = list;
+                    revealCurrent.start();
+                }
+                // once the rows are laid out: scroll the open section into view (it may have been
+                // opened from outside, far down the list)
+                Timer {
+                    id: revealCurrent
+                    interval: 250
+                    onTriggered: list.positionViewAtIndex(Math.max(0, app.currentSection), ListView.Center)
+                }
+                function reveal() {
+                    revealCurrent.restart();
+                }
                 Keys.onReturnPressed: app.openSection(currentIndex)
                 Keys.onEnterPressed: app.openSection(currentIndex)
                 // group headings drawn by the rows themselves (ListView sections duplicated the

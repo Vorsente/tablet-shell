@@ -1396,22 +1396,99 @@ QJsonArray newsGroup(QNetworkAccessManager &net, const QString &spec, const QJso
     return out;
 }
 
-// Bank of Russia rates (cbr-xml-daily.ru mirror of the official ones)
-QJsonObject exchangeRates(QNetworkAccessManager &net, const QJsonObject &old)
+// Exchange rates in the chosen currency (tabletrc [Today] currency: a code, or "auto" = the news
+// country's): {base, sign, source, items: [{code, sign, value, previous}]}, value = how much of the
+// base one unit of the foreign currency costs. Roubles: the Bank of Russia (cbr-xml-daily.ru mirror,
+// with yesterday's rate); others: ExchangeRate-API's free daily rates (open.er-api.com, no key),
+// yesterday's value kept from the cache of an earlier day.
+struct Currency {
+    const char *code, *sign;
+};
+const Currency currencySigns[] = {
+    {"RUB", "₽"}, {"UAH", "₴"}, {"KZT", "₸"}, {"USD", "$"}, {"EUR", "€"}, {"GBP", "£"}, {"CNY", "¥"}, {"JPY", "¥"},
+    {"CAD", "C$"}, {"AUD", "A$"}, {"INR", "₹"}, {"CHF", "Fr"}, {"BRL", "R$"}, {"PLN", "zł"}, {"CZK", "Kč"},
+    {"SEK", "kr"}, {"NOK", "kr"}, {"TRY", "₺"}, {"ILS", "₪"}, {"KRW", "₩"},
+};
+QString currencySign(const QString &code)
 {
-    const Response r = request(net, browserRequest(QStringLiteral("https://www.cbr-xml-daily.ru/daily_json.js")));
-    const QJsonObject valute = QJsonDocument::fromJson(r.data).object().value(QStringLiteral("Valute")).toObject();
-    if (valute.isEmpty()) {
-        return old;
+    for (const Currency &c : currencySigns) {
+        if (code == QLatin1String(c.code)) {
+            return QString::fromUtf8(c.sign);
+        }
     }
-    QJsonObject out;
-    for (const char *code : {"USD", "EUR", "CNY"}) {
-        const QJsonObject v = valute.value(QLatin1String(code)).toObject();
-        const double nominal = std::max(1.0, v.value(QStringLiteral("Nominal")).toDouble());
-        out.insert(QLatin1String(code), QJsonObject{{QStringLiteral("value"), v.value(QStringLiteral("Value")).toDouble() / nominal},
-                                                    {QStringLiteral("previous"), v.value(QStringLiteral("Previous")).toDouble() / nominal}});
+    return code;
+}
+QString countryCurrency(const QString &country)
+{
+    static const QHash<QString, QString> map{
+        {QStringLiteral("ru"), QStringLiteral("RUB")}, {QStringLiteral("ua"), QStringLiteral("UAH")}, {QStringLiteral("kz"), QStringLiteral("KZT")},
+        {QStringLiteral("us"), QStringLiteral("USD")}, {QStringLiteral("gb"), QStringLiteral("GBP")}, {QStringLiteral("ca"), QStringLiteral("CAD")},
+        {QStringLiteral("au"), QStringLiteral("AUD")}, {QStringLiteral("in"), QStringLiteral("INR")}, {QStringLiteral("ch"), QStringLiteral("CHF")},
+        {QStringLiteral("br"), QStringLiteral("BRL")}, {QStringLiteral("pl"), QStringLiteral("PLN")}, {QStringLiteral("cz"), QStringLiteral("CZK")},
+        {QStringLiteral("se"), QStringLiteral("SEK")}, {QStringLiteral("no"), QStringLiteral("NOK")}, {QStringLiteral("tr"), QStringLiteral("TRY")},
+        {QStringLiteral("il"), QStringLiteral("ILS")}, {QStringLiteral("jp"), QStringLiteral("JPY")}, {QStringLiteral("kr"), QStringLiteral("KRW")},
+    };
+    return map.value(country, QStringLiteral("EUR"));    // the euro countries
+}
+// three foreign currencies worth showing against the base
+QStringList foreignCurrencies(const QString &base)
+{
+    if (base == QLatin1String("USD")) return {QStringLiteral("EUR"), QStringLiteral("GBP"), QStringLiteral("JPY")};
+    if (base == QLatin1String("EUR")) return {QStringLiteral("USD"), QStringLiteral("GBP"), QStringLiteral("CHF")};
+    if (base == QLatin1String("GBP")) return {QStringLiteral("USD"), QStringLiteral("EUR"), QStringLiteral("JPY")};
+    return {QStringLiteral("USD"), QStringLiteral("EUR"), QStringLiteral("CNY")};
+}
+
+QJsonObject exchangeRates(QNetworkAccessManager &net, const QString &base, const QJsonObject &old)
+{
+    const QStringList codes = foreignCurrencies(base);
+    QJsonArray items;
+    QString source;
+    if (base == QLatin1String("RUB")) {
+        const Response r = request(net, browserRequest(QStringLiteral("https://www.cbr-xml-daily.ru/daily_json.js")));
+        const QJsonObject valute = QJsonDocument::fromJson(r.data).object().value(QStringLiteral("Valute")).toObject();
+        for (const QString &code : codes) {
+            const QJsonObject v = valute.value(code).toObject();
+            if (v.isEmpty()) continue;
+            const double nominal = std::max(1.0, v.value(QStringLiteral("Nominal")).toDouble());
+            items.append(QJsonObject{{QStringLiteral("code"), code}, {QStringLiteral("sign"), currencySign(code)},
+                                     {QStringLiteral("value"), v.value(QStringLiteral("Value")).toDouble() / nominal},
+                                     {QStringLiteral("previous"), v.value(QStringLiteral("Previous")).toDouble() / nominal}});
+        }
+        source = T(QStringLiteral("ЦБ РФ"));
+    } else {
+        const Response r = request(net, browserRequest(QStringLiteral("https://open.er-api.com/v6/latest/") + base));
+        const QJsonObject o = QJsonDocument::fromJson(r.data).object();
+        const QJsonObject rates = o.value(QStringLiteral("rates")).toObject();
+        const QString day = QDateTime::fromSecsSinceEpoch(o.value(QStringLiteral("time_last_update_unix")).toInteger()).date().toString(Qt::ISODate);
+        // yesterday's values: what the cache had on an earlier day for the same base
+        const bool sameBase = old.value(QStringLiteral("base")).toString() == base;
+        const bool newDay = old.value(QStringLiteral("day")).toString() != day;
+        QHash<QString, double> before;
+        for (const QJsonValue &v : old.value(QStringLiteral("items")).toArray()) {
+            const QJsonObject i = v.toObject();
+            before.insert(i.value(QStringLiteral("code")).toString(),
+                          i.value(newDay ? QStringLiteral("value") : QStringLiteral("previous")).toDouble());
+        }
+        for (const QString &code : codes) {
+            const double perBase = rates.value(code).toDouble();
+            if (perBase <= 0) continue;
+            const double value = 1.0 / perBase;
+            items.append(QJsonObject{{QStringLiteral("code"), code}, {QStringLiteral("sign"), currencySign(code)},
+                                     {QStringLiteral("value"), value},
+                                     {QStringLiteral("previous"), sameBase && before.value(code) > 0 ? before.value(code) : value}});
+        }
+        source = QStringLiteral("ExchangeRate-API");
+        if (!items.isEmpty()) {
+            return {{QStringLiteral("base"), base}, {QStringLiteral("sign"), currencySign(base)}, {QStringLiteral("source"), source},
+                    {QStringLiteral("day"), day}, {QStringLiteral("items"), items}};
+        }
     }
-    return out;
+    if (items.isEmpty()) {
+        return old.value(QStringLiteral("base")).toString() == base ? old : QJsonObject{};
+    }
+    return {{QStringLiteral("base"), base}, {QStringLiteral("sign"), currencySign(base)}, {QStringLiteral("source"), source},
+            {QStringLiteral("items"), items}};
 }
 
 // a few events of this day in history (Russian Wikipedia), spread over the centuries
@@ -1504,6 +1581,27 @@ const Country countries[] = {
     {"kr", "🇰🇷", "ko", "ko"},
 };
 
+// The user's own feeds (tabletrc [Today] customFeeds): addresses separated by spaces, commas, new
+// lines or ";", each optionally "URL|Name"; without a name the site's host is shown
+QString customFeedSpec(const KConfigGroup &g)
+{
+    QStringList feeds;
+    static const QRegularExpression sep(QStringLiteral("[\\s,;]+"));
+    for (const QString &part : g.readEntry("customFeeds", QString()).split(sep, Qt::SkipEmptyParts)) {
+        const QString url = part.section(QLatin1Char('|'), 0, 0);
+        const QUrl u(url.contains(QLatin1String("://")) ? url : QStringLiteral("https://") + url);
+        if (!u.isValid() || u.host().isEmpty() || (u.scheme() != QLatin1String("https") && u.scheme() != QLatin1String("http"))) {
+            continue;
+        }
+        QString name = part.section(QLatin1Char('|'), 1);
+        if (name.isEmpty()) {
+            name = u.host().startsWith(QLatin1String("www.")) ? u.host().mid(4) : u.host();
+        }
+        feeds << u.toString() + QLatin1Char('|') + name;
+    }
+    return feeds.join(QLatin1Char(';'));
+}
+
 const Country &newsCountry(const KConfigGroup &g)
 {
     const QString code = g.readEntry("newsCountry", QStringLiteral("ru")).toLower();
@@ -1532,8 +1630,12 @@ int today(bool force)
     KConfig rc(QStringLiteral("tabletrc"), KConfig::SimpleConfig);
     const KConfigGroup g = rc.group(QStringLiteral("Today"));
     const Country &country = newsCountry(g);
-    const QString linuxSpec = linuxFeedSpec(g), countrySpec = countryFeedSpec(g, country);
-    const QString spec = linuxSpec + QLatin1Char('\n') + countrySpec;
+    const QString linuxSpec = linuxFeedSpec(g), countrySpec = countryFeedSpec(g, country), customSpec = customFeedSpec(g);
+    QString currency = g.readEntry("currency", QStringLiteral("auto")).toUpper();
+    if (currency == QLatin1String("AUTO") || currency.size() != 3) {
+        currency = countryCurrency(QLatin1String(country.code));
+    }
+    const QString spec = linuxSpec + QLatin1Char('\n') + countrySpec + QLatin1Char('\n') + customSpec + QLatin1Char('\n') + currency;
     const bool sameSpec = cached.value(QStringLiteral("spec")).toString() == spec;
     if (!force && sameSpec && cache.exists() && cache.lastModified().secsTo(QDateTime::currentDateTime()) < 30 * 60) {
         out(QString::fromUtf8(QJsonDocument(cached).toJson(QJsonDocument::Compact)) + QLatin1Char('\n'));
@@ -1543,10 +1645,13 @@ int today(bool force)
     QJsonObject result{
         {QStringLiteral("linux"), newsGroup(net, linuxSpec, sameSpec ? cached.value(QStringLiteral("linux")).toArray() : QJsonArray())},
         {QStringLiteral("russia"), newsGroup(net, countrySpec, sameSpec ? cached.value(QStringLiteral("russia")).toArray() : QJsonArray())},
+        {QStringLiteral("custom"), customSpec.isEmpty() ? QJsonArray()
+                                   : newsGroup(net, customSpec, sameSpec ? cached.value(QStringLiteral("custom")).toArray() : QJsonArray())},
+        {QStringLiteral("customTitle"), g.readEntry("customTitle", QString())},
         {QStringLiteral("country"), QLatin1String(country.code)},
         {QStringLiteral("countryFlag"), QString::fromUtf8(country.flag)},
         {QStringLiteral("spec"), spec},
-        {QStringLiteral("rates"), exchangeRates(net, cached.value(QStringLiteral("rates")).toObject())},
+        {QStringLiteral("rates"), exchangeRates(net, currency, cached.value(QStringLiteral("rates")).toObject())},
         {QStringLiteral("updated"), QDateTime::currentDateTime().toString(Qt::ISODate)},
     };
     const QString day = QDate::currentDate().toString(Qt::ISODate);

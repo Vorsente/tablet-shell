@@ -30,13 +30,13 @@ Item {
     readonly property var titles: ({
         clock: Tr.t("Часы"), weather: Tr.t("Погода"), calendar: Tr.t("Календарь"), battery: Tr.t("Батарея"),
         typewriter: Tr.t("Печатная машинка"), screentime: Tr.t("Экранное время"), youtube: "YouTube",
-        linux: Tr.t("Новости Linux"), russia: Tr.t("Новости России"), rates: Tr.t("Курс ЦБ"),
+        linux: Tr.t("Новости Linux"), russia: Tr.t("Новости России"), custom: Tr.t("Моя лента"), rates: Tr.t("Курс ЦБ"),
         claude: "Claude", onthisday: Tr.t("В этот день"), sky: Tr.t("Небо"), weekly: Tr.t("Итоги недели"),
     })
     readonly property var icons: ({
         clock: "clock-symbolic", calendar: "view-calendar-day-symbolic", typewriter: "document-edit-symbolic",
         screentime: "chronometer-symbolic", youtube: "media-playback-start-symbolic", linux: "news-subscribe-symbolic",
-        russia: "globe-symbolic", rates: "wallet-open-symbolic", claude: "dialog-messages-symbolic",
+        russia: "globe-symbolic", custom: "application-rss+xml-symbolic", rates: "wallet-open-symbolic", claude: "dialog-messages-symbolic",
         onthisday: "view-history-symbolic", sky: "weather-clear-night-symbolic", weekly: "office-chart-bar-symbolic",
     })
     function headerIcon() {
@@ -139,6 +139,8 @@ Item {
                 : material.kind === "calendar" ? material.ru.standaloneMonthName(material.d.now.getMonth()) + " " + material.d.now.getFullYear()
                 : material.kind === "youtube" && material.d.youtube && material.d.youtube.title ? material.d.youtube.title
                 : material.kind === "russia" ? material.d.newsTitle
+                : material.kind === "custom" ? material.d.customTitle
+                : material.kind === "rates" ? material.d.ratesTitle
                 : material.titles[material.kind] || material.kind
             font.pixelSize: material.u * 1.05
             font.weight: Font.Medium
@@ -161,7 +163,7 @@ Item {
         anchors.topMargin: material.u * 0.6
         sourceComponent: ({ clock: clockView, weather: weatherView, calendar: calendarView,
             battery: batteryView, screentime: screentimeView, typewriter: writingView,
-            youtube: youtubeView, linux: newsView, russia: newsView, rates: ratesView,
+            youtube: youtubeView, linux: newsView, russia: newsView, custom: newsView, rates: ratesView,
             claude: claudeView, onthisday: onThisDayView, sky: skyView, weekly: weeklyView })[material.kind] || null
     }
 
@@ -428,7 +430,8 @@ Item {
     Component {
         id: newsView
         Item {
-            readonly property var items: material.kind === "linux" ? material.d.linuxNews : material.d.russiaNews
+            readonly property var items: material.kind === "linux" ? material.d.linuxNews
+                                       : material.kind === "custom" ? material.d.customNews : material.d.russiaNews
             Pager {
                 anchors.fill: parent
                 items: parent.items
@@ -473,7 +476,12 @@ Item {
                     }
                 }
             }
-            Muted { visible: parent.items.length === 0; text: Tr.t("Загружаю…") }
+            Muted {
+                visible: parent.items.length === 0
+                width: parent.width
+                text: material.kind === "custom" ? Tr.t("Добавьте ленты в Настройках → Сегодня и виджеты") : Tr.t("Загружаю…")
+                wrapMode: Text.WordWrap
+            }
         }
     }
 
@@ -485,11 +493,10 @@ Item {
             spacing: material.u * 0.25
             Item { Layout.fillHeight: true }
             Repeater {
-                model: [["USD", "$"], ["EUR", "€"], ["CNY", "¥"]]
+                model: r ? r.items : []
                 delegate: RowLayout {
                     required property var modelData
-                    readonly property var v: r ? r[modelData[0]] : null
-                    readonly property real change: v ? v.value - v.previous : 0
+                    readonly property real change: modelData.value - modelData.previous
                     Layout.fillWidth: true
                     spacing: material.u * 0.6
                     Rectangle {
@@ -497,25 +504,26 @@ Item {
                         Layout.preferredHeight: Layout.preferredWidth
                         radius: width / 2
                         color: material.track
-                        Label { anchors.centerIn: parent; text: modelData[1]; font.weight: Font.Medium }
+                        Label { anchors.centerIn: parent; text: modelData.sign; font.weight: Font.Medium; font.pixelSize: material.u * (modelData.sign.length > 1 ? 0.7 : 1) }
                     }
                     Label {
                         Layout.fillWidth: true
-                        text: v ? v.value.toFixed(2) + " ₽" : "—"
+                        text: material.d.rateText(modelData.value) + " " + r.sign
                         font.pixelSize: material.u * 1.35
                         font.weight: Font.Medium
                     }
                     Kirigami.Icon {
-                        visible: !!v
+                        visible: change !== 0
                         Layout.preferredWidth: material.u
                         Layout.preferredHeight: Layout.preferredWidth
                         source: change >= 0 ? "go-up-symbolic" : "go-down-symbolic"
                         isMask: true
                         color: change >= 0 ? material.home.tone("green").accent : material.home.tone("red").accent
                     }
-                    Muted { visible: !!v; text: Math.abs(change).toFixed(2) }
+                    Muted { visible: change !== 0 && material.wide; text: material.d.rateText(Math.abs(change), modelData.value) }
                 }
             }
+            Muted { visible: !r; text: Tr.t("Загружаю…") }
             Item { Layout.fillHeight: true }
         }
     }

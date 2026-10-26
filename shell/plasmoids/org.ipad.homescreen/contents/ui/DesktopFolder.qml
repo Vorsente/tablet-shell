@@ -11,9 +11,10 @@
 //              text file, paste, select all, sort, open the folder in Dolphin / terminal,
 //              add a widget (DesktopWidgets.qml), wallpaper, display settings, system settings)
 //   drag:      drag icons with the mouse to any free cell (the places are kept, containment config
-//              "deskPositions"); dropped onto a folder they move into it; files dragged in from
-//              Dolphin or another app are copied (moved with Shift) onto the desktop or into the
-//              folder under the pointer. "Упорядочить" puts everything back in order.
+//              "deskPositions"); dropped onto a folder they move into it, onto Dolphin or another
+//              app they go there (a system drag-and-drop); files dragged in from other apps are
+//              copied (moved with Shift) onto the desktop or into the folder under the pointer.
+//              "Упорядочить" puts everything back in order.
 // New items are named "Новая папка", "Новая папка 2"… and renamed in place.
 import QtQuick
 import QtQuick.Layouts
@@ -163,13 +164,38 @@ Item {
         const r = n ? cellRect(n) : Qt.rect(0, 0, 0, 0);
         return n && !isSelected(n) && isDir(n) && x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height ? n : "";
     }
-    function startDrag(name, p) {
+    // A drag is a real (system) drag-and-drop: the files go as text/uri-list, so Dolphin, a
+    // browser or a mail program take them; dropped back on the desktop, dropIn below moves the
+    // icons or puts the files into the folder under the pointer.
+    function startDrag(name, p, iconItem) {
         if (!isSelected(name)) selectOnly(name);
         dragLead = name;
         dragFrom = p;
         dragPos = p;
         dragging = true;
+        dragProxy.Drag.mimeData = { "text/uri-list": selectedNames().map(n => "file://" + encodeURI(path(n))).join("\r\n") + "\r\n" };
+        iconItem.grabToImage(r => {
+            if (!dragging) return;
+            dragProxy.Drag.imageSource = r.url;
+            dragProxy.Drag.active = true;
+        });
     }
+    Item {
+        id: dragProxy
+        width: desk.home.iconSize
+        height: width
+        Drag.dragType: Drag.Automatic
+        Drag.supportedActions: Qt.MoveAction | Qt.CopyAction | Qt.LinkAction
+        Drag.proposedAction: Qt.MoveAction
+        Drag.hotSpot.x: width / 2
+        Drag.hotSpot.y: height / 2
+        // dropped anywhere (or cancelled): the drag is over
+        Drag.onDragFinished: dropAction => {
+            Drag.active = false;
+            desk.dragging = false;
+        }
+    }
+
     function finishDrag() {
         if (!dragging) return;
         const list = selectedNames();
@@ -210,9 +236,21 @@ Item {
         anchors.fill: parent
         keys: ["text/uri-list"]
         property string target: ""
-        onPositionChanged: d => target = desk.isDir(desk.nameAt(d.x, d.y)) ? desk.nameAt(d.x, d.y) : ""
+        onPositionChanged: d => {
+            if (d.source === dragProxy) {
+                desk.dragPos = Qt.point(d.x, d.y);     // our own icons: desk.dropTarget lights the folder
+                return;
+            }
+            target = desk.isDir(desk.nameAt(d.x, d.y)) ? desk.nameAt(d.x, d.y) : "";
+        }
         onExited: target = ""
         onDropped: d => {
+            if (d.source === dragProxy) {
+                desk.dragPos = Qt.point(d.x, d.y);
+                desk.finishDrag();
+                d.accept(Qt.MoveAction);
+                return;
+            }
             const srcs = d.urls.map(u => String(u)).filter(u => u.indexOf("file://") === 0).map(u => decodeURIComponent(u.slice(7)));
             const where = target ? desk.path(target) : desk.dir;
             target = "";
@@ -484,14 +522,13 @@ Item {
 
                 readonly property rect cell: { desk.placed; return desk.cellRect(fileName); }
                 readonly property bool lifted: desk.dragging && selected
-                x: cell.x + (lifted ? desk.dragPos.x - desk.dragFrom.x : 0)
-                y: cell.y + (lifted ? desk.dragPos.y - desk.dragFrom.y : 0)
-                z: lifted ? 5 : 0
+                x: cell.x
+                y: cell.y
                 width: desk.home.cellWidth
                 height: desk.home.cellHeight
-                opacity: cut ? 0.5 : lifted ? 0.75 : 1
-                Behavior on x { enabled: !desk.dragging; NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-                Behavior on y { enabled: !desk.dragging; NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                opacity: cut || lifted ? 0.4 : 1
+                Behavior on x { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                Behavior on y { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
                 // a .desktop file shows as its app (Name= and Icon=)
                 Component.onCompleted: {
@@ -512,7 +549,7 @@ Item {
                     // a folder something is dragged onto lights up
                     readonly property bool dropHere: desk.dropTarget === item.fileName || dropIn.target === item.fileName
                     color: item.selected || dropHere ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, dropHere ? 0.5 : 0.35)
-                                                     : Qt.rgba(1, 1, 1, hover.hovered ? 0.1 : 0)
+                                                     : desk.home.dark ? Qt.rgba(1, 1, 1, hover.hovered ? 0.1 : 0) : Qt.rgba(0, 0, 0, hover.hovered ? 0.06 : 0)
                     border.width: item.selected || dropHere ? 1 : 0
                     border.color: Qt.rgba(1, 1, 1, 0.35)
                 }
@@ -525,6 +562,7 @@ Item {
                     spacing: Kirigami.Units.smallSpacing
 
                     Item {
+                        id: iconBox
                         Layout.alignment: Qt.AlignHCenter
                         implicitWidth: desk.home.iconSize
                         implicitHeight: desk.home.iconSize
@@ -548,13 +586,14 @@ Item {
                         Layout.fillWidth: true
                         visible: desk.renaming !== item.fileName
                         text: item.suffix === "desktop" && item.appName ? item.appName : item.fileName
-                        color: "white"
+                        // the wallpaper follows the theme: dark text on the light one, white on the dark
+                        color: desk.home.dark ? "white" : "#1d1d1f"
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.Wrap
                         maximumLineCount: item.selected && desk.selectedCount === 1 ? 4 : 2
                         elide: Text.ElideRight
-                        style: Text.Raised
-                        styleColor: Qt.rgba(0, 0, 0, 0.45)
+                        style: Text.Outline
+                        styleColor: desk.home.dark ? Qt.rgba(0, 0, 0, 0.35) : Qt.rgba(1, 1, 1, 0.45)
                     }
                     PC3.TextField {
                         Layout.fillWidth: true
@@ -588,7 +627,7 @@ Item {
                         if (!(pressedButtons & Qt.LeftButton)) return;
                         const p = mapToItem(desk, m.x, m.y);
                         if (!desk.dragging && Math.hypot(p.x - start.x, p.y - start.y) >= 8) {
-                            desk.startDrag(item.fileName, start);
+                            desk.startDrag(item.fileName, start, iconBox);
                             dragged = true;
                         }
                         if (desk.dragging) desk.dragPos = p;

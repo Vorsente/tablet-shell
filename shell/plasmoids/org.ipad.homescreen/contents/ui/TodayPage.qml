@@ -27,12 +27,12 @@ Item {
 
     readonly property var names: ({
         weather: Tr.t("Погода"), calendar: Tr.t("Календарь"), clock: Tr.t("Часы"), youtube: "YouTube", typewriter: Tr.t("Печатная машинка"),
-        linux: Tr.t("Новости Linux"), russia: Tr.t("Новости страны"), note: Tr.t("Заметка"), rates: Tr.t("Курс валют"), sky: Tr.t("Небо"),
+        linux: Tr.t("Новости Linux"), russia: Tr.t("Новости страны"), custom: Tr.t("Моя лента"), note: Tr.t("Заметка"), rates: Tr.t("Курс валют"), sky: Tr.t("Небо"),
         onthisday: Tr.t("В этот день"), claude: Tr.t("Лимиты Claude"), screentime: Tr.t("Экранное время"), battery: Tr.t("Батарея"),
         weekly: Tr.t("Итоги недели"),
     })
     readonly property var allKinds: Object.keys(names)
-    readonly property var tall: ["linux", "russia", "onthisday", "note", "weekly"]
+    readonly property var tall: ["linux", "russia", "custom", "onthisday", "note", "weekly"]
 
     property bool editing: false
     property var shown: {

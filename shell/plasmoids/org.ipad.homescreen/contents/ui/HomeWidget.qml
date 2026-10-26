@@ -1,5 +1,6 @@
 // One iPadOS-like widget card: clock, weather, calendar, battery, typewriter, screen time,
-// YouTube, Linux news, Russia news, exchange rates, Claude limits, on this day, sky, week report.
+// YouTube, Linux news, country news, own RSS feeds, exchange rates, Claude limits, on this day, sky,
+// week report.
 // "small" fills 2x2 home grid cells, "wide" 4x2. Data comes from home.homeData (HomeData.qml).
 // Tapping does what the widget is about (typewriter opens the typewriter, screen time its
 // window); the home grid's WidgetTile handles editing.
@@ -53,8 +54,8 @@ Rectangle {
             Qt.openUrlExternally("https://studio.youtube.com/");
         } else if (kind === "claude") {
             Qt.openUrlExternally("https://claude.ai/settings/usage");
-        } else if (kind === "linux" || kind === "russia") {
-            const list = kind === "linux" ? d.linuxNews : d.russiaNews;
+        } else if (kind === "linux" || kind === "russia" || kind === "custom") {
+            const list = kind === "linux" ? d.linuxNews : kind === "custom" ? d.customNews : d.russiaNews;
             if (list.length > 0) {
                 Qt.openUrlExternally(list[0].link);
             }
@@ -107,7 +108,7 @@ Rectangle {
         sourceComponent: card.home.pixel ? pixelContent : ({
             clock: clockView, weather: weatherView, calendar: calendarView,
             battery: batteryView, typewriter: typewriterView, screentime: screentimeView,
-            youtube: youtubeView, linux: newsView, russia: newsView, rates: ratesView,
+            youtube: youtubeView, linux: newsView, russia: newsView, custom: newsView, rates: ratesView,
             claude: claudeView, onthisday: onThisDayView, sky: skyView, weekly: weeklyView,
         })[card.kind] || null
     }
@@ -581,14 +582,14 @@ Rectangle {
     Component {
         id: newsView
         ColumnLayout {
-            readonly property var items: card.kind === "linux" ? card.d.linuxNews : card.d.russiaNews
+            readonly property var items: card.kind === "linux" ? card.d.linuxNews : card.kind === "custom" ? card.d.customNews : card.d.russiaNews
             spacing: card.u * 0.3
             RowLayout {
                 Layout.fillWidth: true
-                Text { text: card.kind === "linux" ? "🐧" : card.d.newsFlag; font.pixelSize: card.u * 1.3 }
+                Text { text: card.kind === "linux" ? "🐧" : card.kind === "custom" ? "📰" : card.d.newsFlag; font.pixelSize: card.u * 1.3 }
                 Caption {
-                    text: card.kind === "linux" ? Tr.t("Новости Linux") : card.d.newsTitle
-                    color: card.kind === "linux" ? card.home.pal.yellow : card.home.pal.cyan
+                    text: card.kind === "linux" ? Tr.t("Новости Linux") : card.kind === "custom" ? card.d.customTitle : card.d.newsTitle
+                    color: card.kind === "linux" ? card.home.pal.yellow : card.kind === "custom" ? card.home.pal.orange : card.home.pal.cyan
                     Layout.fillWidth: true
                 }
             }
@@ -631,41 +632,48 @@ Rectangle {
                     }
                 }
             }
-            Caption { visible: items.length === 0; text: Tr.t("Загружаю…") }
+            Caption {
+                visible: items.length === 0
+                text: card.kind === "custom" ? Tr.t("Добавьте ленты в Настройках → Сегодня и виджеты") : Tr.t("Загружаю…")
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
         }
     }
 
-    // ---- exchange rates (Bank of Russia) ----
+    // ---- exchange rates (the chosen currency: Bank of Russia for roubles) ----
     Component {
         id: ratesView
         ColumnLayout {
             readonly property var r: card.d.rates
             spacing: card.u * 0.4
-            Caption { text: Tr.t("Курс ЦБ"); color: card.text }
+            Caption { text: card.d.ratesTitle; color: card.text; Layout.fillWidth: true }
             Item { Layout.fillHeight: true }
             Repeater {
-                model: [["USD", "$"], ["EUR", "€"], ["CNY", "¥"]]
+                model: r ? r.items : []
                 delegate: RowLayout {
                     required property var modelData
-                    readonly property var v: r ? r[modelData[0]] : null
-                    readonly property real change: v ? v.value - v.previous : 0
+                    readonly property real change: modelData.value - modelData.previous
                     Layout.fillWidth: true
-                    Text { text: modelData[1]; color: card.secondary; font.pixelSize: card.u * 1.5; Layout.preferredWidth: card.u * 1.6 }
+                    Text { text: modelData.sign; color: card.secondary; font.pixelSize: card.u * 1.5; Layout.preferredWidth: card.u * 1.6 }
                     Text {
-                        text: v ? v.value.toFixed(2) + " ₽" : "—"
+                        text: card.d.rateText(modelData.value) + " " + r.sign
                         color: card.text
                         font.pixelSize: card.u * 1.6
                         font.weight: Font.DemiBold
                         Layout.fillWidth: true
+                        elide: Text.ElideRight
                     }
                     Text {
-                        visible: !!v
-                        text: (change >= 0 ? "▲ " : "▼ ") + Math.abs(change).toFixed(2)
+                        visible: change !== 0
+                        // a small card has room for the arrow only
+                        text: (change >= 0 ? "▲" : "▼") + (card.wide ? " " + card.d.rateText(Math.abs(change), modelData.value) : "")
                         color: change >= 0 ? card.green : card.red
                         font.pixelSize: card.u * 0.9
                     }
                 }
             }
+            Caption { visible: !r; text: Tr.t("Загружаю…") }
         }
     }
 

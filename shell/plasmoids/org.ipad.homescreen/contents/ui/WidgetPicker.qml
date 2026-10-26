@@ -20,7 +20,7 @@ Item {
     readonly property var kinds: [
         ["weather", Tr.t("Погода")], ["calendar", Tr.t("Календарь")], ["clock", Tr.t("Часы")],
         ["typewriter", Tr.t("Печатная машинка")], ["screentime", Tr.t("Экранное время")], ["battery", Tr.t("Батарея")],
-        ["youtube", "YouTube"], ["linux", Tr.t("Новости Linux")], ["russia", Tr.t("Новости страны")], ["rates", Tr.t("Курс валют")],
+        ["youtube", "YouTube"], ["linux", Tr.t("Новости Linux")], ["russia", Tr.t("Новости страны")], ["custom", Tr.t("Моя лента")], ["rates", Tr.t("Курс валют")],
         ["claude", Tr.t("Лимиты Claude")], ["onthisday", Tr.t("В этот день")], ["sky", Tr.t("Небо: солнце и луна")],
     ]
     readonly property real unit: Math.min(width, height) / 9

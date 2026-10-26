@@ -37,7 +37,24 @@ QtObject {
         no: Tr.t("Норвегия"), tr: Tr.t("Турция"), il: Tr.t("Израиль"), jp: Tr.t("Япония"), kr: Tr.t("Южная Корея"),
     })
     readonly property string newsTitle: newsCountry === "ru" ? Tr.t("Новости России") : Tr.t("Новости: ") + (countryNames[newsCountry] || newsCountry.toUpperCase())
-    readonly property var rates: today.rates || null
+    // exchange rates in the chosen currency: {base, sign, source, items: [{code, sign, value, previous}]}
+    // (an older cache had {USD: {value, previous}, ...} in roubles)
+    readonly property var rates: {
+        const r = today.rates;
+        if (!r) return null;
+        if (r.items) return r.items.length > 0 ? r : null;
+        const items = [["USD", "$"], ["EUR", "€"], ["CNY", "¥"]].filter(c => r[c[0]])
+            .map(c => ({ code: c[0], sign: c[1], value: r[c[0]].value, previous: r[c[0]].previous }));
+        return items.length > 0 ? { base: "RUB", sign: "₽", source: Tr.t("ЦБ РФ"), items: items } : null;
+    }
+    readonly property string ratesTitle: !rates || rates.base === "RUB" ? Tr.t("Курс ЦБ") : Tr.t("Курс валют · ") + rates.base
+    // small amounts (a yen in dollars) need more digits; a change takes the digits of its rate
+    function rateText(v, rate) {
+        return Number(v).toLocaleString(Tr.locale(), "f", Math.abs(rate === undefined ? v : rate) < 1 ? 4 : 2);
+    }
+    // the user's own RSS feeds (Settings → Today and widgets)
+    readonly property var customNews: today.custom || []
+    readonly property string customTitle: today.customTitle || Tr.t("Моя лента")
     readonly property var onThisDay: today.onthisday || []
     // week report (`tablet-tools weekly`, local and quick): refreshed with the Today data
     property var weekly: null
