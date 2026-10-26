@@ -19,7 +19,7 @@ ColumnLayout {
     readonly property bool failed: stage === "error"
     readonly property bool determinate: progress > 0 && (stage === "downloading" || stage === "installing")
     // the four steps shown under the ring
-    readonly property int phase: done ? 4 : stage === "installing" ? 2 + (step >= 3 ? 1 : 0) : stage === "preparing" ? 1 : 0
+    readonly property int phase: done ? 4 : stage === "installing" ? 2 + (step >= 3 ? 1 : 0) : stage === "preparing" || stage === "authorizing" ? 1 : 0
     readonly property color accent: failed ? Kirigami.Theme.negativeTextColor
                                   : done ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.highlightColor
     readonly property real ring: Kirigami.Units.gridUnit * 6
@@ -96,6 +96,7 @@ ColumnLayout {
                   : anim.done ? "object-select-symbolic"
                   : anim.stage === "downloading" ? "download-symbolic"
                   : anim.stage === "preparing" ? "package-x-generic-symbolic"
+                  : anim.stage === "authorizing" ? "dialog-password-symbolic"
                   : anim.stage === "installing" ? "run-build-symbolic"
                   : "view-refresh-symbolic"
             transform: Translate { id: drop }

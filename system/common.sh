@@ -1,8 +1,10 @@
-# Shared by the system scripts (sourced, not run). They are started with sudo by the user the shell
-# is installed for: that user comes from SUDO_USER, never from a fixed name.
+# Shared by the system scripts (sourced, not run). They are started with sudo (or pkexec) by the user
+# the shell is installed for: that user comes from SUDO_USER / PKEXEC_UID, never from a fixed name.
 set -e
 [ "$(id -u)" = 0 ] || { echo "run with sudo / запустите через sudo"; exit 1; }
 U=${SUDO_USER:-}
+# started through pkexec (the Settings updater asks for the password with the KDE dialog)
+[ -n "$U" ] || [ -z "${PKEXEC_UID:-}" ] || U=$(id -nu "$PKEXEC_UID")
 [ -n "$U" ] && [ "$U" != root ] || { echo "run with sudo from your own account / запустите через sudo из своей учётной записи"; exit 1; }
 H=$(getent passwd "$U" | cut -d: -f6)
 SYSTEM_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"

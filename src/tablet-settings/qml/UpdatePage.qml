@@ -11,7 +11,7 @@ ColumnLayout {
     property bool touch: false
     readonly property var info: backend.updateInfo
     readonly property string stage: String(info.stage || "idle")
-    readonly property bool busy: ["checking", "downloading", "preparing", "installing"].includes(stage)
+    readonly property bool busy: ["checking", "downloading", "preparing", "authorizing", "installing"].includes(stage)
     spacing: Kirigami.Units.largeSpacing
 
     Component.onCompleted: backend.checkForUpdates()
@@ -52,7 +52,10 @@ ColumnLayout {
             case "downloading": return Tr.t("Скачивание с GitHub…") + (info.progress ? " " + info.progress + " %" : "");
             case "preparing": return Tr.t("Проверка архива…");
             case "installing": return Tr.t("Шаг ") + (info.step || 1) + Tr.t(" из 4: ") + String(info.message || Tr.t("сборка и установка")) + Tr.t(". Не закрывайте приложение.");
-            case "done": return Tr.t("Обновление установлено. Перезапустите оболочку, чтобы применить его.");
+            case "authorizing": return Tr.t("Введите пароль администратора в появившемся окне: он нужен для системных частей. «Отмена» — обновить без них.");
+            case "done": return Tr.t("Обновление установлено. Перезапустите оболочку, чтобы применить его.")
+                + (info.system === "partial" ? Tr.t(" Часть системных настроек не применилась (журналы в ~/.local/state/tablet-shell).")
+                   : info.system === "skipped" ? Tr.t(" Системные части пропущены: без пароля администратора.") : "");
             case "error": return Tr.t("Ошибка обновления: ") + String(info.message || "");
             case "cancelled": return Tr.t("Загрузка отменена.");
             default: return Tr.t("Нажмите «Проверить обновления».");

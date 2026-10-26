@@ -583,59 +583,20 @@ fi
 
 # ---- 8b. system parts (sudo) ---------------------------------------------------------------------
 # At the end: base.sh may switch the network over to NetworkManager, nothing may need it after that.
-# Each part runs on its own; one that fails or does not fit this machine (no btrfs, no UKI) is
-# reported and the rest go on. Logs: ~/.local/state/tablet-shell/system-*.log
-SYSTEM_LOGS=$HOME/.local/state/tablet-shell
-SYSTEM_SKIPPED=()
-system_part() {   # system_part "русское имя" "english name" script [args...]
-    local ru=$1 en=$2 script=$3; shift 3
-    local log="$SYSTEM_LOGS/system-$(basename "$(dirname "$script")")-$(basename "$script" .sh).log"
-    printf '  %-44s ' "$(t "$ru" "$en")"
-    if sudo -n bash "$REPO/system/$script" "$@" >"$log" 2>&1; then
-        echo ok
-    else
-        echo "$(t "пропущено" "skipped") ($log)"
-        grep -v '^\s*$' "$log" | tail -n 2 | sed 's/^/      /'
-        SYSTEM_SKIPPED+=("$script")
-    fi
-}
+# system/apply.sh runs every part on its own and reports each one (logs in ~/.local/state/tablet-shell).
 GREETER_PENDING="$HOME/.local/state/tablet-shell/greeter-refresh-needed"
 GREETER_INSTALLED=
 [ -r /etc/greetd/config.toml ] && grep -Eq 'tablet-greeter|tablet-shell-greeter' /etc/greetd/config.toml && GREETER_INSTALLED=1
 if [ -n "$SUDO_OK" ]; then
     say "Системные части" "System parts"
-    mkdir -p "$SYSTEM_LOGS"
-    system_part "Доступ к кнопкам, перу, экрану" "Buttons, pen, touch access" devices.sh
-    system_part "«Настройки» вместо Параметров" "Settings instead of System Settings" settings-wrappers.sh
-    if [ -z "$UPDATE_ONLY" ]; then
-        system_part "Сеть, Bluetooth, zram, приложения" "Network, Bluetooth, zram, apps" base.sh
-        # the language Plasma already uses (plasma-localerc LANGUAGE, else LANG)
-        LANGCODE=$(kreadconfig6 --file plasma-localerc --group Translations --key LANGUAGE 2>/dev/null)
-        LANGCODE=${LANGCODE%%:*}
-        [ -n "$LANGCODE" ] || LANGCODE=${LANG%%.*}
-        case "$LANGCODE" in
-            ""|C|POSIX) ;;
-            *) system_part "Язык системы ($LANGCODE)" "System language ($LANGCODE)" language.sh "$LANGCODE" ;;
-        esac
-        system_part "Снимки системы" "System snapshots" recovery/install.sh
-        if grep -qs '^Theme=tablet-arch' /etc/plymouth/plymouthd.conf; then
-            printf '  %-44s %s\n' "$(t "Заставка загрузки" "Boot splash")" "$(t "уже стоит" "already set up")"
-        else
-            system_part "Заставка загрузки" "Boot splash" boot-splash/install.sh
-        fi
-        [ -z "$ANDROID" ] || system_part "Android (Waydroid)" "Android (Waydroid)" android/install.sh
-    fi
-    if [ -n "$GREETER_INSTALLED" ]; then
-        if [ -n "$GREETER_UPDATE" ]; then
-            system_part "Экран входа: обновление" "Login screen: refresh" greeter.sh --refresh
-        fi
-    elif [ -z "$UPDATE_ONLY" ] && { [ -n "$GREETER" ] || [ -n "$GREETER_INSTALL" ]; }; then
-        system_part "Экран входа" "Login screen" greeter.sh
-    fi
-    case " ${SYSTEM_SKIPPED[*]} " in
-        *" greeter.sh "*) ;;
-        *) rm -f "$GREETER_PENDING" ;;
-    esac
+    APPLY=(--full)
+    [ -z "$UPDATE_ONLY" ] || APPLY=(--update)
+    { [ -n "$GREETER" ] || [ -n "$GREETER_INSTALL" ]; } && APPLY+=(--greeter)
+    [ -z "$ANDROID" ] || APPLY+=(--android)
+    [ -n "$GREETER_UPDATE" ] || APPLY+=(--no-greeter-refresh)
+    APPLY_OUT=$(sudo -n bash "$REPO/system/apply.sh" "${APPLY[@]}" 2>&1) || true
+    printf '%s\n' "$APPLY_OUT" | sed -E 's/^PART [^ ]+ ok (.*)/  ok       \1/; s/^PART [^ ]+ skipped (.*)/  '"$(t пропущено skipped)"'  \1/'
+    grep -q '^PART greeter.sh skipped' <<<"$APPLY_OUT" || rm -f "$GREETER_PENDING"
 elif [ -n "$GREETER_INSTALLED" ] && [ -n "$GREETER_UPDATE" ]; then
     mkdir -p "$(dirname "$GREETER_PENDING")"
     printf 'Login screen refresh requires administrator permission.\n' > "$GREETER_PENDING"
@@ -662,7 +623,8 @@ if [ -n "$SUDO_OK" ]; then
 fi
 t "Системные части (через sudo):" "System parts (with sudo):"; echo
 cat <<EOF
-  sudo $SHARE/tablet-shell/system/devices.sh            $(t "доступ к кнопкам, перу, клавиатуре; Rnote" "access to buttons, pen, keyboard; Rnote")
+  sudo $SHARE/tablet-shell/system/apply.sh --full --greeter  $(t "всё сразу (то же, что ниже, кроме Android)" "all at once (the list below except Android)")
+  sudo $SHARE/tablet-shell/system/devices.sh            $(t "доступ к кнопкам, перу, экрану, клавиатуре; Rnote" "access to buttons, pen, touch screen, keyboard; Rnote")
   sudo $SHARE/tablet-shell/system/settings-wrappers.sh  $(t "«Настройки» вместо Параметров системы" "Tablet Settings instead of System Settings")
   sudo $SHARE/tablet-shell/system/greeter.sh            $(t "свой экран входа" "own login screen")
   sudo $SHARE/tablet-shell/system/base.sh               $(t "NetworkManager, Bluetooth, zram, приложения" "NetworkManager, Bluetooth, zram, apps")

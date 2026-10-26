@@ -292,6 +292,46 @@ def release_awake(holders):
                 h.kill()
 
 
+def ask_admin(source_dir):
+    """Start system/apply.sh of the new version through pkexec and wait until the password was
+    given. Returns the waiting process, or None (cancelled, no polkit, older archive)."""
+    helper = source_dir / 'system' / 'apply.sh'
+    if not helper.is_file() or not shutil.which('pkexec'):
+        return None
+    emit('authorizing', message='Введите пароль администратора')
+    try:
+        proc = subprocess.Popen(['pkexec', '/usr/bin/bash', str(helper), '--update', '--wait'],
+                                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL, text=True, errors='replace')
+    except OSError:
+        return None
+    # READY = authenticated; EOF = the dialog was cancelled (pkexec exits 126 / 127)
+    if proc.stdout.readline().strip() != 'READY':
+        proc.wait()
+        return None
+    return proc
+
+
+def finish_admin(proc, run):
+    """Let the waiting root helper run (or quit). Returns 'ok', 'partial' or 'skipped'."""
+    if proc is None:
+        return 'skipped'
+    try:
+        proc.stdin.write('run\n' if run else 'quit\n')
+        proc.stdin.close()
+    except OSError:
+        pass
+    if not run:
+        proc.wait()
+        return 'skipped'
+    emit('installing', step=4, progress=95, message='Системные части')
+    parts = [l.split() for l in proc.stdout if l.startswith('PART ')]
+    proc.wait()
+    if not parts:
+        return 'skipped'
+    return 'ok' if all(p[2] == 'ok' for p in parts if len(p) > 2) else 'partial'
+
+
 def install(home, expected):
     holders = keep_awake()
     try:
@@ -316,11 +356,17 @@ def install_unlocked(home, expected):
         download_archive(expected, archive)
         emit('preparing', message='Проверка полученного архива')
         unpack_archive(archive, source_dir)
+        # The administrator password, asked once before anything is installed (KDE's polkit
+        # dialog): a root helper authenticates now and waits; it runs the system parts of the
+        # new version (device access, Settings wrappers) after the user part is in place.
+        # Cancelled = the update goes on without them.
+        root = ask_admin(source_dir)
         emit('installing', message='Сборка и установка (на слабых устройствах может быть долгой)')
         env = os.environ.copy()
         env['TABLET_SHELL_SOURCE_COMMIT'] = expected
+        env['TABLET_SHELL_ADMIN_HANDLED'] = '1'   # ask_admin above took care of the password
         # Use the NEW update.sh included in the pinned revision, not an arbitrary shell command.
-        # No sudo prompts from the GUI; keep the existing login manager intact.
+        # The login manager stays as it is (it is only refreshed by install.sh).
         # update.sh prints "[n/4] stage" lines: they become the progress shown in Settings.
         # Its other output is only kept (in memory) to explain a failure.
         proc = subprocess.Popen(['bash', str(source_dir / 'update.sh'), '--offline',
@@ -338,10 +384,12 @@ def install_unlocked(home, expected):
                 n = int(step.group(1))
                 emit('installing', step=n, progress=n * 25 - 15, message=step.group(2)[:120])
         if proc.wait() != 0:
+            finish_admin(root, run=False)
             detail = [l for l in tail if not l.startswith('Update was interrupted')]
             suffix = (': ' + detail[-1][:320]) if detail else ''
             raise UpdateError('Не удалось установить обновление' + suffix)
-        emit('done', sha=expected, label=remote['label'],
+        system = finish_admin(root, run=True)
+        emit('done', sha=expected, label=remote['label'], system=system,
              message='Обновление установлено. Перезапустите оболочку, чтобы применить его.')
 
 

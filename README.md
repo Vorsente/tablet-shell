@@ -160,7 +160,7 @@ The installer:
    `~/.local/state/tablet-shell/`. Android only with `--android`, `system/cleanup.sh` only by hand.
 
 Without `sudo` (`--no-system`, or no password given) only the user part is installed and the system
-scripts are listed at the end. Updating from Settings never asks for a password.
+scripts are listed at the end. Updating from Settings asks for the administrator password (KDE dialog) after the download and applies the new version's system parts once the update is in: device access and the Settings wrappers (keyboard and login screen are never changed by updates); Cancel updates without them.
 
 **Log out and back in.** That's it — the tablet is ready.
 

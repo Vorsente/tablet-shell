@@ -176,6 +176,13 @@ if (cd -- "$SOURCE" && TABLET_SHELL_DOWNLOAD_ICONS=1 TABLET_SHELL_OFFLINE="$((1-
     fi
     printf '%sРезервная копия / Backup:%s %s\n' "$MUTED" "$RESET" "$backup"
     printf 'Keyboard, lock screen and login screen were NOT updated.\n' 
+    # Started by the Settings app of an older version (it does not ask for the administrator
+    # password itself): the system parts of this version via pkexec (KDE password dialog).
+    # Newer Settings ask before the update and set TABLET_SHELL_ADMIN_HANDLED; in a terminal
+    # install.sh asked for sudo already.
+    if [[ ! -t 0 && -z "${TABLET_SHELL_ADMIN_HANDLED:-}" && -f "$SOURCE/system/apply.sh" ]] && command -v pkexec >/dev/null; then
+        pkexec /usr/bin/bash "$SOURCE/system/apply.sh" --update </dev/null || true
+    fi
 else
     echo "Update was interrupted. Previous settings and daemon binaries: $backup" >&2
     exit 1
