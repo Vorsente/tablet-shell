@@ -160,12 +160,13 @@ if [ ${#MISSING[@]} -gt 0 ]; then
     NATIVE=$(pkg_missing "${MISSING[@]}" | tr '\n' ' ')
     echo "  $(t "Не хватает пакетов:" "Missing packages:") $NATIVE"
     echo "  sudo $(pkg_cmd $NATIVE)"
-    if ! pkg_install --sudo "${MISSING[@]}"; then
-        if [ "$SKIP_FAILED_BUILDS" = 1 ]; then
-            echo '  WARNING: missing dependencies; installed components will be preserved if rebuilding fails.' >&2
-        else
-            die "Установите пакеты и запустите снова." "Install the packages and run again."
-        fi
+    # Not fatal: names differ between distributions and many packages are only needed at run time
+    # (apps, fonts). What the build really needs, the build reports by name and stops there.
+    if [ -z "$SUDO_OK" ] && [ ! -t 0 ]; then
+        echo "  $(t "Нет sudo без терминала: пакеты не ставлю, поставьте командой выше." "No sudo without a terminal: packages not installed, use the command above.")" >&2
+    elif ! pkg_install --sudo "${MISSING[@]}"; then
+        echo "  $(t "Не все пакеты поставились; продолжаю — сборка сообщит, если не хватает нужного ей." \
+                    "Not every package was installed; going on — the build reports anything it really needs.")" >&2
     fi
 fi
 

@@ -158,7 +158,11 @@ pkg_cmd() { # the command line (without sudo) that installs native names
 # not be installed (their names are printed); the rest are installed anyway.
 pkg_install() {
     local sudo=() missing n failed=()
-    [ "${1:-}" = --sudo ] && { sudo=(sudo); shift; }
+    # without a terminal sudo cannot ask: only an already valid sudo is used (sudo -n)
+    if [ "${1:-}" = --sudo ]; then
+        if [ -t 0 ]; then sudo=(sudo); else sudo=(sudo -n); fi
+        shift
+    fi
     if [ -z "$PM" ]; then
         echo "  no known package manager (pacman/apt/dnf/zypper): install by hand: $*" >&2
         return 1
