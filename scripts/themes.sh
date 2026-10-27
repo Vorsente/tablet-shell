@@ -43,6 +43,7 @@ if os.path.exists(p):
 PY
 done
 python3 -I "$HERE/make-glass-panel.py" "$SHARE/plasma/desktoptheme" >/dev/null
+python3 -I "$HERE/make-task-highlight.py" --apple "$SHARE"/plasma/desktoptheme/WhiteSurLiquid* >/dev/null
 rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}"/plasma_theme_WhiteSurLiquid*
 
 echo "  WhiteSur icons"

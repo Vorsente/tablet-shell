@@ -303,6 +303,10 @@ if [ -d shell/wallpaper-packs ]; then
     done
 fi
 for p in shell/desktoptheme/*; do sync_dir "$p" "$SHARE/plasma/desktoptheme/$(basename "$p")"; done
+# compact rounded task highlight instead of a block over the whole task cell (Pixel and WhiteSur)
+python3 -I scripts/make-task-highlight.py "$SHARE"/plasma/desktoptheme/tablet-pixel-* >/dev/null
+python3 -I scripts/make-task-highlight.py --apple "$SHARE"/plasma/desktoptheme/WhiteSurLiquid* >/dev/null
+rm -f "$HOME"/.cache/plasma-svgelements-* "$HOME"/.cache/plasma_theme_*.kcache
 sync_dir shell/color-schemes "$SHARE/color-schemes"
 # Pixel uses its own symbols for panels and shell actions; unknown app icons
 # inherit Colloid/Breeze. Apple's original MacTahoe theme is left unchanged.

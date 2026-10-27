@@ -42,11 +42,14 @@ Item {
 
     Rectangle {
         id: panel
-        width: Kirigami.Units.gridUnit * 15
-        height: column.implicitHeight + Kirigami.Units.smallSpacing * 2
+        // iOS-style context menu: rows inset from the rounded edge, hairline separators inside
+        // the padding, symbolic icons at the right, the appearance switch as three tiles
+        readonly property real pad: Math.round(Kirigami.Units.gridUnit * 0.55)
+        width: Math.round(Kirigami.Units.gridUnit * 16)
+        height: column.implicitHeight + pad * 2
         x: Math.max(Kirigami.Units.largeSpacing, Math.min(menu.at.x - width / 2, menu.width - width - Kirigami.Units.largeSpacing))
         y: Math.max(Kirigami.Units.largeSpacing, Math.min(menu.at.y, menu.height - height - Kirigami.Units.gridUnit * 5))
-        radius: menu.home.pixel ? Kirigami.Units.gridUnit * 1.6 : Kirigami.Units.gridUnit
+        radius: menu.home.pixel ? Kirigami.Units.gridUnit * 1.4 : Kirigami.Units.gridUnit
         color: menu.home.pal.sheet
         border.color: menu.home.pal.sheetBorder
         border.width: menu.home.pixel ? 0 : 1
@@ -59,96 +62,117 @@ Item {
         ColumnLayout {
             id: column
             anchors.fill: parent
-            anchors.margins: Kirigami.Units.smallSpacing
+            anchors.margins: panel.pad
             spacing: 0
 
-            component Entry: PC3.ItemDelegate {
+            // one row: label left, symbolic icon right, a rounded highlight while pressed
+            component Entry: Item {
+                id: entry
+                property string text
+                property string iconName
+                signal clicked()
                 Layout.fillWidth: true
-                implicitHeight: Kirigami.Units.gridUnit * 2.4
-                palette.text: menu.home.pal.text
-                contentItem: RowLayout {
+                implicitHeight: Math.round(Kirigami.Units.gridUnit * 2.5)
+                Rectangle {
+                    anchors.fill: parent
+                    radius: menu.home.pixel ? height / 2 : Kirigami.Units.gridUnit * 0.55
+                    color: menu.home.pal.fill
+                    opacity: entryArea.pressed ? 1 : entryArea.containsMouse ? 0.55 : 0
+                    Behavior on opacity { NumberAnimation { duration: 90 } }
+                }
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: Math.round(Kirigami.Units.gridUnit * 0.75)
+                    anchors.rightMargin: Math.round(Kirigami.Units.gridUnit * 0.75)
                     spacing: Kirigami.Units.largeSpacing
                     PC3.Label {
                         Layout.fillWidth: true
-                        text: parent.parent.text
+                        text: entry.text
                         color: menu.home.pal.text
+                        elide: Text.ElideRight
                     }
                     Kirigami.Icon {
-                        source: parent.parent.icon.name
+                        Layout.alignment: Qt.AlignVCenter
+                        source: entry.iconName
                         implicitWidth: Kirigami.Units.iconSizes.smallMedium
                         implicitHeight: implicitWidth
+                        color: menu.home.pal.text
+                        isMask: true
                     }
                 }
+                MouseArea {
+                    id: entryArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: entry.clicked()
+                }
+            }
+            component Separator: Rectangle {
+                Layout.fillWidth: true
+                Layout.leftMargin: Math.round(Kirigami.Units.gridUnit * 0.75)
+                Layout.rightMargin: Math.round(Kirigami.Units.gridUnit * 0.75)
+                Layout.topMargin: panel.pad
+                Layout.bottomMargin: panel.pad
+                implicitHeight: 1
+                color: menu.home.pal.fill
             }
 
             // PC desktop (DesktopFolder.qml): new folder / text file in ~/Desktop
             Entry {
                 visible: menu.home.pcMode
                 text: Tr.t("Новая папка")
-                icon.name: "folder-new"
+                iconName: "folder-new-symbolic"
                 onClicked: { menu.open = false; menu.newFolderRequested(); }
             }
             Entry {
                 visible: menu.home.pcMode
                 text: Tr.t("Новый текстовый файл")
-                icon.name: "document-new"
+                iconName: "document-new-symbolic"
                 onClicked: { menu.open = false; menu.newFileRequested(); }
             }
-            Rectangle {
-                visible: menu.home.pcMode
-                Layout.fillWidth: true
-                Layout.topMargin: Kirigami.Units.smallSpacing
-                Layout.bottomMargin: Kirigami.Units.smallSpacing
-                implicitHeight: 1
-                color: menu.home.pal.fill
-            }
+            Separator { visible: menu.home.pcMode }
             Entry {
                 text: Tr.t("Обои")
-                icon.name: "preferences-desktop-wallpaper-symbolic"
+                iconName: "preferences-desktop-wallpaper"
                 onClicked: { menu.open = false; menu.wallpaperRequested(); }
             }
             Entry {
                 visible: !menu.home.pcMode
                 text: Tr.t("Править экран «Домой»")
-                icon.name: "edit-entry"
+                iconName: "edit-entry-symbolic"
                 onClicked: { menu.open = false; menu.home.editing = true; }
             }
             Entry {
                 text: Tr.t("Веб-приложение")
-                icon.name: "list-add"
+                iconName: "list-add-symbolic"
                 onClicked: { menu.open = false; menu.webAppRequested(); }
             }
 
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.topMargin: Kirigami.Units.smallSpacing
-                Layout.bottomMargin: Kirigami.Units.smallSpacing
-                implicitHeight: 1
-                color: menu.home.pal.fill
-            }
+            Separator {}
 
             // Appearance: segmented light / dark / auto
             RowLayout {
                 Layout.fillWidth: true
-                Layout.margins: Kirigami.Units.smallSpacing
-                spacing: Kirigami.Units.smallSpacing
+                spacing: panel.pad
 
                 Repeater {
                     model: [
-                        { mode: "light", label: Tr.t("Светлая"), icon: "weather-clear" },
-                        { mode: "dark", label: Tr.t("Тёмная"), icon: "weather-clear-night" },
-                        { mode: "auto", label: Tr.t("Авто"), icon: "chronometer" },
+                        { mode: "light", label: Tr.t("Светлая"), icon: "weather-clear-symbolic" },
+                        { mode: "dark", label: Tr.t("Тёмная"), icon: "weather-clear-night-symbolic" },
+                        { mode: "auto", label: Tr.t("Авто"), icon: "contrast-symbolic" },
                     ]
                     delegate: Rectangle {
                         required property var modelData
                         Layout.fillWidth: true
-                        implicitHeight: Kirigami.Units.gridUnit * 3.2
-                        radius: Kirigami.Units.smallSpacing * 2
+                        implicitHeight: Math.round(Kirigami.Units.gridUnit * 3.4)
+                        radius: menu.home.pixel ? Kirigami.Units.gridUnit * 1.1 : Kirigami.Units.gridUnit * 0.6
+                        border.width: menu.appearance === modelData.mode ? 1 : 0
+                        border.color: menu.home.pal.sheetBorder
                         color: menu.appearance === modelData.mode ? menu.home.pal.fillStrong : menu.home.pal.fillWeak
 
                         ColumnLayout {
                             anchors.centerIn: parent
-                            spacing: 2
+                            spacing: Math.round(Kirigami.Units.smallSpacing * 1.5)
                             Kirigami.Icon {
                                 Layout.alignment: Qt.AlignHCenter
                                 source: modelData.icon
