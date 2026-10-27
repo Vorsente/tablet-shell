@@ -971,6 +971,28 @@ public Q_SLOTS:
         QDBusConnection::systemBus().connect(QStringLiteral("org.freedesktop.UPower"), QStringLiteral("/org/freedesktop/UPower"),
                                              QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("PropertiesChanged"),
                                              this, SLOT(onUPowerChanged(QString, QVariantMap, QStringList)));
+        // waking up reports the charger again: no animation for that (see onUPowerChanged)
+        QDBusConnection::systemBus().connect(QStringLiteral("org.freedesktop.login1"), QStringLiteral("/org/freedesktop/login1"),
+                                             QStringLiteral("org.freedesktop.login1.Manager"), QStringLiteral("PrepareForSleep"),
+                                             this, SLOT(onPrepareForSleep(bool)));
+        m_woke.start();   // the session just started (power on): the same
+    }
+
+    // the screen is dark: backlight powered down or at zero (DPMS off, the tablet asleep)
+    static bool screenOff()
+    {
+        const QDir backlights(QStringLiteral("/sys/class/backlight"));
+        for (const QString &b : backlights.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+            QFile power(backlights.filePath(b + QStringLiteral("/bl_power")));
+            QFile level(backlights.filePath(b + QStringLiteral("/actual_brightness")));
+            if (power.open(QIODevice::ReadOnly) && power.readAll().trimmed() != "0") {
+                return true;
+            }
+            if (level.open(QIODevice::ReadOnly) && level.readAll().trimmed() == "0") {
+                return true;
+            }
+        }
+        return false;
     }
 
     // tabletrc [Effects]: charging animation, lock/unlock sounds (on unless switched off)
@@ -998,8 +1020,19 @@ public Q_SLOTS:
     void onUPowerChanged(const QString &, const QVariantMap &changed, const QStringList &)
     {
         const auto it = changed.find(QStringLiteral("OnBattery"));
-        if (it != changed.end() && !it->toBool()) {
+        // Only a charger plugged in while someone looks at the screen gets the animation: not
+        // while it is off or locked, and not for the charger that was already in when the tablet
+        // was switched on or woke up (that one is reported again then)
+        if (it != changed.end() && !it->toBool() && !m_locked && !screenOff()
+            && (!m_woke.isValid() || m_woke.elapsed() > 15000)) {
             ShowCharging();
+        }
+    }
+
+    void onPrepareForSleep(bool sleeping)
+    {
+        if (!sleeping) {
+            m_woke.start();
         }
     }
 
@@ -1483,6 +1516,7 @@ private:
     int m_waydroidIdle = 0;      // minutes without a Waydroid window while the session runs
     QString m_currentApp;
     bool m_locked = false;
+    QElapsedTimer m_woke;   // since the session started or the tablet woke up
     QString m_osdMember;
     QStringList m_osdArgs;
     // text menu: touch screen state
