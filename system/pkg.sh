@@ -102,13 +102,13 @@ pkg_names() {
         kcoreaddons) echo kf6-kcoreaddons-devel ;;
         kwindowsystem) echo kf6-kwindowsystem-devel ;;
         plasma-workspace) echo plasma6-workspace ;;
-        plasma5support) echo plasma6-5support-devel ;;
+        plasma5support) echo plasma5support6-devel ;;
         plasma-pa) echo plasma6-pa ;;
         plasma-mobile) echo plasma6-mobile ;;
         libksysguard) echo libksysguard6 ;;
         ksystemstats) echo ksystemstats6 ;;
         layer-shell-qt) echo layer-shell-qt6-devel ;;
-        libkscreen) echo libkscreen6 ;;
+        libkscreen) echo libkscreen6-plugin kscreen6 ;;
         tree-sitter-cli) echo tree-sitter ;;
         ttf-jetbrains-mono-nerd) echo jetbrains-mono-fonts ;;
         hunspell-en_us) echo myspell-en_US ;;
