@@ -7,7 +7,7 @@
 source "$(dirname "$(readlink -f "$0")")/../common.sh"
 grep -qw binder /proc/filesystems || modprobe binder_linux 2>/dev/null || {
     t "В ядре нет binder: Waydroid не запустится." "The kernel has no binder support: Waydroid cannot run."; echo; exit 1; }
-pacman -S --needed --noconfirm waydroid python-pyclip wl-clipboard
+pkg_install waydroid python-pyclip wl-clipboard
 case " $* " in *" --gapps "*) waydroid init -s GAPPS -f ;; *) waydroid init ;; esac
 systemctl enable --now waydroid-container.service
 

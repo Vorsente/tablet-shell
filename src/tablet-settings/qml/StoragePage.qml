@@ -1,5 +1,5 @@
 // Storage section: how full the disk is and what can go (`tablet-tools cleanup`): the trash,
-// Firefox's cache, app caches, old downloads (moved to the trash) and pacman's package cache
+// Firefox's cache, app caches, old downloads (moved to the trash) and the package manager's cache
 // (pkexec asks for the password). Automatic cleanup (tabletd, weekly): trash and thumbnails older
 // than a month, crash reports.
 import QtQuick
@@ -66,7 +66,10 @@ ColumnLayout {
             script += '"$1" cleanup run ' + rest.join(" ") + ' >/dev/null 2>&1; ';
         }
         if (pac) {
-            script += 'pkexec pacman -Sc --noconfirm >/dev/null 2>"$2.err"; p=$?; [ $p -ne 0 ] && echo "pacman=$p" >> "$2"; ';
+            // the package manager of this distribution ("pacman" is only the item's id)
+            script += 'if command -v pacman >/dev/null; then c="pacman -Sc --noconfirm"; elif command -v apt-get >/dev/null; then c="apt-get clean"; '
+                    + 'elif command -v dnf >/dev/null; then c="dnf clean packages"; elif command -v zypper >/dev/null; then c="zypper clean --all"; else c=true; fi; '
+                    + 'pkexec $c >/dev/null 2>"$2.err"; p=$?; [ $p -ne 0 ] && echo "pacman=$p" >> "$2"; ';
         }
         script += 'echo done >> "$2"';
         backend.start(["bash", "-c", script, "bash", tools, outFile]);

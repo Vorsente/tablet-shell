@@ -1,5 +1,6 @@
 #!/bin/bash
-# Installs the tablet shell for the current user on Arch Linux + KDE Plasma 6 (Wayland).
+# Installs the tablet shell for the current user on KDE Plasma 6 (Wayland): Arch, Debian/Ubuntu,
+# Fedora, openSUSE (packages through pacman/apt/dnf/zypper; other distributions: install them by hand).
 #   ./install.sh                 asks for sudo once, then: packages, build, files, themes, settings
 #                                and the system parts (device access, login screen, network, language,
 #                                snapshots, boot splash)
@@ -136,7 +137,8 @@ fi
 
 # ---- 1. what this needs ------------------------------------------------------------------------
 say "Проверка системы" "Checking the system"
-command -v pacman >/dev/null || die "Нужен Arch Linux (pacman)." "Needs Arch Linux (pacman)."
+source "$REPO/system/pkg.sh"
+[ -n "$PM" ] || echo "  $(t "Неизвестный менеджер пакетов: зависимости проверьте сами (список в README)." "Unknown package manager: check the dependencies yourself (list in the README).")"
 PLASMA=$(plasmashell --version 2>/dev/null | grep -o '[0-9]\+' | head -1)
 [ "${PLASMA:-0}" -ge 6 ] || die "Нужна KDE Plasma 6." "Needs KDE Plasma 6."
 [ "${XDG_SESSION_TYPE:-}" = wayland ] || echo "  $(t "Внимание: оболочка рассчитана на сеанс Wayland." "Note: the shell is made for a Wayland session.")"
@@ -150,13 +152,15 @@ for p in "${NEED[@]}"; do
     case $p in
         inter-font) fc-list | grep -q '/Inter' && continue ;;
         ttf-croscore) fc-list | grep -q 'Cousine' && continue ;;
+        ttf-jetbrains-mono-nerd) fc-list | grep -q 'JetBrains' && continue ;;
     esac
-    pacman -Qq "$p" >/dev/null 2>&1 || pacman -Qqg "$p" >/dev/null 2>&1 || MISSING+=("$p")
+    [ -z "$PM" ] || pkg_have "$p" || MISSING+=("$p")
 done
 if [ ${#MISSING[@]} -gt 0 ]; then
-    echo "  $(t "Не хватает пакетов:" "Missing packages:") ${MISSING[*]}"
-    echo "  sudo pacman -S --needed ${MISSING[*]}"
-    if ! sudo pacman -S --needed "${MISSING[@]}"; then
+    NATIVE=$(pkg_missing "${MISSING[@]}" | tr '\n' ' ')
+    echo "  $(t "Не хватает пакетов:" "Missing packages:") $NATIVE"
+    echo "  sudo $(pkg_cmd $NATIVE)"
+    if ! pkg_install --sudo "${MISSING[@]}"; then
         if [ "$SKIP_FAILED_BUILDS" = 1 ]; then
             echo '  WARNING: missing dependencies; installed components will be preserved if rebuilding fails.' >&2
         else
@@ -165,14 +169,17 @@ if [ ${#MISSING[@]} -gt 0 ]; then
     fi
 fi
 
+# internet: themes and the LazyVim starter come from GitHub; without it they are skipped
+ONLINE=
+curl -fsS --max-time 8 -o /dev/null https://github.com 2>/dev/null && ONLINE=1
+
 # ---- 1b. isolated LazyVim installation ---------------------------------------------------------
 say "Среда программирования LazyVim" "LazyVim development environment"
-if ! bash ./scripts/install-lazyvim.sh; then
-    if [ "$SKIP_FAILED_BUILDS" = 1 ]; then
-        echo '  WARNING: LazyVim setup skipped; existing settings are untouched.' >&2
-    else
-        die "Не удалось установить LazyVim." "Failed to set up LazyVim."
-    fi
+if [ -z "$ONLINE" ]; then
+    echo "  $(t "Нет доступа к GitHub: LazyVim пропущен." "No access to GitHub: LazyVim skipped.")"
+elif ! bash ./scripts/install-lazyvim.sh; then
+    # optional: the shell works without it
+    echo "  $(t "LazyVim не установлен; остальное ставится дальше." "LazyVim was not set up; the rest goes on.")" >&2
 fi
 
 # ---- 2. build ----------------------------------------------------------------------------------
@@ -229,6 +236,31 @@ done
 if ((${#SKIPPED_COMPONENTS[@]})); then
     printf '  Partial build / Частичная сборка — preserved: %s\n' "${SKIPPED_COMPONENTS[*]}" >&2
 fi
+
+# ---- 2b. copy of the KDE settings ---------------------------------------------------------------
+# The installer changes the running session's settings: keep a copy of every file it touches
+# first, with a script that puts them back (uninstall.sh removes the shell itself).
+CONFIG_BACKUP=$HOME/.local/state/tablet-shell/config-backup-$(date +%Y%m%d-%H%M%S)
+mkdir -p "$CONFIG_BACKUP"
+# the last five copies are enough
+ls -1d "$HOME"/.local/state/tablet-shell/config-backup-* 2>/dev/null | head -n -5 | xargs -r rm -rf --
+for f in kwinrc kdeglobals kded6rc dolphinrc plasmarc plasmashellrc plasma-org.kde.plasma.desktop-appletsrc \
+         kscreenlockerrc plasmamobilerc baloofilerc plasma-localerc kglobalshortcutsrc kcminputrc kxkbrc \
+         powerdevilrc ksmserverrc kwinrulesrc; do
+    [ -f "$HOME/.config/$f" ] && cp -a "$HOME/.config/$f" "$CONFIG_BACKUP/"
+done
+cat > "$CONFIG_BACKUP/restore.sh" <<'RESTORE'
+#!/bin/bash
+# Puts back the KDE settings saved before tablet-shell changed them, then restarts Plasma.
+cd "$(dirname "$(readlink -f "$0")")"
+systemctl --user stop plasma-plasmashell.service
+for f in *rc; do cp -a "$f" "$HOME/.config/$f"; done
+qdbus6 org.kde.KWin /KWin reconfigure 2>/dev/null || true
+systemctl --user start plasma-plasmashell.service
+echo "Restored from $PWD"
+RESTORE
+chmod +x "$CONFIG_BACKUP/restore.sh"
+echo "  $(t "Копия настроек KDE: $CONFIG_BACKUP (вернуть: restore.sh там)" "Copy of the KDE settings: $CONFIG_BACKUP (put back: restore.sh there)")"
 
 # ---- 3. files ----------------------------------------------------------------------------------
 say "Файлы" "Files"
@@ -366,14 +398,27 @@ install -m755 update.sh "$SHARE/tablet-shell/update.sh"
 
 if [ -z "$UPDATE_ONLY" ]; then
 # ---- 4. themes ---------------------------------------------------------------------------------
+# Downloads (themes from GitHub at pinned commits: git checks the content against the commit) are
+# optional: offline, or when GitHub fails, the shell installs without them.
 if [ -n "$THEMES" ]; then
     say "Темы WhiteSur (загрузка)" "WhiteSur themes (download)"
-    bash scripts/themes.sh
+    if [ -z "$ONLINE" ]; then
+        echo "  $(t "Нет доступа к GitHub: темы пропущены (позже: ./install.sh --update-only после scripts/themes.sh)." "No access to GitHub: themes skipped (later: scripts/themes.sh, then ./install.sh --update-only).")"
+    elif ! bash scripts/themes.sh; then
+        echo "  $(t "Темы не скачались; оболочка ставится со стандартными." "The themes did not download; the shell is installed with the standard ones.")" >&2
+    fi
 fi
 
 # ---- 5. hardware -------------------------------------------------------------------------------
 say "Устройство" "Device"
 HW=$("$BIN/tablet-tools" hardware)
+# the device kind decides the device-specific system parts (system/devices.sh)
+case "$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null)|$(cat /sys/class/dmi/id/product_name /sys/class/dmi/id/product_version 2>/dev/null | tr '\n' ' ')" in
+    LENOVO*"ThinkPad 10"*) KIND="ThinkPad 10" ;;
+    Microsoft*"|Surface"*) KIND="Microsoft Surface: $(t "касания и перо через iptsd (linux-surface)" "touch and pen through iptsd (linux-surface)")" ;;
+    *) KIND=$(t "другое устройство: общие настройки" "another device: general settings") ;;
+esac
+echo "  $KIND"
 echo "  $HW"
 # Bay Trail / Cherry Trail graphics: only the old i965 VA-API driver works (iHD fails and slows
 # every video start)
@@ -629,7 +674,7 @@ cat <<EOF
   sudo $SHARE/tablet-shell/system/greeter.sh            $(t "свой экран входа" "own login screen")
   sudo $SHARE/tablet-shell/system/base.sh               $(t "NetworkManager, Bluetooth, zram, приложения" "NetworkManager, Bluetooth, zram, apps")
   sudo $SHARE/tablet-shell/system/language.sh ru|en     $(t "язык системы" "system language")
-  sudo $SHARE/tablet-shell/system/recovery/install.sh   $(t "снимки системы (btrfs + systemd-boot)" "system snapshots (btrfs + systemd-boot)")
+  sudo $SHARE/tablet-shell/system/recovery/install.sh   $(t "снимки системы (Arch: btrfs + systemd-boot)" "system snapshots (Arch: btrfs + systemd-boot)")
   sudo $SHARE/tablet-shell/system/boot-splash/install.sh $(t "заставка загрузки" "boot splash")
   sudo $SHARE/tablet-shell/system/android/install.sh    Android (Waydroid)
 EOF

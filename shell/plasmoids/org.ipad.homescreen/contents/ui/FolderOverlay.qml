@@ -89,6 +89,7 @@ Item {
                             preventStealing: picked
                             property point pressPos
                             property bool picked: false
+                            property bool moved: false   // a swipe that ends on the icon is no tap
 
                             function pick(m) {
                                 picked = true;
@@ -98,6 +99,7 @@ Item {
                             onPressed: m => {
                                 pressPos = Qt.point(m.x, m.y);
                                 picked = false;
+                                moved = false;
                             }
                             onPressAndHold: m => {
                                 if (!overlay.home.pcMode) {
@@ -106,6 +108,9 @@ Item {
                                 pick(m);
                             }
                             onPositionChanged: m => {
+                                if (Math.hypot(m.x - pressPos.x, m.y - pressPos.y) > overlay.home.tapSlop) {
+                                    moved = true;
+                                }
                                 if (!picked && (overlay.home.editing || overlay.home.pcMode)
                                         && Math.hypot(m.x - pressPos.x, m.y - pressPos.y) > 12) {
                                     pick(m);
@@ -126,7 +131,7 @@ Item {
                                     overlay.home.cancelDrag();
                                 }
                             }
-                            onClicked: if (!overlay.home.editing && !picked) overlay.home.launch(cell.modelData, face.iconItem)
+                            onClicked: if (!overlay.home.editing && !picked && !moved) overlay.home.launch(cell.modelData, face.iconItem)
                         }
 
                         // "−" badge: take the app out of the folder

@@ -5,8 +5,10 @@
 #                                             first install / reinstall: device access, Settings
 #                                             wrappers, network + zram, system language, snapshots,
 #                                             boot splash, own login screen (installed or refreshed)
-#   apply.sh --update                         what an update may bring: device access, Settings
-#                                             wrappers (keyboard and login screen stay untouched)
+#   apply.sh --update                         what an update may bring: device access (with what this
+#                                             device needs: ThinkPad, Surface, others), Settings
+#                                             wrappers, the new boot splash picture (keyboard and
+#                                             login screen stay untouched)
 #   --wait   authenticate now, run later: waits for a line "run" on stdin (anything else = quit)
 # Each part runs on its own; one that fails or does not fit the machine (no btrfs, no UKI) is
 # reported and the rest go on. One line per part on stdout: "PART <script> ok|skipped <label>".
@@ -52,6 +54,10 @@ part() {   # part "русское имя" "english name" script [args...]
 
 part "Доступ к кнопкам, перу, экрану" "Buttons, pen, touch access" devices.sh
 part "«Настройки» вместо Параметров" "Settings instead of System Settings" settings-wrappers.sh
+# an older boot splash (Arch logo with the device name) gets the new picture with updates too
+if [ "$MODE" = update ] && grep -qs '^Theme=tablet-arch' /etc/plymouth/plymouthd.conf; then
+    part "Заставка загрузки: новая картинка" "Boot splash: new picture" boot-splash/install.sh --theme-only
+fi
 if [ "$MODE" = full ]; then
     part "Сеть, Bluetooth, zram, приложения" "Network, Bluetooth, zram, apps" base.sh
     # the language Plasma already uses (plasma-localerc LANGUAGE, else the session's LANG)
@@ -63,8 +69,10 @@ if [ "$MODE" = full ]; then
         *) part "Язык системы ($LANGCODE)" "System language ($LANGCODE)" language.sh "$LANGCODE" ;;
     esac
     part "Снимки системы" "System snapshots" recovery/install.sh
-    if grep -qs '^Theme=tablet-arch' /etc/plymouth/plymouthd.conf; then
+    if grep -qs '^Theme=tablet-linux' /etc/plymouth/plymouthd.conf; then
         echo "PART boot-splash/install.sh ok $(t "Заставка загрузки (уже стоит)" "Boot splash (already set up)")"
+    elif grep -qs '^Theme=tablet-arch' /etc/plymouth/plymouthd.conf; then
+        part "Заставка загрузки: новая картинка" "Boot splash: new picture" boot-splash/install.sh --theme-only
     else
         part "Заставка загрузки" "Boot splash" boot-splash/install.sh
     fi

@@ -109,19 +109,19 @@ Window {
             id: track
             anchors.horizontalCenter: parent.horizontalCenter
             y: parent.height * 0.12
-            width: 440
-            height: 76
+            width: 440 * uiStyle.dp
+            height: 76 * uiStyle.dp
             radius: height / 2
             color: uiStyle.pixel ? "#49454F" : Qt.rgba(1, 1, 1, 0.16)
             border.color: Qt.rgba(1, 1, 1, 0.22)
 
             Text {
                 anchors.centerIn: parent
-                anchors.horizontalCenterOffset: 30
+                anchors.horizontalCenterOffset: 30 * uiStyle.dp
                 text: Tr.t("сдвиньте для выключения")
                 color: "white"
                 opacity: 0.85 * (1 - knob.x / (track.width - knob.width - 12))
-                font.pixelSize: 20
+                font.pixelSize: 20 * uiStyle.dp
                 // shimmer
                 SequentialAnimation on opacity {
                     running: win.visible && !uiStyle.pixel && knob.x === 0
@@ -135,14 +135,14 @@ Window {
                 x: 0
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.verticalCenterOffset: 0
-                width: 64
-                height: 64
-                radius: 32
+                width: 64 * uiStyle.dp
+                height: 64 * uiStyle.dp
+                radius: 32 * uiStyle.dp
                 color: "white"
                 Kirigami.Icon {
                     anchors.centerIn: parent
-                    width: 30
-                    height: 30
+                    width: 30 * uiStyle.dp
+                    height: 30 * uiStyle.dp
                     source: "system-shutdown-symbolic"
                     isMask: true
                     color: "#FF3B30"
@@ -172,7 +172,7 @@ Window {
         // restart / sleep / log out
         Row {
             anchors.centerIn: parent
-            spacing: 56
+            spacing: 56 * uiStyle.dp
             Repeater {
                 model: [
                     { what: "reboot", icon: "system-reboot-symbolic", label: Tr.t("Перезагрузить") },
@@ -181,17 +181,17 @@ Window {
                 ]
                 Column {
                     required property var modelData
-                    spacing: 12
+                    spacing: 12 * uiStyle.dp
                     Rectangle {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        width: 88
-                        height: 88
-                        radius: 44
+                        width: 88 * uiStyle.dp
+                        height: 88 * uiStyle.dp
+                        radius: 44 * uiStyle.dp
                         color: press.pressed ? Qt.rgba(1, 1, 1, 0.34) : Qt.rgba(1, 1, 1, 0.18)
                         Kirigami.Icon {
                             anchors.centerIn: parent
-                            width: 38
-                            height: 38
+                            width: 38 * uiStyle.dp
+                            height: 38 * uiStyle.dp
                             source: modelData.icon
                             isMask: true
                             color: "white"
@@ -207,7 +207,7 @@ Window {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: modelData.label
                         color: "white"
-                        font.pixelSize: 16
+                        font.pixelSize: 16 * uiStyle.dp
                     }
                 }
             }
@@ -218,12 +218,12 @@ Window {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
             anchors.bottomMargin: parent.height * 0.1
-            spacing: 12
+            spacing: 12 * uiStyle.dp
             Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: 72
-                height: 72
-                radius: 36
+                width: 72 * uiStyle.dp
+                height: 72 * uiStyle.dp
+                radius: 36 * uiStyle.dp
                 color: cancel.pressed ? Qt.rgba(1, 1, 1, 0.34) : Qt.rgba(1, 1, 1, 0.18)
                 Text { anchors.centerIn: parent; text: "✕"; color: "white"; font.pixelSize: 28 }
                 MouseArea { id: cancel; anchors.fill: parent; enabled: !win.leaving; onClicked: win.close() }
@@ -235,21 +235,21 @@ Window {
     Rectangle {
         visible: uiStyle.pixel
         anchors.centerIn: parent
-        width: Math.min(parent.width - 32, 420)
-        height: actions.implicitHeight + 64
-        radius: 28
+        width: Math.min(parent.width - 32 * uiStyle.dp, 420 * uiStyle.dp)
+        height: actions.implicitHeight + 64 * uiStyle.dp
+        radius: 28 * uiStyle.dp
         color: "#2B2932"
         opacity: win.shown
         Column {
             id: actions
             anchors.centerIn: parent
-            width: parent.width - 48
-            spacing: 16
+            width: parent.width - 48 * uiStyle.dp
+            spacing: 16 * uiStyle.dp
             Text { text: Tr.t("Меню питания"); color: "#E6E0E9"; font.pixelSize: 24; font.family: "Noto Sans" }
             Grid {
                 width: parent.width
                 columns: 2
-                spacing: 12
+                spacing: 12 * uiStyle.dp
                 Repeater {
                     model: [
                         {what: "poweroff", icon: "system-shutdown-symbolic", label: Tr.t("Выключить")},
@@ -259,16 +259,16 @@ Window {
                     ]
                     Rectangle {
                         required property var modelData
-                        width: (actions.width - 12) / 2
-                        height: 100
-                        radius: 24
+                        width: (actions.width - 12 * uiStyle.dp) / 2
+                        height: 100 * uiStyle.dp
+                        radius: 24 * uiStyle.dp
                         color: materialTap.pressed ? "#D0BCFF" : "#4A4458"
                         Column {
                             anchors.centerIn: parent
-                            spacing: 10
+                            spacing: 10 * uiStyle.dp
                             Kirigami.Icon {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                width: 28; height: 28
+                                width: 28 * uiStyle.dp; height: 28 * uiStyle.dp
                                 source: modelData.icon
                                 isMask: true
                                 color: materialTap.pressed ? "#381E72" : "#E8DEF8"
@@ -276,7 +276,7 @@ Window {
                             Text {
                                 text: modelData.label
                                 color: materialTap.pressed ? "#381E72" : "#E8DEF8"
-                                font.pixelSize: 14
+                                font.pixelSize: 14 * uiStyle.dp
                             }
                         }
                         MouseArea {
@@ -289,7 +289,7 @@ Window {
                 }
             }
             Rectangle {
-                width: parent.width; height: 48; radius: 24; color: "#D0BCFF"
+                width: parent.width; height: 48 * uiStyle.dp; radius: 24 * uiStyle.dp; color: "#D0BCFF"
                 Text { anchors.centerIn: parent; text: Tr.t("Отмена"); color: "#381E72"; font.pixelSize: 16 }
                 MouseArea { anchors.fill: parent; enabled: !win.leaving; onClicked: win.close() }
             }
@@ -325,8 +325,8 @@ Window {
         // the glowing line, then the dot
         Rectangle {
             anchors.centerIn: parent
-            width: Math.max(6, parent.width * (1 - tv.shrink))
-            height: Math.max(4, parent.height * (1 - tv.close))
+            width: Math.max(6 * uiStyle.dp, parent.width * (1 - tv.shrink))
+            height: Math.max(4 * uiStyle.dp, parent.height * (1 - tv.close))
             radius: Math.min(width, height) / 2
             color: "white"
             opacity: tv.close < 0.6 ? tv.close / 0.6 * 0.9 : tv.dot

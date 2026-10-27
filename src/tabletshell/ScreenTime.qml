@@ -85,9 +85,9 @@ Window {
 
     Rectangle {
         anchors.centerIn: parent
-        width: Math.min(parent.width - Kirigami.Units.gridUnit * 2, Kirigami.Units.gridUnit * 30)
-        height: Math.min(parent.height - Kirigami.Units.gridUnit * 2, content.implicitHeight + Kirigami.Units.gridUnit * 2)
-        radius: uiStyle.pixel ? Kirigami.Units.gridUnit * 2.1 : Kirigami.Units.gridUnit * 1.4
+        width: Math.min(parent.width - (Kirigami.Units.gridUnit * uiStyle.dp) * 2, (Kirigami.Units.gridUnit * uiStyle.dp) * 30)
+        height: Math.min(parent.height - (Kirigami.Units.gridUnit * uiStyle.dp) * 2, content.implicitHeight + (Kirigami.Units.gridUnit * uiStyle.dp) * 2)
+        radius: uiStyle.pixel ? (Kirigami.Units.gridUnit * uiStyle.dp) * 2.1 : (Kirigami.Units.gridUnit * uiStyle.dp) * 1.4
         color: uiStyle.pixel ? "#25232C" : Qt.rgba(0.12, 0.12, 0.15, 0.92)
         border.color: uiStyle.pixel ? "#625C69" : Qt.rgba(1, 1, 1, 0.16)
         border.width: uiStyle.pixel ? 0 : 1
@@ -97,8 +97,8 @@ Window {
         ColumnLayout {
             id: content
             anchors.fill: parent
-            anchors.margins: Kirigami.Units.gridUnit
-            spacing: Kirigami.Units.largeSpacing
+            anchors.margins: (Kirigami.Units.gridUnit * uiStyle.dp)
+            spacing: (Kirigami.Units.largeSpacing * uiStyle.dp)
 
             RowLayout {
                 Layout.fillWidth: true
@@ -138,8 +138,8 @@ Window {
             // Last 7 days: screen time bars with words under each day
             RowLayout {
                 Layout.fillWidth: true
-                Layout.preferredHeight: Kirigami.Units.gridUnit * 8
-                spacing: Kirigami.Units.smallSpacing * 2
+                Layout.preferredHeight: (Kirigami.Units.gridUnit * uiStyle.dp) * 8
+                spacing: (Kirigami.Units.smallSpacing * uiStyle.dp) * 2
                 Repeater {
                     model: win.days
                     delegate: ColumnLayout {
@@ -151,8 +151,8 @@ Window {
                         Item { Layout.fillHeight: true }
                         Rectangle {
                             Layout.alignment: Qt.AlignHCenter
-                            Layout.preferredWidth: Kirigami.Units.gridUnit * 1.6
-                            Layout.preferredHeight: Math.max(3, (Kirigami.Units.gridUnit * 5) * modelData.total / win.maxDay)
+                            Layout.preferredWidth: (Kirigami.Units.gridUnit * uiStyle.dp) * 1.6
+                            Layout.preferredHeight: Math.max(3, ((Kirigami.Units.gridUnit * uiStyle.dp) * 5) * modelData.total / win.maxDay)
                             radius: 4
                             color: index === 6 ? (uiStyle.pixel ? "#D0BCFF" : Kirigami.Theme.highlightColor) : Qt.rgba(1, 1, 1, 0.35)
                         }
@@ -188,10 +188,10 @@ Window {
                 delegate: RowLayout {
                     required property var modelData
                     Layout.fillWidth: true
-                    spacing: Kirigami.Units.largeSpacing
+                    spacing: (Kirigami.Units.largeSpacing * uiStyle.dp)
                     Kirigami.Icon {
                         source: modelData.icon
-                        implicitWidth: Kirigami.Units.iconSizes.smallMedium
+                        implicitWidth: Math.round(Kirigami.Units.iconSizes.smallMedium * uiStyle.dp)
                         implicitHeight: implicitWidth
                     }
                     ColumnLayout {

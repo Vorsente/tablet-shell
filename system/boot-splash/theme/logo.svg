@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300">
+  <!-- Tux, drawn for the boot splash: light on the black screen, yellow beak and feet -->
+  <!-- body -->
+  <path d="M150 28c-36 0-56 30-56 68 0 20 4 32-6 52-14 26-38 50-38 88 0 26 14 40 30 42h140c16-2 30-16 30-42 0-38-24-62-38-88-10-20-6-32-6-52 0-38-20-68-56-68z" fill="#e5e9f0"/>
+  <!-- belly -->
+  <path d="M150 112c-26 0-46 34-46 80s18 72 46 72 46-26 46-72-20-80-46-80z" fill="#000"/>
+  <path d="M150 120c-22 0-38 32-38 74s15 64 38 64 38-22 38-64-16-74-38-74z" fill="#5e6677"/>
+  <!-- eyes -->
+  <ellipse cx="132" cy="80" rx="12" ry="16" fill="#000"/>
+  <ellipse cx="168" cy="80" rx="12" ry="16" fill="#000"/>
+  <ellipse cx="135" cy="84" rx="5" ry="7" fill="#e5e9f0"/>
+  <ellipse cx="165" cy="84" rx="5" ry="7" fill="#e5e9f0"/>
+  <!-- beak -->
+  <path d="M124 104c8-10 44-10 52 0-4 14-18 22-26 22s-22-8-26-22z" fill="#f5c211"/>
+  <path d="M128 106c10 4 34 4 44 0" stroke="#c79a00" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <!-- feet -->
+  <path d="M72 262c-4-14 10-26 26-22s34 10 40 22c4 10-8 18-30 18s-32-6-36-18z" fill="#f5c211"/>
+  <path d="M228 262c4-14-10-26-26-22s-34 10-40 22c-4 10 8 18 30 18s32-6 36-18z" fill="#f5c211"/>
+</svg>

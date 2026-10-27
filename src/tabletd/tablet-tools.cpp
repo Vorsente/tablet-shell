@@ -345,13 +345,19 @@ QString sysName(const QString &path)
 }
 int hardware()
 {
-    // model: ThinkPads keep the marketing name in product_version, most others in product_name
-    QString model = sysName(QStringLiteral("/sys/class/dmi/id/product_version"));
+    // model: Lenovo keeps the marketing name in product_version (product_name is the machine type),
+    // everyone else in product_name; product_version elsewhere is often a code (Surface Pro 9:
+    // "124I:00036T:000M:0300000D:...") or a placeholder
     static const QStringList junk{QStringLiteral("System Version"), QStringLiteral("To be filled"), QStringLiteral("Default"),
-                                  QStringLiteral("None"), QStringLiteral("Not Applicable")};
-    if (model.isEmpty() || std::any_of(junk.begin(), junk.end(), [&](const QString &j) { return model.contains(j, Qt::CaseInsensitive); })) {
-        model = sysName(QStringLiteral("/sys/class/dmi/id/product_name"));
-    }
+                                  QStringLiteral("None"), QStringLiteral("Not Applicable"), QStringLiteral("System Product Name")};
+    const auto usable = [&](const QString &name) {
+        return !name.isEmpty() && name.count(QLatin1Char(':')) < 2 && name.contains(QRegularExpression(QStringLiteral("[A-Za-z]{2}")))
+               && std::none_of(junk.begin(), junk.end(), [&](const QString &j) { return name.contains(j, Qt::CaseInsensitive); });
+    };
+    const QString version = sysName(QStringLiteral("/sys/class/dmi/id/product_version"));
+    const QString product = sysName(QStringLiteral("/sys/class/dmi/id/product_name"));
+    const bool lenovo = sysName(QStringLiteral("/sys/class/dmi/id/sys_vendor")).contains(QLatin1String("LENOVO"), Qt::CaseInsensitive);
+    QString model = lenovo && usable(version) ? version : usable(product) ? product : usable(version) ? version : QString();
     bool pen = false, windowsButton = false;
     const QDir input(QStringLiteral("/sys/class/input"));
     for (const QString &e : input.entryList({QStringLiteral("input*")})) {
@@ -983,8 +989,12 @@ int cleanup(const QStringList &args)
         for (const QFileInfo &f : old) {
             downloads += sizeOf(f.filePath());
         }
-        for (const QFileInfo &f : QDir(QStringLiteral("/var/cache/pacman/pkg")).entryInfoList(QDir::Files)) {
-            pacman += f.size();
+        // downloaded packages of whichever package manager this distribution uses
+        for (const char *dir : {"/var/cache/pacman/pkg", "/var/cache/apt/archives", "/var/cache/zypp/packages",
+                                "/var/cache/libdnf5", "/var/cache/dnf"}) {
+            if (QFileInfo::exists(QString::fromLatin1(dir))) {
+                pacman += sizeOf(QString::fromLatin1(dir));
+            }
         }
         auto item = [](const char *id, const char *label, qint64 bytes, const QString &note) {
             return QJsonObject{{QStringLiteral("id"), QLatin1String(id)}, {QStringLiteral("label"), T(QString::fromUtf8(label))},

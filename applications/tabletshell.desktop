@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Tablet shell
+Name[ru]=Оболочка планшета
+Comment=Control center, back gesture, text menu (lets KWin give the text menu a picture of the selected text)
+Exec=@HOME@/.local/share/tabletshell/tabletshell
+Icon=preferences-desktop
+NoDisplay=true
+X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2

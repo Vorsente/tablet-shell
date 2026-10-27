@@ -26,6 +26,7 @@
 #include <QRegion>
 #include <QScreen>
 #include <QSettings>
+#include <QRegularExpression>
 #include "../common/ui-style.h"
 #include <QtCore/qlogging.h>
 #include <QTimer>
@@ -268,10 +269,19 @@ public:
         if (m_config.value(QStringLiteral("hideWithKeyboard"), true).toString() == QLatin1String("false")) {
             return false;
         }
+        // a cover folded behind the screen is still attached: tabletd then forces KWin's tablet mode
+        const QSettings kwinrc(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + QStringLiteral("/kwinrc"),
+                               QSettings::IniFormat);
+        if (kwinrc.value(QStringLiteral("Input/TabletMode")).toString() == QLatin1String("on")) {
+            return false;
+        }
+        // USB, Bluetooth, and covers behind the Surface System Aggregator (ssam, HID bus 0019)
+        static const QRegularExpression hostHid(QStringLiteral("/0019:[0-9A-F]{4}:[0-9A-F]{4}\\."));
         const QDir input(QStringLiteral("/sys/class/input"));
         for (const QString &e : input.entryList({QStringLiteral("input*")})) {
             const QString path = QFileInfo(input.filePath(e)).canonicalFilePath();
-            if (!path.contains(QLatin1String("/usb")) && !path.contains(QLatin1String("/bluetooth")) && !path.contains(QLatin1String("/uhid"))) {
+            if (!path.contains(QLatin1String("/usb")) && !path.contains(QLatin1String("/bluetooth")) && !path.contains(QLatin1String("/uhid"))
+                && !path.contains(QLatin1String("/ssam:")) && !path.contains(QLatin1String("surface")) && !hostHid.match(path).hasMatch()) {
                 continue;
             }
             // letter keys Q, A and Z: the lowest 64 key bits are the last word of the mask

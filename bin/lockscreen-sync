@@ -37,11 +37,18 @@ cp "$SRC/LockSurface.qml" "$SRC/Keyboard.qml" "$SRC/KeyFace.qml" "$SRC/Tr.js" "$
 # A previous global theme can leave a Greeter Theme override that defeats the
 # user-level shell package. Clear only the known defaults/our former themes;
 # preserve other third-party lockscreen configuration.
+# A distribution's default look (openSUSE, Fedora, Kubuntu, ... set it system-wide) counts as a
+# default too; only a theme the user picked is kept, with a note how to switch.
 greeter_theme=$(kreadconfig6 --file kscreenlockerrc --group Greeter --key Theme 2>/dev/null || true)
+distro_default=$(kreadconfig6 --file /etc/xdg/kdeglobals --group KDE --key LookAndFeelPackage 2>/dev/null || true)
 case "$greeter_theme" in
-    ''|org.kde.breeze.desktop|org.ipad.light|org.ipad.dark|org.tabletshell.pixel.light|org.tabletshell.pixel.dark)
+    ''|org.kde.breeze.desktop|org.ipad.light|org.ipad.dark|org.tabletshell.pixel.light|org.tabletshell.pixel.dark|\
+    org.openSUSE.desktop|org.fedoraproject.fedora.desktop|org.kubuntu.desktop|org.debian.desktop|org.kde.neon.desktop|org.manjaro.*)
         kwriteconfig6 --file kscreenlockerrc --group Greeter --key Theme --delete ;;
-    *) echo "Custom kscreenlocker theme '$greeter_theme' left untouched." >&2 ;;
+    "$distro_default")
+        kwriteconfig6 --file kscreenlockerrc --group Greeter --key Theme --delete ;;
+    *) echo "Lock screen theme '$greeter_theme' (chosen by you) left as it is: the tablet-shell lock screen is not used." >&2
+       echo "  To use it: kwriteconfig6 --file kscreenlockerrc --group Greeter --key Theme --delete; ~/.local/bin/lockscreen-sync" >&2 ;;
 esac
 # Explicitly select the matching user-level shell in case Plasma cached another package.
 kwriteconfig6 --file plasmashellrc --group Shell --key ShellPackage org.kde.plasma.desktop

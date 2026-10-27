@@ -6,17 +6,12 @@ cd "$(dirname "$(readlink -f "$0")")/.."
 name=${1:?missing build target}
 OUT=build
 PREFIX=${PREFIX:-$HOME/.local/share}
-MOC=${MOC:-/usr/lib/qt6/moc}
-QTWS=${QTWS:-/usr/lib/qt6/qtwaylandscanner}
-QSB=${QSB:-/usr/lib/qt6/bin/qsb}
+# tool and header locations differ between distributions
+source ./scripts/toolchain.sh
 if [[ -z "${CXX:-}" ]] && command -v ccache >/dev/null 2>&1; then CXX='ccache g++'; fi
 CXX=${CXX:-g++}
 read -r -a CXX_CMD <<< "$CXX"
 read -r -a FLAGS <<< "${CXXFLAGS:--std=c++20 -O2 -fPIC}"
-KCONFIG=(-I/usr/include/KF6/KConfigCore -I/usr/include/KF6/KConfig -lKF6ConfigCore)
-KCMUTILS=(-I/usr/include/KF6/KCMUtils -I/usr/include/KF6/KCMUtilsCore -I/usr/include/KF6/KCMUtilsQuick -lKF6KCMUtilsQuick -lKF6KCMUtilsCore)
-KCOREADDONS=(-I/usr/include/KF6/KCoreAddons -lKF6CoreAddons)
-KWINDOWSYSTEM=(-I/usr/include/KF6/KWindowSystem -lKF6WindowSystem)
 mkdir -p "$OUT"
 qt_flags() {
   local output=$1; shift

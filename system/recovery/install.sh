@@ -5,11 +5,13 @@
 #  - snapshots visible read-only in /.snapshots; restore from the Settings app
 source "$(dirname "$(readlink -f "$0")")/../common.sh"
 SRC="$(dirname "$(readlink -f "$0")")"
-# what this needs: btrfs root in subvolume @ (the Arch installer's layout), systemd-boot + UKI
+# what this needs: Arch (the snapshot runs from a pacman hook), btrfs root in subvolume @ (the Arch installer's layout), systemd-boot + UKI
+[ "$PM" = pacman ] || { t "Снимки сделаны для Arch (хук pacman): на этой системе используйте её средство (Snapper, Timeshift)." \
+    "Snapshots are made for Arch (a pacman hook): on this system use its own tool (Snapper, Timeshift)."; echo; exit 1; }
 [ "$(findmnt -no FSTYPE /)" = btrfs ] && findmnt -no OPTIONS / | grep -q 'subvol=/@\(,\|$\)' || {
     t "Нужен корень на btrfs в подтоме @: снимки не настроены." "Needs a btrfs root in subvolume @: snapshots not set up."; echo; exit 1; }
 uki_boot || { t "Нужен systemd-boot с UKI: снимки не настроены." "Needs systemd-boot with a UKI: snapshots not set up."; echo; exit 1; }
-pacman -S --needed --noconfirm btrfs-progs
+pkg_install btrfs-progs
 
 install -Dm755 "$SRC/tablet-snapshot" /usr/local/lib/tablet/tablet-snapshot
 ln -sf /usr/local/lib/tablet/tablet-snapshot /usr/local/bin/tablet-snapshot

@@ -5,6 +5,11 @@
 # Run: sudo ./system/settings-wrappers.sh     Undo: sudo ./system/settings-wrappers.sh --undo
 source "$(dirname "$(readlink -f "$0")")/common.sh"
 APP=$H/.local/bin/tablet-settings
+# where this distribution keeps the Qt 6 plugins (/usr/lib/qt6, /usr/lib64/qt6, /usr/lib/<arch>/qt6)
+KCMS=$(qtpaths6 --query QT_INSTALL_PLUGINS 2>/dev/null || qmake6 -query QT_INSTALL_PLUGINS 2>/dev/null)
+for d in "$KCMS" /usr/lib/qt6/plugins /usr/lib64/qt6/plugins /usr/lib/*-linux-gnu*/qt6/plugins; do
+    [ -d "$d/plasma/kcms/systemsettings" ] && { KCMS=$d/plasma/kcms/systemsettings; break; }
+done
 
 if [ "${1:-}" = --undo ]; then
     rm -f /usr/local/bin/systemsettings /usr/local/bin/kcmshell6
@@ -24,7 +29,7 @@ cat > /usr/local/bin/kcmshell6 <<WRAP
 # Settings modules that tablet-settings embeds open there; everything else stays with kcmshell6
 for a in "\$@"; do
     case "\$a" in -*) continue ;; esac
-    if [ -x "$APP" ] && [ -f "/usr/lib/qt6/plugins/plasma/kcms/systemsettings/\$a.so" ]; then
+    if [ -x "$APP" ] && [ -f "$KCMS/\$a.so" ]; then
         exec "$APP" "\$a"
     fi
     break

@@ -5,8 +5,7 @@ set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")/.."
 OUT=${OUT:-build}
 PREFIX=${PREFIX:-$HOME/.local/share}
-MOC=${MOC:-/usr/lib/qt6/moc}
-QTWS=${QTWS:-/usr/lib/qt6/qtwaylandscanner}
+source ./scripts/toolchain.sh
 CXX=${CXX:-g++}
 read -r -a CXX_CMD <<< "$CXX"
 CXXFLAGS=${CXXFLAGS:-'-std=c++20 -O2 -fPIC'}
@@ -29,7 +28,7 @@ wayland-scanner private-code "$XML" "$K/wayland-input-method-unstable-v1-protoco
 "$QTWS" client-code "$XML" > "$K/qwayland-input-method-unstable-v1.cpp"
 "$MOC" src/tablet-keyboard/main.cpp -o "$K/main.moc"
 
-# Arch updates may move Qt private headers. Resolve them by the installed
+# Distribution updates may move Qt private headers. Resolve them by the installed
 # module headers rather than assuming the WaylandClient versioned path exists.
 QTVER=$(pkg-config --modversion Qt6WaylandClient)
 QTINCLUDE=$(pkg-config --variable=includedir Qt6WaylandClient)
@@ -54,16 +53,16 @@ for module in QtWaylandClient QtWaylandGlobal QtGui QtCore; do
 done
 if [[ ! -f "$QTROOT/QtWaylandClient/$QTVER/QtWaylandClient/private/qwaylandwindow_p.h" ]]; then
     echo "Qt Wayland private headers are missing for the installed Qt version $QTVER." >&2
-    echo 'Run: sudo pacman -Syu qt6-base qt6-wayland' >&2
-    echo 'Partial Arch Linux updates are not supported; do not mix Qt minor versions.' >&2
+    echo "Run: $(pkg_hint qt6-base qt6-wayland)" >&2
+    echo 'Do not mix Qt minor versions (partial system updates are not supported).' >&2
     exit 1
 fi
 
 # The preprocessor needs generated protocol headers in addition to Qt's private headers.
-gcc -O2 -fPIC -c "$K/wayland-input-method-unstable-v1-protocol.c" -o "$K/protocol.o"
+gcc -O2 -fPIC "${WAYLAND_CFLAGS[@]}" -c "$K/wayland-input-method-unstable-v1-protocol.c" -o "$K/protocol.o"
 # CXXFLAGS is intentionally split, as in the project's normal compiler configuration.
 # shellcheck disable=SC2086
-"${CXX_CMD[@]}" $CXXFLAGS -I"$K" "${PRIV[@]}" -DKEYBOARD_QML_DIR="\"$PREFIX/tablet-keyboard/qml\"" \
+"${CXX_CMD[@]}" $CXXFLAGS -I"$K" "${PRIV[@]}" "${WAYLAND_CFLAGS[@]}" "${XKB_CFLAGS[@]}" -DKEYBOARD_QML_DIR="\"$PREFIX/tablet-keyboard/qml\"" \
     src/tablet-keyboard/main.cpp "$OUT/moc_ui_style.cpp" "$K/qwayland-input-method-unstable-v1.cpp" "$K/protocol.o" \
     -o "$K/tablet-keyboard.new" \
     $(pkg-config --cflags --libs Qt6Quick Qt6Qml Qt6Gui Qt6Core Qt6WaylandClient wayland-client)

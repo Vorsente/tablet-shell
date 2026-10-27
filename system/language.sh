@@ -16,11 +16,19 @@ esac
 LANGCODE=${LOC%%_*}
 
 # 1. the locale itself (en_US stays as the fallback)
-cp -n /etc/locale.gen /etc/locale.gen.before-tablet-shell
-for l in "$LOC" en_US; do
-    sed -i "s/^#\s*\($l.UTF-8 UTF-8\)/\1/" /etc/locale.gen
-done
-locale-gen
+# Arch, Debian, Gentoo generate locales from /etc/locale.gen; Fedora and openSUSE ship them in packages
+if [ -f /etc/locale.gen ] && command -v locale-gen >/dev/null; then
+    cp -n /etc/locale.gen /etc/locale.gen.before-tablet-shell
+    for l in "$LOC" en_US; do
+        sed -i "s/^#\s*\($l.UTF-8 UTF-8\)/\1/" /etc/locale.gen
+    done
+    locale-gen
+else
+    case $PM in
+        dnf) pkg_install "glibc-langpack-$LANGCODE" || true ;;
+        zypper) pkg_install glibc-locale || true ;;
+    esac
+fi
 locale -a | grep -qi "^$LOC.utf8$" || { echo "$LOC.UTF-8: no such locale"; exit 1; }
 
 # 2. system language: login screen, consoles, system messages
@@ -34,9 +42,14 @@ else
     as_user kwriteconfig6 --file plasma-localerc --group Translations --key LANGUAGE "$LANGCODE:en_US"
 fi
 
-# 4. Firefox in that language (Arch has a language pack per language)
-if [ "$LANGCODE" != en ] && pacman -Q firefox >/dev/null 2>&1; then
-    pacman -S --needed --noconfirm "firefox-i18n-$LANGCODE" 2>/dev/null || pacman -S --needed --noconfirm "firefox-i18n-$(echo "$LOC" | tr _ - )" 2>/dev/null || true
+# 4. Firefox in that language (a language pack per language on Arch and Debian; Fedora's
+#    Firefox has them all, openSUSE has one package)
+if [ "$LANGCODE" != en ] && command -v firefox >/dev/null; then
+    case $PM in
+        pacman) pkg_install "firefox-i18n-$LANGCODE" 2>/dev/null || pkg_install "firefox-i18n-$(echo "$LOC" | tr _ - )" 2>/dev/null ;;
+        apt-get) pkg_install "firefox-l10n-$LANGCODE" 2>/dev/null || pkg_install "firefox-esr-l10n-$LANGCODE" 2>/dev/null ;;
+        zypper) pkg_install MozillaFirefox-translations-common 2>/dev/null ;;
+    esac || true
 fi
 
 # 5. the login screen's copy of the shell translations (if the own login screen is installed)

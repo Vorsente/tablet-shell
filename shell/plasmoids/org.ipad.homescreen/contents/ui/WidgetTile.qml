@@ -1,6 +1,7 @@
-// A widget on the home grid ({widget, size} in the layout): spans 2x2 or 4x2 cells.
+// A widget on the home grid ({widget, size} in the layout): spans 2x2, 4x2 or 4x4 cells.
 // Like an icon: long press enters edit mode and picks it up, drag moves it (it never makes a
-// folder), "−" in edit mode removes it, a tap does the widget's action.
+// folder), "−" in edit mode removes it, the corner button changes its size, a tap does the
+// widget's action.
 import QtQuick
 
 Item {
@@ -20,7 +21,7 @@ Item {
         anchors.margins: tile.home.cellWidth * 0.1
         home: tile.home
         kind: tile.entry.widget
-        wide: tile.entry.size === "wide"
+        wide: tile.entry.size === "wide" || tile.entry.size === "large"
         scale: mouse.pressed && !tile.home.editing ? 0.96 : 1
         Behavior on scale { NumberAnimation { duration: 100 } }
 
@@ -106,6 +107,29 @@ Item {
             anchors.fill: parent
             anchors.margins: -6
             onClicked: tile.home.removeEntry(tile.layoutIndex)
+        }
+    }
+
+    // size button in edit mode (bottom right): small -> wide -> large -> small
+    Rectangle {
+        visible: tile.home.editing && !tile.dragging
+        x: face.x + face.width - width * 2 / 3
+        y: face.y + face.height - height * 2 / 3
+        width: Math.round(tile.home.iconSize * 0.34)
+        height: width
+        radius: width / 2
+        color: tile.home.pal.control
+        Text {
+            anchors.centerIn: parent
+            text: "⤡"
+            color: tile.home.pal.text
+            font.bold: true
+            font.pixelSize: parent.height * 0.6
+        }
+        MouseArea {
+            anchors.fill: parent
+            anchors.margins: -6
+            onClicked: tile.home.resizeEntry(tile.layoutIndex)
         }
     }
 }

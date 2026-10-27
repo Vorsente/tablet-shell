@@ -2,7 +2,7 @@
 
 # tablet-shell
 
-**A tablet shell for KDE Plasma 6 on Arch Linux — in the style of iPadOS or Google Pixel (Material Design)**
+**A tablet shell for KDE Plasma 6 on Linux (Arch, Debian/Ubuntu, Fedora, openSUSE) — in the style of iPadOS or Google Pixel (Material Design)**
 
 Turns Plasma into a touch-first system and back into a normal desktop the moment a keyboard is attached.
 
@@ -127,7 +127,7 @@ keyboard dock → **PC**, keyboard + external monitor → **dock**. Each change 
 
 ### Requirements
 
-- **Arch Linux** with **KDE Plasma 6** in a **Wayland** session
+- **KDE Plasma 6** in a **Wayland** session on Arch, Debian/Ubuntu, Fedora or openSUSE (packages through pacman / apt / dnf / zypper; on other distributions install the dependencies by hand). Qt tools and KF6 headers are found wherever the distribution keeps them (override with `MOC=`, `QTWS=`, `QSB=`, `KF6_INCLUDE=`). System snapshots and the boot splash need Arch (pacman hook, systemd-boot + UKI) and are skipped elsewhere
 - a touch screen (pen optional); 4 GB RAM is enough
 - optional system parts need: a btrfs root in subvolume `@` and systemd-boot with a unified kernel
   image (snapshots, boot splash); a kernel with binder (Android)
@@ -146,13 +146,15 @@ cd tablet-shell
 The installer:
 
 1. **asks for the `sudo` password right away**, once, and keeps it valid until it is done;
-2. installs the missing packages (`pacman -S --needed …`);
+2. installs the missing packages with the distribution's package manager;
 3. builds the C++ programs (about 10 minutes on an Atom, a minute on a laptop);
 4. installs user components in `~/.local`;
 5. downloads the WhiteSur themes, MacTahoe icons and wallpapers for the Apple style, the Colloid icons
    and the Roboto Flex font for the Material style, and adjusts them (`--no-themes` keeps your current
-   themes);
-6. sets KDE options, starts services and asks the daemon to repair the panels;
+   themes; offline, or if GitHub fails, it goes on without them);
+6. saves a copy of the KDE settings it changes in `~/.local/state/tablet-shell/config-backup-*`
+   (`restore.sh` there puts them back), sets KDE options, starts services and asks the daemon to
+   repair the panels;
 7. **installs the system parts** (table below): device access, Settings, network and zram, the system
    language, snapshots and the boot splash (with systemd-boot + UKI and a btrfs root), and its own
    login screen instead of SDDM (`--no-greeter` keeps yours). Each part runs on its own: one that does
@@ -171,14 +173,14 @@ scripts are listed at the end. Updating from Settings asks for the administrator
 
 | Script | What it does | Undo |
 | --- | --- | --- |
-| `system/devices.sh` | lets the user at the seat read the power/Windows buttons, pen, touch screen and keyboards (power button menu, palm rejection, long-press text menu, typewriter sounds); installs Rnote and Xournal++ | `--undo` |
+| `system/devices.sh` | lets the user at the seat read the power/Windows buttons, pen, touch screen and keyboards (power button menu, palm rejection, long-press text menu, typewriter sounds), the hinge / cover switch; on a Surface also iptsd (touch and pen, linux-surface); installs Rnote and Xournal++ | `--undo` |
 | `system/settings-wrappers.sh` | Plasma's "Configure…" links open the tablet Settings app | `--undo` |
 | `system/greeter.sh` | own login screen (greetd + cage); `--refresh` updates an existing tablet greeter | `--undo` |
 | `system/language.sh ru` | system language and formats (any locale), Firefox language pack | run with `en` |
 | `system/base.sh` | NetworkManager, Bluetooth, power profiles, compressed RAM swap (zram), touch apps | — |
 | `system/recovery/install.sh` | a btrfs snapshot before every update, restore from Settings, a "before the last update" boot entry | — |
-| `system/boot-splash/install.sh` | quiet boot with a splash showing the device name | `*.before-plymouth` files |
-| `system/android/install.sh` | Android apps via Waydroid (`--gapps` for Google Play, `--houdini` / `--ndk` for ARM apps) | `pacman -R waydroid` |
+| `system/boot-splash/install.sh` | quiet boot with a pulsing Linux penguin on black | `*.before-plymouth` files |
+| `system/android/install.sh` | Android apps via Waydroid (`--gapps` for Google Play, `--houdini` / `--ndk` for ARM apps) | remove the `waydroid` package |
 | `system/cleanup.sh` | removes what the shell replaces and unused Plasma extras | — |
 
 ### Update and remove

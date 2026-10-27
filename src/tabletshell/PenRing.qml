@@ -90,9 +90,9 @@ Window {
     Rectangle {
         x: win.centre.x - width / 2
         y: win.centre.y - height / 2
-        width: 22
-        height: 22
-        radius: 11
+        width: 22 * uiStyle.dp
+        height: 22 * uiStyle.dp
+        radius: 11 * uiStyle.dp
         color: win.buttonAccent
         border.color: win.buttonSurface
         opacity: win.open
@@ -110,24 +110,24 @@ Window {
             readonly property real reach: win.radius * Math.min(1, Math.max(0, win.open * 1.15 - index * 0.04))
             x: win.centre.x + Math.cos(angle) * reach - width / 2
             y: win.centre.y + Math.sin(angle) * reach - height / 2
-            width: 104
-            height: 102
+            width: 104 * uiStyle.dp
+            height: 102 * uiStyle.dp
             opacity: Math.min(1, win.open * 1.4)
 
             Rectangle {
                 id: tile
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: 72
-                height: 72
-                radius: win.pixelLook ? 27 : 22
+                width: 72 * uiStyle.dp
+                height: 72 * uiStyle.dp
+                radius: win.pixelLook ? 27 * uiStyle.dp : 22 * uiStyle.dp
                 color: area.pressed ? win.buttonAccent : win.buttonSurface
                 border.color: area.pressed ? win.buttonAccent : Qt.rgba(win.buttonText.r, win.buttonText.g, win.buttonText.b, 0.32)
                 border.width: 1.5
                 Behavior on color { ColorAnimation { duration: 120 } }
                 Kirigami.Icon {
                     anchors.centerIn: parent
-                    width: 34
-                    height: 34
+                    width: 34 * uiStyle.dp
+                    height: 34 * uiStyle.dp
                     source: tool.modelData.id === "krita" ? Qt.resolvedUrl("icons/krita.svg")
                           : tool.modelData.id === "shot" ? Qt.resolvedUrl("icons/shot.svg") : tool.modelData.icon
                     fallback: "applications-graphics"
@@ -144,11 +144,11 @@ Window {
             }
             Rectangle {
                 anchors.top: tile.bottom
-                anchors.topMargin: 4
+                anchors.topMargin: 4 * uiStyle.dp
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: Math.max(72, label.implicitWidth + 14)
-                height: 24
-                radius: 12
+                width: Math.max(72 * uiStyle.dp, label.implicitWidth + 14 * uiStyle.dp)
+                height: 24 * uiStyle.dp
+                radius: 12 * uiStyle.dp
                 color: win.buttonSurface
                 border.color: Qt.rgba(win.buttonText.r, win.buttonText.g, win.buttonText.b, 0.24)
                 border.width: 1
@@ -157,7 +157,7 @@ Window {
                     anchors.centerIn: parent
                     text: tool.modelData.label
                     color: win.buttonText
-                    font.pixelSize: 13
+                    font.pixelSize: 13 * uiStyle.dp
                     font.weight: Font.DemiBold
                 }
             }
@@ -174,12 +174,12 @@ Window {
             visible: false
             color: "transparent"
             flags: Qt.WindowTransparentForInput
-            width: row.implicitWidth + 32
-            height: 48
+            width: row.implicitWidth + 32 * uiStyle.dp
+            height: 48 * uiStyle.dp
             LayerShell.Window.scope: "tabletshell-penhint"
             LayerShell.Window.layer: LayerShell.Window.LayerOverlay
             LayerShell.Window.anchors: LayerShell.Window.AnchorTop
-            LayerShell.Window.margins.top: 56
+            LayerShell.Window.margins.top: 56 * uiStyle.dp
             LayerShell.Window.exclusionZone: -1
             LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
             property string colour: ""
@@ -191,18 +191,18 @@ Window {
             }
             Rectangle {
                 anchors.fill: parent
-                radius: 24
+                radius: 24 * uiStyle.dp
                 color: Qt.rgba(0.11, 0.11, 0.12, 0.92)
                 Row {
                     id: row
                     anchors.centerIn: parent
-                    spacing: 12
+                    spacing: 12 * uiStyle.dp
                     Rectangle {
                         visible: hintWin.colour !== ""
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 26
-                        height: 26
-                        radius: 13
+                        width: 26 * uiStyle.dp
+                        height: 26 * uiStyle.dp
+                        radius: 13 * uiStyle.dp
                         color: hintWin.colour || "transparent"
                         border.color: "white"
                     }

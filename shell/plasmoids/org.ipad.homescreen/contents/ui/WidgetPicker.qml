@@ -89,7 +89,7 @@ Item {
                         Row {
                             spacing: Kirigami.Units.gridUnit
                             Repeater {
-                                model: picker.home.pcMode ? ["small", "wide", "large"] : ["small", "wide"]
+                                model: ["small", "wide", "large"]
                                 delegate: HomeWidget {
                                     required property string modelData
                                     home: picker.home

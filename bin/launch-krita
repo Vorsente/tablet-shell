@@ -4,8 +4,8 @@ if command -v krita >/dev/null 2>&1; then
     exec krita "$@"
 fi
 if command -v notify-send >/dev/null 2>&1; then
-    notify-send -a tablet-shell -i dialog-error 'Krita' 'Установите Krita: sudo pacman -S krita'
+    notify-send -a tablet-shell -i dialog-error 'Krita' 'Установите пакет krita (Discover или менеджер пакетов) / Install the krita package'
 else
-    echo 'Krita is not installed. Install: sudo pacman -S krita' >&2
+    echo 'Krita is not installed: install the krita package of your distribution.' >&2
 fi
 exit 1

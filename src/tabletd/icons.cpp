@@ -15,6 +15,8 @@
 //     X-TabletShell-Icon (and used again by --force)
 // Already generated icons are kept unless --force; re-run after installing apps or the theme.
 #include <QBuffer>
+#include <QDBusConnection>
+#include <QDBusMessage>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
@@ -352,6 +354,12 @@ QString rename(const QString &path, const QString &oldIcon)
     }
     QStringList lines = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
     f.close();
+    // Waydroid rewrites only its own keys: the old icon lines of earlier runs are still there
+    for (int i = lines.size() - 1; i >= 0; --i) {
+        if (lines[i].startsWith(QLatin1String("X-TabletShell-Icon="))) {
+            lines.removeAt(i);
+        }
+    }
     bool inEntry = false, done = false;
     for (int i = 0; i < lines.size() && !done; ++i) {
         if (lines[i].startsWith(QLatin1Char('['))) {
@@ -464,6 +472,9 @@ int appIconsCommand(const QStringList &args)
     }
     if (made > 0) {
         QProcess::execute(QStringLiteral("gtk-update-icon-cache"), {QStringLiteral("-f"), QStringLiteral("-q"), themeDir});
+        // running KDE programs (plasmashell) remember the icon as missing until told otherwise
+        QDBusConnection::sessionBus().send(QDBusMessage::createSignal(QStringLiteral("/KIconLoader"), QStringLiteral("org.kde.KIconLoader"),
+                                                                     QStringLiteral("iconChanged")) << 0);
     }
     if (renamed) {
         QProcess::startDetached(QStringLiteral("kbuildsycoca6"), {});

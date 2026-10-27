@@ -29,7 +29,7 @@ Window {
     LayerShell.Window.exclusionZone: -1
     LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
 
-    readonly property real gu: Kirigami.Units.gridUnit
+    readonly property real gu: (Kirigami.Units.gridUnit * uiStyle.dp)
     readonly property bool pixel: uiStyle.pixel
     readonly property bool materialDark: Kirigami.ColorUtils.brightnessForColor(Kirigami.Theme.textColor) === Kirigami.ColorUtils.Light
     readonly property color ink: pixel ? (materialDark ? "#F4EFF4" : "#1D1B20") : "white"
@@ -78,7 +78,7 @@ Window {
             bars("display-brightness-symbolic", Tr.t("Яркость"), n(0), 100, "brightness");
             break;
         case "keyboardBrightnessChanged":
-            bars("input-keyboard-brightness-symbolic", Tr.t("Подсветка клавиатуры"), n(0), 100, "");
+            bars("input-keyboard-brightness", Tr.t("Подсветка клавиатуры"), n(0), 100, "");
             break;
         case "showText":
             text(args[0], args[1]);
@@ -93,7 +93,7 @@ Window {
             text("battery-profile-performance-symbolic", args[0]);
             break;
         case "wifiEnabledChanged":
-            text(on ? "network-wireless-on-symbolic" : "network-wireless-offline-symbolic", on ? Tr.t("Wi-Fi включён") : Tr.t("Wi-Fi выключен"));
+            text(on ? "network-wireless-symbolic" : "network-wireless-disconnected-symbolic", on ? Tr.t("Wi-Fi включён") : Tr.t("Wi-Fi выключен"));
             break;
         case "bluetoothEnabledChanged":
             text(on ? "network-bluetooth-symbolic" : "network-bluetooth-inactive-symbolic", on ? Tr.t("Bluetooth включён") : Tr.t("Bluetooth выключен"));
@@ -216,7 +216,7 @@ Window {
             anchors.leftMargin: win.gu * (win.pixel ? 1.1 : 1.2)
             anchors.verticalCenter: parent.verticalCenter
             source: win.icon
-            implicitWidth: Kirigami.Units.iconSizes.smallMedium
+            implicitWidth: Math.round(Kirigami.Units.iconSizes.smallMedium * uiStyle.dp)
             implicitHeight: implicitWidth
             isMask: true
             color: win.pixel ? win.lit : win.ink

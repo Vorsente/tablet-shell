@@ -28,7 +28,8 @@ reportActive(workspace.activeWindow);
 
 // Text menu (long press on text): where the app in front is, so touches on panels, the dock and
 // overlays are not taken for it. "pid x y width height" as fractions of the built-in screen
-// (the touch screen), pid 0 = no app window.
+// (the touch screen), pid 0 = no app window. The home screen (Plasma's desktop window, its search
+// bar has no menu of its own) is reported without the panels and marked "home".
 function builtInScreen() {
     var screens = workspace.screens;
     for (var i = 0; i < screens.length; ++i) {
@@ -42,14 +43,18 @@ var areaWindow = null;
 function reportArea() {
     var w = areaWindow;
     var s = builtInScreen();
-    if (!w || !s || w.desktopWindow || w.dock || w.specialWindow || !w.pid) {
+    var home = w && w.desktopWindow;
+    if (!w || !s || (!home && (w.dock || w.specialWindow)) || !w.pid) {
         shellCall2("WindowArea", "0 0 0 0 0");
         return;
     }
-    var g = w.frameGeometry;
+    var g = home ? workspace.clientArea(KWin.MaximizeArea, s, workspace.currentDesktop) : w.frameGeometry;
     var o = s.geometry;
-    shellCall2("WindowArea", [w.pid, (g.x - o.x) / o.width, (g.y - o.y) / o.height,
-                              g.width / o.width, g.height / o.height].join(" "));
+    var area = [w.pid, (g.x - o.x) / o.width, (g.y - o.y) / o.height, g.width / o.width, g.height / o.height];
+    if (home) {
+        area.push("home");
+    }
+    shellCall2("WindowArea", area.join(" "));
 }
 function followArea(w) {
     if (areaWindow) {

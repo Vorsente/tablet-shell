@@ -43,11 +43,14 @@
 #include <QProcess>
 #include <QSocketNotifier>
 #include <QTimer>
+#include <QHash>
+#include <QRegularExpression>
 
 #include <array>
 #include <functional>
 #include <cmath>
 #include <cstring>
+#include <cerrno>
 #include <csignal>
 #include <fcntl.h>
 #include <linux/input.h>
@@ -142,19 +145,33 @@ class EvdevReader : public QObject
 public:
     using Handler = std::function<void(int fd, const input_event &)>;
 
+    // Paths already open are skipped, so this can be called again for devices that came later.
+    // A device that goes away (unplugged pen, Bluetooth off) is closed and may be opened again.
     bool open(const QStringList &paths, Handler handler)
     {
         for (const QString &path : paths) {
+            if (m_paths.contains(path)) {
+                continue;
+            }
             const int fd = ::open(path.toLocal8Bit().constData(), O_RDONLY | O_NONBLOCK | O_CLOEXEC);
             if (fd < 0) {
                 continue;
             }
             m_fds << fd;
+            m_paths.insert(path, fd);
             auto *n = new QSocketNotifier(fd, QSocketNotifier::Read, this);
-            connect(n, &QSocketNotifier::activated, this, [fd, handler] {
+            connect(n, &QSocketNotifier::activated, this, [this, n, fd, path, handler] {
                 input_event ev;
-                while (::read(fd, &ev, sizeof(ev)) == sizeof(ev)) {
+                ssize_t got;
+                while ((got = ::read(fd, &ev, sizeof(ev))) == ssize_t(sizeof(ev))) {
                     handler(fd, ev);
+                }
+                if (got < 0 && errno == ENODEV) {
+                    n->setEnabled(false);
+                    n->deleteLater();
+                    m_fds.removeAll(fd);
+                    m_paths.remove(path);
+                    ::close(fd);
                 }
             });
         }
@@ -203,6 +220,7 @@ public:
 
 private:
     QList<int> m_fds;
+    QHash<QString, int> m_paths;   // open device node -> fd
 };
 // Any external monitor (HDMI/DP) connected? eDP/DSI are the built-in panel.
 QString externalConnector()
@@ -226,12 +244,22 @@ QString externalConnector()
 // A real keyboard: a USB or Bluetooth input device with letter keys (Q, A and Z; the lowest 64 key
 // bits are the last word of the capability mask). Mice, consumer-control keys, the power button
 // and our own uinput device do not count. Same rule as tablet-keyboard.
+// Detachable covers on other buses count too: the Surface Type Cover (Surface Pro 9 and newer) sits
+// behind the Surface System Aggregator ("ssam", HID bus 0019 = host), not on USB. A fixed laptop
+// keyboard (i8042/serio) never counts: convertibles report their folding with SW_TABLET_MODE.
+bool detachableBus(const QString &path)
+{
+    static const QRegularExpression hostHid(QStringLiteral("/0019:[0-9A-F]{4}:[0-9A-F]{4}\\."));
+    return path.contains(QLatin1String("/usb")) || path.contains(QLatin1String("/bluetooth")) || path.contains(QLatin1String("/uhid"))
+           || path.contains(QLatin1String("/ssam:")) || path.contains(QLatin1String("surface")) || hostHid.match(path).hasMatch();
+}
+
 bool keyboardAttached()
 {
     const QDir input(QStringLiteral("/sys/class/input"));
     for (const QString &e : input.entryList({QStringLiteral("input*")})) {
         const QString path = QFileInfo(input.filePath(e)).canonicalFilePath();
-        if (!path.contains(QLatin1String("/usb")) && !path.contains(QLatin1String("/bluetooth")) && !path.contains(QLatin1String("/uhid"))) {
+        if (!detachableBus(path)) {
             continue;
         }
         const QStringList words = readSys(path + QStringLiteral("/capabilities/key")).trimmed().split(QLatin1Char(' '));
@@ -241,6 +269,40 @@ bool keyboardAttached()
         }
     }
     return false;
+}
+
+// Hardware tablet-mode switch (SW_TABLET_MODE: a 360° hinge, a cover folded back or taken off,
+// e.g. surface_aggregator_tabletsw on Surface Pro): -1 = no readable switch, 0 = laptop, 1 = tablet.
+// Reading needs the uaccess rule for switches (system/devices.sh).
+QStringList tabletSwitchNodes()
+{
+    QStringList nodes;
+    const QDir input(QStringLiteral("/sys/class/input"));
+    for (const QString &e : input.entryList({QStringLiteral("event*")})) {
+        const QStringList words = readSys(input.filePath(e) + QStringLiteral("/device/capabilities/sw")).trimmed().split(QLatin1Char(' '));
+        if (words.last().toULongLong(nullptr, 16) >> SW_TABLET_MODE & 1) {
+            nodes << QStringLiteral("/dev/input/") + e;
+        }
+    }
+    return nodes;
+}
+
+int tabletSwitch()
+{
+    int state = -1;
+    for (const QString &node : tabletSwitchNodes()) {
+        const int fd = ::open(QFile::encodeName(node).constData(), O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+        if (fd < 0) {
+            continue;
+        }
+        unsigned long bits[(SW_MAX + 8 * sizeof(long)) / (8 * sizeof(long))] = {};
+        if (::ioctl(fd, EVIOCGSW(sizeof(bits)), bits) >= 0) {
+            const bool on = bits[SW_TABLET_MODE / (8 * sizeof(long))] >> (SW_TABLET_MODE % (8 * sizeof(long))) & 1;
+            state = std::max(state, on ? 1 : 0);
+        }
+        ::close(fd);
+    }
+    return state;
 }
 
 // Calls back (debounced) when a device of SUBSYSTEM reports a change: monitor (drm) or keyboard
@@ -322,7 +384,8 @@ public:
             }
         }, this);
         // keyboard dock: it also drops off the bus for a moment now and then, so wait 1.5 s
-        new UeventWatcher("input", 1500, [this] { syncDeviceMode(); }, this);
+        new UeventWatcher("input", 1500, [this] { watchSwitches(); syncDeviceMode(); }, this);
+        watchSwitches();
         syncDeviceMode();
         // At login: apply once plasmashell is up (its panels are reshaped by script), not after a
         // fixed delay that is too short on a slow start
@@ -474,11 +537,48 @@ public Q_SLOTS:
             modes.writeEntry("deviceMode", choice);
             tabletrc.sync();
         }
-        const bool kbd = keyboardAttached();
-        const QString want = choice == QLatin1String("auto") ? (kbd ? QStringLiteral("off") : QStringLiteral("on")) : choice;
+        // auto: tablet when the hinge/cover switch says so, else when no keyboard is attached
+        const bool tablet = tabletSwitch() == 1 || !keyboardAttached();
+        const QString want = choice == QLatin1String("auto") ? (tablet ? QStringLiteral("on") : QStringLiteral("off")) : choice;
         if (input.readEntry("TabletMode", QString()) != want) {
             input.writeEntry("TabletMode", want, KConfig::Notify | KConfig::Persistent);
             kwinrc.sync();
+        }
+    }
+
+    // SW_TABLET_MODE changes come as input events, not uevents: keep the switches open
+    void watchSwitches()
+    {
+        const QStringList nodes = tabletSwitchNodes();
+        for (auto it = m_switches.begin(); it != m_switches.end();) {
+            if (!nodes.contains(it.key())) {
+                ::close(int(it.value()->socket()));
+                delete it.value();
+                it = m_switches.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        for (const QString &node : nodes) {
+            if (m_switches.contains(node)) {
+                continue;
+            }
+            const int fd = ::open(QFile::encodeName(node).constData(), O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+            if (fd < 0) {
+                continue;
+            }
+            auto *n = new QSocketNotifier(fd, QSocketNotifier::Read, this);
+            connect(n, &QSocketNotifier::activated, this, [this, fd] {
+                input_event ev;
+                bool changed = false;
+                while (::read(fd, &ev, sizeof(ev)) == ssize_t(sizeof(ev))) {
+                    changed = changed || (ev.type == EV_SW && ev.code == SW_TABLET_MODE);
+                }
+                if (changed) {
+                    QTimer::singleShot(300, this, [this] { syncDeviceMode(); });
+                }
+            });
+            m_switches.insert(node, n);
         }
     }
 
@@ -1037,6 +1137,7 @@ private:
     uint m_askId = 0;
     int m_generation = 0;
     QString m_external;
+    QHash<QString, QSocketNotifier *> m_switches;   // SW_TABLET_MODE devices by node
     QString m_shownMode;     // last mode the animation showed
     QStringList m_trayPending; // tray app ids waiting to be hidden
     bool m_tablet = false;
@@ -1259,7 +1360,8 @@ public:
         m_release.setInterval(600);
         connect(&m_release, &QTimer::timeout, this, [this] { setTouch(true); });
         connect(&m_retry, &QTimer::timeout, this, &Pen::tryOpen);
-        m_retry.start(10000);
+        m_retry.start(30000);   // fallback; new pens normally come with an input uevent
+        new UeventWatcher("input", 1000, [this] { tryOpen(); }, this);
         tryOpen();
     }
 
@@ -1276,13 +1378,28 @@ private:
 
     void tryOpen()
     {
-        const auto isPen = [](const QString &n) {
-            return n.contains(QLatin1String("pen"), Qt::CaseInsensitive) || n.contains(QLatin1String("stylus"), Qt::CaseInsensitive);
-        };
-        if (!m_reader.open(devicesWithKey(BTN_TOOL_PEN, isPen), [this](int fd, const input_event &ev) { onEvent(fd, ev); })) {
+        // every device with a pen or eraser tool: names differ a lot ("Wacom HID 5256 Pen",
+        // "ELAN... Stylus", "IPTS 045E:..." on Surface, "GXTP7386..." Goodix, a separate "... Eraser"
+        // node), so the capability decides, not the name. Called again when input devices change:
+        // Bluetooth / USB pens and late drivers come after tabletd started.
+        QStringList devs = devicesWithKey(BTN_TOOL_PEN);
+        for (const QString &d : devicesWithKey(BTN_TOOL_RUBBER)) {
+            if (!devs.contains(d)) {
+                devs << d;
+            }
+        }
+        // a pen that went away while near the screen never reports leaving: touch back on
+        if (m_reader.fds().size() < m_penCount) {
+            m_release.stop();
+            setTouch(true);
+        }
+        const bool before = !m_reader.fds().isEmpty();
+        const bool any = m_reader.open(devs, [this](int fd, const input_event &ev) { onEvent(fd, ev); });
+        m_penCount = int(m_reader.fds().size());
+        if (!any) {
             return;
         }
-        m_retry.stop();
+        // fd numbers are reused after a device went away: measure every open one again
         for (int fd : m_reader.fds()) {
             for (int axis : {ABS_X, ABS_Y}) {
                 input_absinfo info{};
@@ -1290,7 +1407,9 @@ private:
                 m_axes[fd][axis].max = info.maximum > 0 ? info.maximum : 1;
             }
         }
-        setTouch(true, true);
+        if (!before) {
+            setTouch(true, true);
+        }
     }
 
     void onEvent(int fd, const input_event &ev)
@@ -1402,6 +1521,7 @@ private:
     bool m_touchEnabled = true;
     int m_strokeFd = -1;
     bool m_tipDown = false;
+    int m_penCount = 0;            // pen devices open at the last scan
     int m_buttonDown = 0;          // pen button pressed in the air (BTN_STYLUS / BTN_STYLUS2)
     QElapsedTimer m_buttonTimer;
     QTimer m_ring;                 // the button held: the tool ring

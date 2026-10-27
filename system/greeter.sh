@@ -25,7 +25,7 @@ fi
 [ -x "$SRC/tablet-greeter" ] || { t "Сначала запустите ./install.sh" "Run ./install.sh first"; echo; exit 1; }
 
 # a kernel that cannot unpack an lz4 initramfs boots without it (no splash, no early graphics)
-if [ -z "$REFRESH" ] && grep -q '^COMPRESSION="lz4"' /etc/mkinitcpio.conf; then
+if [ -z "$REFRESH" ] && grep -qs '^COMPRESSION="lz4"' /etc/mkinitcpio.conf; then
     say "initramfs: lz4 → zstd" "initramfs: lz4 → zstd"
     sed -i 's/^COMPRESSION=.*/COMPRESSION="zstd"/' /etc/mkinitcpio.conf
     mkinitcpio -P >/dev/null
@@ -33,7 +33,7 @@ fi
 
 if [ -z "$REFRESH" ]; then
     say "Пакеты" "Packages"
-    pacman -S --needed --noconfirm greetd cage
+    pkg_install greetd cage
 else
     command -v cage >/dev/null || { echo "Missing cage; cannot update greeter" >&2; exit 1; }
 fi

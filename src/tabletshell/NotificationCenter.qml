@@ -62,9 +62,9 @@ Window {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         anchors.right: parent.right
-        anchors.margins: Kirigami.Units.gridUnit
-        width: Math.min(parent.width - Kirigami.Units.gridUnit * 2, Kirigami.Units.gridUnit * 24)
-        radius: uiStyle.pixel ? Kirigami.Units.gridUnit * 2.1 : Kirigami.Units.gridUnit * 1.4
+        anchors.margins: (Kirigami.Units.gridUnit * uiStyle.dp)
+        width: Math.min(parent.width - (Kirigami.Units.gridUnit * uiStyle.dp) * 2, (Kirigami.Units.gridUnit * uiStyle.dp) * 24)
+        radius: uiStyle.pixel ? (Kirigami.Units.gridUnit * uiStyle.dp) * 2.1 : (Kirigami.Units.gridUnit * uiStyle.dp) * 1.4
         color: uiStyle.pixel ? win.materialSurface : Qt.rgba(0.12, 0.12, 0.15, 0.9)
         border.color: uiStyle.pixel ? (win.materialDark ? "#625C69" : "#D8CEDF") : Qt.rgba(1, 1, 1, 0.16)
         border.width: uiStyle.pixel ? 0 : 1
@@ -73,8 +73,8 @@ Window {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: Kirigami.Units.gridUnit
-            spacing: Kirigami.Units.largeSpacing
+            anchors.margins: (Kirigami.Units.gridUnit * uiStyle.dp)
+            spacing: (Kirigami.Units.largeSpacing * uiStyle.dp)
 
             RowLayout {
                 Layout.fillWidth: true
@@ -110,7 +110,7 @@ Window {
                 visible: count > 0
                 clip: true
                 verticalLayoutDirection: ListView.BottomToTop  // newest (last added) on top
-                spacing: Kirigami.Units.smallSpacing * 2
+                spacing: (Kirigami.Units.smallSpacing * uiStyle.dp) * 2
                 model: history
 
                 delegate: Rectangle {
@@ -118,8 +118,8 @@ Window {
                     required property int index
                     required property var model
                     width: list.width
-                    height: cardRow.implicitHeight + Kirigami.Units.largeSpacing * 2
-                    radius: uiStyle.pixel ? Kirigami.Units.gridUnit * 1.4 : Kirigami.Units.gridUnit * 0.8
+                    height: cardRow.implicitHeight + (Kirigami.Units.largeSpacing * uiStyle.dp) * 2
+                    radius: uiStyle.pixel ? (Kirigami.Units.gridUnit * uiStyle.dp) * 1.4 : (Kirigami.Units.gridUnit * uiStyle.dp) * 0.8
                     color: uiStyle.pixel ? win.materialCard : Qt.rgba(1, 1, 1, 0.1)
 
                     MouseArea {
@@ -135,13 +135,13 @@ Window {
                     RowLayout {
                         id: cardRow
                         anchors.fill: parent
-                        anchors.margins: Kirigami.Units.largeSpacing
-                        spacing: Kirigami.Units.largeSpacing
+                        anchors.margins: (Kirigami.Units.largeSpacing * uiStyle.dp)
+                        spacing: (Kirigami.Units.largeSpacing * uiStyle.dp)
 
                         Kirigami.Icon {
                             Layout.alignment: Qt.AlignTop
                             source: card.model.image || card.model.iconName || card.model.applicationIconName || "preferences-desktop-notification"
-                            implicitWidth: Kirigami.Units.iconSizes.medium
+                            implicitWidth: Math.round(Kirigami.Units.iconSizes.medium * uiStyle.dp)
                             implicitHeight: implicitWidth
                         }
                         ColumnLayout {

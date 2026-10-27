@@ -1,8 +1,9 @@
-// Back gesture (Android style), tablet mode only: a 10 px strip along the left edge takes the
+// Back gesture (Android style), tablet mode only: a thin strip (~1.5 mm) along the left edge takes the
 // touch; while the finger pulls right the strip widens and a bubble with an arrow follows it,
 // past the threshold it turns white, and letting go there sends Back (shell.Back: KEY_BACK
 // through uinput, so the app in front gets it). Replaces KWin's left touch edge, which only
 // reports a finished swipe. Off: Settings -> Жесты -> "Назад".
+// Distances are in the shell's dp (uiStyle.dp): the same physical size on every screen.
 // The bubble is drawn in the strip itself: a separate transparent overlay got no frame
 // callbacks from KWin and never repainted during the swipe.
 import QtQuick
@@ -13,7 +14,8 @@ import org.kde.layershell as LayerShell
 Window {
     id: strip
 
-    readonly property real threshold: 90       // logical px to the right
+    readonly property real dp: uiStyle.dp
+    readonly property real threshold: 90 * dp  // to the right (~13 mm)
     property real pull: 0                       // how far the finger is from where it started
     property real fingerY: 0
     property bool dragging: false
@@ -21,14 +23,14 @@ Window {
 
     visible: shell.tabletMode
     color: "transparent"
-    width: dragging ? 160 : 10
+    width: Math.round(dragging ? 160 * dp : 10 * dp)
 
     LayerShell.Window.scope: "tabletshell-back-edge"
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.anchors: LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom
     // keep clear of the control center (top edge) and the home gesture (bottom edge)
-    LayerShell.Window.margins.top: 60
-    LayerShell.Window.margins.bottom: 90
+    LayerShell.Window.margins.top: Math.round(60 * dp)
+    LayerShell.Window.margins.bottom: Math.round(90 * dp)
     LayerShell.Window.exclusionZone: -1
     LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
 
@@ -52,7 +54,7 @@ Window {
                 return;
             }
             // a mostly vertical move is not a back swipe
-            if (Math.abs(m.y - startY) > 120 && Math.abs(m.y - startY) > (m.x - startX) * 1.5) {
+            if (Math.abs(m.y - startY) > 120 * strip.dp && Math.abs(m.y - startY) > (m.x - startX) * 1.5) {
                 strip.dragging = false;
                 return;
             }
@@ -72,11 +74,11 @@ Window {
     readonly property real reach: pull < threshold ? pull : threshold + (pull - threshold) * 0.2
     Rectangle {
         id: bubble
-        visible: strip.dragging && strip.pull > 4
-        width: 56
-        height: 56
-        radius: 28
-        x: -width + Math.min(strip.reach * 0.8, width + 24)
+        visible: strip.dragging && strip.pull > 4 * strip.dp
+        width: 56 * strip.dp
+        height: width
+        radius: width / 2
+        x: -width + Math.min(strip.reach * 0.8, width + 24 * strip.dp)
         y: strip.fingerY - height / 2
         color: uiStyle.pixel ? (strip.armed ? "#D0BCFF" : "#49454F") : strip.armed ? "#ffffff" : Qt.rgba(0.1, 0.1, 0.11, 0.85)
         border.color: Qt.rgba(1, 1, 1, 0.3)
@@ -87,11 +89,11 @@ Window {
 
         Text {
             anchors.centerIn: parent
-            anchors.horizontalCenterOffset: 6
+            anchors.horizontalCenterOffset: 6 * strip.dp
             text: "‹"
             color: strip.armed ? "#000000" : "#ffffff"
             opacity: Math.min(1, strip.pull / strip.threshold)
-            font.pixelSize: 40
+            font.pixelSize: 40 * strip.dp
             font.bold: true
         }
     }

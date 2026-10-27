@@ -1,6 +1,6 @@
 // Control center (iOS 26 style): swipe down from the top edge. Liquid Glass modules over a dimmed,
 // blurred backdrop: connectivity (airplane, Wi-Fi, Bluetooth, rotation), Do Not Disturb, tall
-// brightness / volume sliders and round controls. Quick settings come from Plasma Mobile
+// brightness slider and round controls. Quick settings come from Plasma Mobile
 // (plasmamobilerc [QuickSettings] enabledQuickSettings), the rest are the shell's own. Hold a
 // control for its settings. Tap outside the modules to close.
 import QtQuick
@@ -12,7 +12,7 @@ import org.kde.layershell as LayerShell
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.private.mobileshell.quicksettingsplugin as QS
 import org.kde.plasma.private.mobileshell.screenbrightnessplugin as ScreenBrightness
-import org.kde.plasma.private.volume as PA
+import org.kde.notificationmanager as NotificationManager
 import QtMultimedia
 import "Tr.js" as Tr
 
@@ -61,6 +61,7 @@ Window {
     }
     onVisibleChanged: {
         if (visible) {
+            dndClock = new Date();
             enter.restart();
             blurTimer.restart();
         } else {
@@ -192,22 +193,17 @@ Window {
             }
             penRing.show(x, y);
         }
-        function onTextMenuRequested(x, y, editable, selected, canPaste, app) {
+        function onTextMenuRequested(x, y, editable, selected, canPaste, app, sel) {
             if (win.visible || notificationCenter.visible || (powerMenu && powerMenu.visible)) {
                 return;   // the touch was meant for our own panel
             }
             if (!textMenu) {
                 textMenu = textMenuComponent.createObject(null);
             }
-            textMenu.show(x, y, editable, selected, canPaste, app);
+            textMenu.show(x, y, editable, selected, canPaste, app, sel);
         }
         function onPowerMenuRequested() {
-            win.visible = false;
-            notificationCenter.visible = false;
-            if (!powerMenu) {
-                powerMenu = powerMenuComponent.createObject(null);
-            }
-            powerMenu.open();
+            win.showPowerMenu();
         }
         function onOsdRequested(member, args) {
             if (!win.osd) {
@@ -228,19 +224,23 @@ Window {
             modeTransition.ready();
         }
         function onScreenTimeRequested() {
-            win.visible = false;
+            win.dismiss();
             win.showScreenTime();
         }
         function onNotificationsRequested() {
-            win.visible = false;
+            win.dismiss();
             notificationCenter.toggle();
         }
         function onToggleRequested() {
             notificationCenter.visible = false;
-            if (!win.visible) {
-                win.refresh();
+            if (win.visible && !win.closing) {
+                win.dismiss();
+                return;
             }
-            win.visible = !win.visible;
+            leave.stop();
+            win.closing = false;
+            win.refresh();
+            win.visible = true;
         }
     }
 
@@ -256,9 +256,12 @@ Window {
     ScreenBrightness.ScreenBrightnessUtil { id: brightness }
 
     // ---- quick settings sorted into the modules ------------------------------------------------
-    // Plasma Mobile's tiles, by their icon: the connectivity module and Do Not Disturb take theirs,
-    // the rest become round controls. Waydroid's tile is left out: the Android control does more.
-    property var qs: ({})        // airplane / wifi / bluetooth / rotation / dnd -> QuickSetting
+    // Plasma Mobile's tiles, by their icon: the connectivity module takes its four, the rest become
+    // round controls. Tiles that repeat something the control center already has are left out:
+    // Waydroid (the Android control does more), Do Not Disturb (the Focus module), sound and
+    // battery (the slider and the header), the settings app (own Settings control), and a second
+    // tile of the same kind.
+    property var qs: ({})        // airplane / wifi / bluetooth / rotation -> QuickSetting
     property var qsRest: []
     function category(q) {
         const i = String(q.icon || "");
@@ -267,22 +270,68 @@ Window {
         if (/network-wireless/.test(i)) return "wifi";
         if (/bluetooth/.test(i)) return "bluetooth";
         if (/^rotation/.test(i)) return "rotation";
-        if (/^notifications/.test(i)) return "dnd";
-        if (/android/.test(i)) return "waydroid";
+        if (/^notifications/.test(i)) return "skip";
+        if (/android/.test(i)) return "skip";
+        if (/^audio-|^battery|^configure|^preferences-system|^settings/.test(i)) return "skip";
         return "";
     }
     function collect() {
-        const map = {}, rest = [];
+        const map = {}, rest = [], seen = {};
         for (let i = 0; i < qsSource.count; ++i) {
             const item = qsSource.itemAt(i);
             if (!item) continue;
             const q = item.modelData;
             const c = category(q);
-            if (c === "waydroid") continue;
-            if (c && !map[c]) map[c] = q; else rest.push(q);
+            const key = String(q.icon) + "|" + String(q.text);
+            if (c === "skip" || seen[key]) continue;
+            seen[key] = true;
+            if (c) {
+                if (!map[c]) map[c] = q;
+            } else {
+                rest.push(q);
+            }
         }
         qs = map;
         qsRest = rest;
+    }
+
+    // Do Not Disturb: Plasma's own notification setting (what the tray and the dashboard use).
+    // Plasma Mobile's tile talks to the mobile shell, which is not running here.
+    NotificationManager.Settings { id: notificationSettings }
+    property date dndClock: new Date()
+    readonly property bool dnd: notificationSettings.notificationsInhibitedByApplication
+                                || (notificationSettings.notificationsInhibitedUntil !== undefined
+                                    && new Date(notificationSettings.notificationsInhibitedUntil) > dndClock)
+    function toggleDnd() {
+        if (dnd) {
+            notificationSettings.notificationsInhibitedUntil = undefined;
+            notificationSettings.revokeApplicationInhibitions();
+        } else {
+            const until = new Date();
+            until.setFullYear(until.getFullYear() + 1);      // until turned off
+            notificationSettings.notificationsInhibitedUntil = until;
+        }
+        notificationSettings.save();
+        dndClock = new Date();
+    }
+    // "hold for settings": Plasma Mobile names modules that a desktop install may not have
+    function openSettings(command) {
+        let kcm = String(command || "").replace(/^plasma-open-settings\s+/, "").trim();
+        const renamed = { kcm_mobile_onscreenkeyboard: "kcm_virtualkeyboard", kcm_nightcolor: "kcm_nightlight" };
+        kcm = renamed[kcm] || kcm;
+        if (!kcm) {
+            return;
+        }
+        shell.start([home + "/.local/bin/tablet-settings", kcm]);
+        win.dismiss();
+    }
+    function showPowerMenu() {
+        win.dismiss();
+        notificationCenter.visible = false;
+        if (!powerMenu) {
+            powerMenu = powerMenuComponent.createObject(null);
+        }
+        powerMenu.open();
     }
     Repeater {
         id: qsSource
@@ -311,9 +360,9 @@ Window {
     }
 
     // ---- look ----------------------------------------------------------------------------------
-    readonly property real gu: Kirigami.Units.gridUnit
+    readonly property real gu: (Kirigami.Units.gridUnit * uiStyle.dp)
     readonly property real sp: gu * 0.7                                   // gap between modules
-    readonly property int cols: 6
+    readonly property int cols: pixel ? 6 : 5   // Apple: connectivity 2 | brightness 1 | focus 2
     readonly property real cell: Math.min(gu * 4.4, (width - gu * 2 - sp * (cols - 1)) / cols)
     readonly property real span2: cell * 2 + sp
     // frosted, a little lighter than the dimmed backdrop (KWin blurs what is behind)
@@ -454,7 +503,7 @@ Window {
                 anchors.centerIn: parent
                 anchors.horizontalCenterOffset: win.pixel && control.wideTile ? -circle.width * 0.31 : 0
                 source: control.iconName
-                implicitWidth: Kirigami.Units.iconSizes.smallMedium
+                implicitWidth: Math.round(Kirigami.Units.iconSizes.smallMedium * uiStyle.dp)
                 implicitHeight: implicitWidth
                 isMask: true
                 color: win.pixel ? (control.on ? win.materialOnAccent : win.materialInk) : control.on && Qt.colorEqual(control.onColor, "white") ? "#1C1C1E" : "white"
@@ -462,13 +511,18 @@ Window {
             MouseArea {
                 id: area
                 anchors.fill: parent
-                onClicked: control.activated()
+                // scrolling the control center over a control is no tap
+                property point from
+                property bool moved: false
+                onPressed: m => { from = Qt.point(m.x, m.y); moved = false; }
+                onPositionChanged: m => { moved = moved || Math.hypot(m.x - from.x, m.y - from.y) > 18 * uiStyle.dp; }
+                onClicked: if (!moved) control.activated()
                 onPressAndHold: control.held()
             }
         }
         Text {
             id: caption
-            y: win.pixel && control.wideTile ? (control.height - implicitHeight) / 2 : circle.height + Kirigami.Units.smallSpacing
+            y: win.pixel && control.wideTile ? (control.height - implicitHeight) / 2 : circle.height + (Kirigami.Units.smallSpacing * uiStyle.dp)
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.horizontalCenterOffset: win.pixel && control.wideTile ? control.width * 0.14 : 0
             width: win.pixel && control.wideTile ? control.width * 0.58 : win.cell + win.sp * 0.4
@@ -493,18 +547,25 @@ Window {
         iconName: q ? win.iconFor(q) : ""
         on: q ? q.enabled : false
         onActivated: {
+            const icon = String(q.icon);
+            // Plasma Mobile's screenshot and power tiles wait for the mobile shell, which is not
+            // running here: the control center does these itself
+            if (/view-fullscreen|screenshot/.test(icon)) {
+                win.dismiss();
+                shell.start(["sh", "-c", "sleep 0.5; exec spectacle --background --fullscreen"]);
+                return;
+            }
+            if (/system-shutdown|application-exit/.test(icon)) {
+                win.showPowerMenu();
+                return;
+            }
             q.toggle();
             // actions that act on the screen: get out of the way
-            if (/screenshot|record|system-shutdown|application-exit|camera/.test(q.icon)) {
-                win.visible = false;
+            if (/record|camera/.test(icon)) {
+                win.dismiss();
             }
         }
-        onHeld: {
-            if (q.settingsCommand) {
-                shell.start(["sh", "-c", q.settingsCommand]);
-                win.visible = false;
-            }
-        }
+        onHeld: win.openSettings(q.settingsCommand)
     }
 
     // tall slider like iOS: fills from the bottom, follows the finger relative to where it went down
@@ -544,7 +605,7 @@ Window {
             anchors.bottom: parent.bottom
             anchors.bottomMargin: win.pixel ? (slider.height - height) / 2 : win.cell * 0.28
             source: slider.iconName
-            implicitWidth: Kirigami.Units.iconSizes.smallMedium
+            implicitWidth: Math.round(Kirigami.Units.iconSizes.smallMedium * uiStyle.dp)
             implicitHeight: implicitWidth
             isMask: true
             color: win.pixel ? (slider.shown >= 0.5 ? win.materialOnAccent : win.materialInk) : slider.shown * slider.height > win.cell * 0.28 + height / 2 ? "#3A3A3C" : "white"
@@ -572,7 +633,7 @@ Window {
     // ---- blur behind the glass -------------------------------------------------------------------
     property var glassItems: []
     function updateBlur() {
-        if (!visible) {
+        if (!visible || closing) {
             return;
         }
         if (pixel) { shell.blurBehind(win, []); return; }
@@ -599,12 +660,39 @@ Window {
     onWidthChanged: blurTimer.restart()
     onHeightChanged: blurTimer.restart()
 
+    // Closing: the blur behind the modules goes first (KWin would keep drawing its rectangles while
+    // the window fades), then the modules fade out quickly and the dimming last: what is seen is
+    // only the screen getting lighter again.
+    property bool closing: false
+    property real dim: 0
+    function dismiss() {
+        if (!visible || closing) {
+            return;
+        }
+        closing = true;
+        blurTimer.stop();
+        shell.blurBehind(win, []);
+        enter.stop();
+        leave.restart();
+    }
+    SequentialAnimation {
+        id: leave
+        NumberAnimation { target: stage; property: "opacity"; to: 0; duration: 110; easing.type: Easing.InCubic }
+        NumberAnimation { target: win; property: "dim"; to: 0; duration: 200; easing.type: Easing.OutCubic }
+        ScriptAction {
+            script: {
+                win.visible = false;
+                win.closing = false;
+            }
+        }
+    }
+
     // dimmed backdrop: tap to close
     Rectangle {
         anchors.fill: parent
         color: Qt.rgba(0, 0, 0, win.pixel ? 0.5 : 0.38)
-        opacity: stage.opacity
-        MouseArea { anchors.fill: parent; onClicked: win.visible = false }
+        opacity: win.dim
+        MouseArea { anchors.fill: parent; onClicked: win.dismiss() }
     }
     // Material: the modules sit on an opaque quick-settings sheet (Apple: glass on the backdrop)
     Rectangle {
@@ -624,6 +712,7 @@ Window {
     ParallelAnimation {
         id: enter
         NumberAnimation { target: stage; property: "opacity"; from: 0; to: 1; duration: 180; easing.type: Easing.OutCubic }
+        NumberAnimation { target: win; property: "dim"; from: 0; to: 1; duration: 180; easing.type: Easing.OutCubic }
         NumberAnimation { target: stage; property: "scale"; from: 0.94; to: 1; duration: 260; easing.type: Easing.OutBack; easing.overshoot: 1.2 }
     }
 
@@ -669,7 +758,7 @@ Window {
                     anchors.right: parent.right
                     anchors.rightMargin: win.gu * 0.3
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: Kirigami.Units.smallSpacing
+                    spacing: (Kirigami.Units.smallSpacing * uiStyle.dp)
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: win.battery + "%"
@@ -681,7 +770,7 @@ Window {
                     Kirigami.Icon {
                         anchors.verticalCenter: parent.verticalCenter
                         source: win.charging ? "battery-full-charging-symbolic" : "battery-good-symbolic"
-                        implicitWidth: Kirigami.Units.iconSizes.smallMedium
+                        implicitWidth: Math.round(Kirigami.Units.iconSizes.smallMedium * uiStyle.dp)
                         implicitHeight: implicitWidth
                         isMask: true
                         color: win.charging ? (win.pixel ? (win.materialDark ? "#6DD58C" : "#146C2E") : "#30D158") : win.headerInk
@@ -689,7 +778,7 @@ Window {
                 }
             }
 
-            // connectivity 2x2 | brightness | volume | Do Not Disturb over Split View and Slide Over
+            // connectivity 2x2 | brightness | Do Not Disturb over Split View and Slide Over
             Item {
                 width: parent.width
                 height: win.span2
@@ -720,7 +809,7 @@ Window {
                             Kirigami.Icon {
                                 anchors.centerIn: parent
                                 source: toggle.iconOverride || (toggle.q ? win.iconFor(toggle.q) : "")
-                                implicitWidth: Kirigami.Units.iconSizes.smallMedium
+                                implicitWidth: Math.round(Kirigami.Units.iconSizes.smallMedium * uiStyle.dp)
                                 implicitHeight: implicitWidth
                                 isMask: true
                                 color: win.pixel ? (toggle.q && toggle.q.enabled ? win.materialOnAccent : win.materialInk) : "white"
@@ -728,13 +817,12 @@ Window {
                             MouseArea {
                                 id: tap
                                 anchors.fill: parent
-                                onClicked: toggle.q.toggle()
-                                onPressAndHold: {
-                                    if (toggle.q.settingsCommand) {
-                                        shell.start(["sh", "-c", toggle.q.settingsCommand]);
-                                        win.visible = false;
-                                    }
-                                }
+                                property point from
+                                property bool moved: false
+                                onPressed: m => { from = Qt.point(m.x, m.y); moved = false; }
+                                onPositionChanged: m => { moved = moved || Math.hypot(m.x - from.x, m.y - from.y) > 18 * uiStyle.dp; }
+                                onClicked: if (!moved) toggle.q.toggle()
+                                onPressAndHold: win.openSettings(toggle.q.settingsCommand)
                             }
                         }
                         Toggle { q: win.qs.airplane || null; onColor: win.orange; iconOverride: "network-flightmode-on-symbolic" }
@@ -748,40 +836,24 @@ Window {
                     }
                 }
 
+                // brightness only: sound has its keys, the OSD and the tray
                 TallSlider {
                     x: win.span2 + win.sp
+                    y: win.pixel ? (win.span2 - height) / 2 : 0
                     visible: brightness.brightnessAvailable
                     iconName: "brightness-high-symbolic"
                     value: brightness.maxBrightness > 0 ? brightness.brightness / brightness.maxBrightness : 0
                     onMoved: v => brightness.brightness = Math.max(1, Math.round(v * brightness.maxBrightness))
                 }
-                TallSlider {
-                    x: win.pixel ? win.span2 + win.sp : win.span2 + win.cell + win.sp * 2
-                    y: win.pixel ? win.cell + win.sp : 0
-                    visible: PA.PreferredDevice.sink !== null
-                    iconName: !PA.PreferredDevice.sink || PA.PreferredDevice.sink.muted || value === 0 ? "audio-volume-muted-symbolic"
-                              : value < 0.34 ? "audio-volume-low-symbolic" : value < 0.67 ? "audio-volume-medium-symbolic"
-                              : "audio-volume-high-symbolic"
-                    value: PA.PreferredDevice.sink ? Math.min(1, PA.PreferredDevice.sink.volume / 65536) : 0
-                    onMoved: v => {
-                        if (PA.PreferredDevice.sink) {
-                            PA.PreferredDevice.sink.muted = false;
-                            PA.PreferredDevice.sink.volume = Math.round(v * 65536);
-                        }
-                    }
-                }
-
                 // Do Not Disturb, the wide Focus module
                 Glass {
                     id: focusModule
                     shadow: true
-                    readonly property var q: win.qs.dnd || null
-                    readonly property bool on: !!q && q.enabled
-                    x: win.span2 + win.cell * 2 + win.sp * 3
+                    readonly property bool on: win.dnd
+                    x: win.pixel ? win.span2 * 2 + win.sp * 2 : win.span2 + win.cell + win.sp * 2
                     width: win.span2
                     height: win.cell
                     radius: win.pixel ? height * 0.27 : height * 0.42
-                    visible: !!q
                     color: on ? (win.pixel ? win.blue : Qt.rgba(0.37, 0.36, 0.9, 0.55)) : win.glassFill
                     Behavior on color { ColorAnimation { duration: 150 } }
                     scale: focusTap.pressed ? 0.96 : 1
@@ -798,7 +870,7 @@ Window {
                         Kirigami.Icon {
                             anchors.centerIn: parent
                             source: "weather-clear-night-symbolic"
-                            implicitWidth: Kirigami.Units.iconSizes.smallMedium
+                            implicitWidth: Math.round(Kirigami.Units.iconSizes.smallMedium * uiStyle.dp)
                             implicitHeight: implicitWidth
                             isMask: true
                             color: win.pixel ? (focusModule.on ? win.blue : win.materialInk) : (focusModule.on ? win.purple : "white")
@@ -806,9 +878,9 @@ Window {
                     }
                     Column {
                         anchors.left: moon.right
-                        anchors.leftMargin: Kirigami.Units.largeSpacing
+                        anchors.leftMargin: (Kirigami.Units.largeSpacing * uiStyle.dp)
                         anchors.right: parent.right
-                        anchors.rightMargin: Kirigami.Units.smallSpacing
+                        anchors.rightMargin: (Kirigami.Units.smallSpacing * uiStyle.dp)
                         anchors.verticalCenter: parent.verticalCenter
                         Text {
                             width: parent.width
@@ -833,13 +905,8 @@ Window {
                     MouseArea {
                         id: focusTap
                         anchors.fill: parent
-                        onClicked: focusModule.q.toggle()
-                        onPressAndHold: {
-                            if (focusModule.q.settingsCommand) {
-                                shell.start(["sh", "-c", focusModule.q.settingsCommand]);
-                                win.visible = false;
-                            }
-                        }
+                        onClicked: win.toggleDnd()
+                        onPressAndHold: win.openSettings("kcm_notifications")
                     }
                 }
                 Control {
@@ -848,7 +915,7 @@ Window {
                     label: Tr.t("Два окна")
                     iconName: "view-split-left-right-symbolic"
                     onActivated: {
-                        win.visible = false;
+                        win.dismiss();
                         win.kwinShortcut("Split View");
                     }
                     // hold: divider at 1/2, 2/3, 1/3
@@ -860,7 +927,7 @@ Window {
                     label: Tr.t("Окно поверх")
                     iconName: "window-duplicate-symbolic"
                     onActivated: {
-                        win.visible = false;
+                        win.dismiss();
                         win.kwinShortcut("Slide Over");
                     }
                 }
@@ -886,7 +953,7 @@ Window {
                     label: Tr.t("Картинка в картинке")
                     iconName: Qt.resolvedUrl("icons/pip.svg")
                     onActivated: {
-                        win.visible = false;
+                        win.dismiss();
                         win.kwinShortcut("Picture in Picture");
                     }
                 }
@@ -895,7 +962,7 @@ Window {
                     label: Tr.t("Заметка")
                     iconName: "draw-freehand-symbolic"
                     onActivated: {
-                        win.visible = false;
+                        win.dismiss();
                         shell.start([win.home + "/.local/bin/quick-note"]);
                     }
                 }
@@ -905,7 +972,7 @@ Window {
                     iconName: "view-readermode-symbolic"
                     on: win.reading
                     onActivated: {
-                        win.visible = false;
+                        win.dismiss();
                         const firefox = shell.currentApp().toLowerCase().indexOf("firefox") !== -1;
                         shell.start([win.home + "/.local/bin/reading-mode", "toggle", firefox ? "firefox" : ""]);
                     }
@@ -915,7 +982,7 @@ Window {
                     label: Tr.t("Экранное время")
                     iconName: "chronometer-symbolic"
                     onActivated: {
-                        win.visible = false;
+                        win.dismiss();
                         win.showScreenTime();
                     }
                 }
@@ -924,7 +991,7 @@ Window {
                     label: Tr.t("Уведомления")
                     iconName: "notifications-symbolic"
                     onActivated: {
-                        win.visible = false;
+                        win.dismiss();
                         notificationCenter.visible = true;
                     }
                 }
@@ -942,7 +1009,7 @@ Window {
                             win.android = false;
                         } else {
                             shell.start(["waydroid", "show-full-ui"]);
-                            win.visible = false;
+                            win.dismiss();
                         }
                     }
                 }
@@ -952,7 +1019,7 @@ Window {
                     iconName: "document-edit-symbolic"
                     onActivated: {
                         shell.start([win.home + "/.local/bin/typewriter"]);
-                        win.visible = false;
+                        win.dismiss();
                     }
                 }
                 Control {
@@ -961,7 +1028,7 @@ Window {
                     iconName: "code-context-symbolic"
                     onActivated: {
                         shell.start([win.home + "/.local/bin/coding-mode"]);
-                        win.visible = false;
+                        win.dismiss();
                     }
                 }
                 Control {
@@ -969,7 +1036,7 @@ Window {
                     label: Tr.t("Настройки")
                     iconName: "configure-symbolic"
                     onActivated: {
-                        win.visible = false;
+                        win.dismiss();
                         shell.start([win.home + "/.local/bin/tablet-settings"]);
                     }
                 }

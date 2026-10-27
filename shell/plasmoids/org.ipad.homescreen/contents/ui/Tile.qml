@@ -68,6 +68,7 @@ Item {
         onPressed: m => {
             pressPos = Qt.point(m.x, m.y);
             picked = false;
+            moved = false;
         }
         onPressAndHold: m => {
             if (tile.home.pcMode) {
@@ -79,6 +80,9 @@ Item {
             tile.home.startDrag(tile.layoutIndex);
         }
         onPositionChanged: m => {
+            if (Math.hypot(m.x - pressPos.x, m.y - pressPos.y) > tile.home.tapSlop) {
+                moved = true;
+            }
             // in edit mode (and with the mouse in PC mode) a plain drag also picks the icon up
             if (!picked && (tile.home.editing || tile.home.pcMode) && mouse.pressed
                     && Math.hypot(m.x - pressPos.x, m.y - pressPos.y) > 12) {
@@ -101,7 +105,12 @@ Item {
                 tile.home.cancelDrag();
             }
         }
+        // a short or vertical swipe ends on the icon too: only a touch that stayed put launches
+        property bool moved: false
         onClicked: {
+            if (moved) {
+                return;
+            }
             if (face.isFolder) {
                 tile.home.openFolder = tile.layoutIndex;
             } else if (!tile.home.editing) {

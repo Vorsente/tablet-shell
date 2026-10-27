@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Tablet Linux
+Description=Pulsing Linux penguin
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/tablet-linux
+ScriptFile=/usr/share/plymouth/themes/tablet-linux/tablet-linux.script

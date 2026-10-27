@@ -7,6 +7,8 @@
     <entry name="dockSpace" type="Int"><default>64</default></entry>
     <!-- set by ~/.local/bin/tablet-mode-switch: keyboard/dock attached -->
     <entry name="pcMode" type="Bool"><default>false</default></entry>
+    <!-- size of the shell's elements in percent; mirrored from tabletrc [Appearance] uiScale -->
+    <entry name="uiScale" type="Int"><default>100</default></entry>
     <!-- red unread badges on app icons (tablet-settings app) -->
     <entry name="showBadges" type="Bool"><default>true</default></entry>
     <!-- the wallpaper by the current weather (WeatherEffects.qml); with live wallpapers (tabletrc

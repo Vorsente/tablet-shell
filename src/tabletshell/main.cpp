@@ -13,6 +13,8 @@
 #include <QDBusReply>
 #include <QDBusConnectionInterface>
 #include <QDBusArgument>
+#include <QDBusUnixFileDescriptor>
+#include <QImage>
 #include <QDBusMetaType>
 #include <QDBusObjectPath>
 #include <QDate>
@@ -46,6 +48,7 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <algorithm>
+#include <functional>
 
 #include "tr.h"
 #include <QtCore/qlogging.h>
@@ -477,6 +480,7 @@ public:
         if (m_touchFd < 0) {
             return;
         }
+        createVirtualTouch();
         m_holdTimer = new QTimer(this);
         m_holdTimer->setSingleShot(true);
         m_holdTimer->setInterval(500);
@@ -569,8 +573,18 @@ public:
                 }
             }
         }
+        if (m_dragHandle) {
+            handleDragFrame(down, first);
+            return;
+        }
         if (!m_touching) {
             if (down == 0) {
+                return;
+            }
+            const QPointF at = touchPoint(first);
+            const int handle = down == 1 ? handleAt(at) : 0;
+            if (handle) {
+                beginHandleDrag(handle, at);
                 return;
             }
             m_touching = true;
@@ -636,11 +650,14 @@ public:
 
     void offerTextMenu(QPointF at)
     {
-        if (m_locked || !effect("textMenu") || m_currentApp.isEmpty()) {
+        // the home screen counts as no app for screen time, but its search bar is a text field
+        const QString app = m_windowHome ? QStringLiteral("plasmashell") : m_currentApp;
+        if (m_locked || !effect("textMenu") || app.isEmpty()) {
             return;
         }
-        // panels, the dock and our own overlays lie outside the active window
-        if (m_windowPid <= 0 || !m_windowArea.contains(at) || ownTextMenu(m_currentApp)) {
+        // panels, the dock and our own overlays lie outside the active window; the home screen's
+        // search bar is a bare TextInput without a menu of its own
+        if (m_windowPid <= 0 || !m_windowArea.contains(at) || (!m_windowHome && ownTextMenu(app))) {
             return;
         }
         const bool selected = m_primaryChanges != m_primaryAtDown;
@@ -649,7 +666,7 @@ public:
                 QStringLiteral("org.kde.KWin"), QStringLiteral("/VirtualKeyboard"), QStringLiteral("org.freedesktop.DBus.Properties"),
                 QStringLiteral("GetAll")) << QStringLiteral("org.kde.kwin.VirtualKeyboard")),
             this);
-        connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, at, selected] {
+        connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, at, selected, app] {
             watcher->deleteLater();
             const QDBusReply<QVariantMap> reply = *watcher;
             const QVariantMap vk = reply.isValid() ? reply.value() : QVariantMap();
@@ -669,10 +686,21 @@ public:
             }
             // Paste only with something on the clipboard (types only: no data is transferred)
             auto *types = new QProcess(this);
-            connect(types, &QProcess::finished, this, [this, types, at, editable, selected] {
+            connect(types, &QProcess::finished, this, [this, types, at, editable, selected, app] {
                 types->deleteLater();
                 const bool canPaste = !types->readAllStandardOutput().trimmed().isEmpty();
-                Q_EMIT textMenuRequested(at.x(), at.y(), editable, selected, canPaste, m_currentApp);
+                if (selected) {
+                    // selected with the held finger: the handles go where the finger began and ended
+                    QPointF a = m_touchStart, b = at;
+                    if (b.y() < a.y() - 0.01 || (qAbs(b.y() - a.y()) <= 0.01 && b.x() < a.x())) {
+                        std::swap(a, b);
+                    }
+                    Q_EMIT textMenuRequested(at.x(), at.y(), editable, true, canPaste, app, selection(a, b, 0.028));
+                } else if (editable && effect("textSelect")) {
+                    selectWordAt(at, canPaste, app);
+                } else {
+                    Q_EMIT textMenuRequested(at.x(), at.y(), editable, false, canPaste, app, {});
+                }
             });
             types->start(QStringLiteral("wl-paste"), {QStringLiteral("--list-types")});
         });
@@ -813,13 +841,15 @@ public Q_SLOTS:
     }
 
     // The active window for the text menu (tablet-gestures KWin script): "pid x y width height",
-    // the rectangle as fractions of the built-in screen; pid 0 = no app window in front
+    // the rectangle as fractions of the built-in screen; pid 0 = no app window in front; a sixth
+    // field "home" = the home screen (Plasma's desktop window, without the panels)
     Q_SCRIPTABLE void WindowArea(const QString &area)
     {
         const QStringList v = area.split(QLatin1Char(' '));
-        if (v.size() == 5) {
+        if (v.size() >= 5) {
             m_windowPid = v[0].toLongLong();
             m_windowArea = QRectF(v[1].toDouble(), v[2].toDouble(), v[3].toDouble(), v[4].toDouble());
+            m_windowHome = v.value(5) == QLatin1String("home");
         }
     }
 
@@ -873,7 +903,27 @@ public Q_SLOTS:
     // The text menu at x, y (fractions of the built-in screen) with every button, for testing
     Q_SCRIPTABLE void ShowTextMenu(double x, double y)
     {
-        Q_EMIT textMenuRequested(x, y, true, true, true, QString());
+        Q_EMIT textMenuRequested(x, y, true, true, true, QString(), selection({x - 0.05, y}, {x + 0.05, y}, 0.028));
+    }
+
+    // A finger on the touch screen for testing the text menu without one: phase 0 down, 1 moved,
+    // 2 lifted, at x, y (fractions of the screen). Only the menu sees it, not the app.
+    Q_SCRIPTABLE void TestTouch(int phase, double x, double y)
+    {
+        if (!m_holdTimer) {
+            return;   // no touch screen
+        }
+        double rx = x, ry = y;
+        switch (m_rotation) {
+        case 2: rx = y; ry = 1 - x; break;
+        case 4: rx = 1 - x; ry = 1 - y; break;
+        case 8: rx = 1 - y; ry = x; break;
+        default: break;
+        }
+        m_contacts[0].id = phase == 2 ? -1 : 0xbeef;
+        m_contacts[0].x = m_touchX.minimum + qRound(rx * (m_touchX.maximum - m_touchX.minimum));
+        m_contacts[0].y = m_touchY.minimum + qRound(ry * (m_touchY.maximum - m_touchY.minimum));
+        touchFrame();
     }
 
     // Held power button (tabletd): the power menu (PowerMenu.qml)
@@ -981,7 +1031,13 @@ Q_SIGNALS:
     // touch screen (watchTouch): a finger went down / a long press for the text menu, as fractions
     // of the built-in screen
     void touchStarted(double x, double y);
-    void textMenuRequested(double x, double y, bool editable, bool selected, bool canPaste, const QString &app);
+    // sel: the selected text's ends for the handles (sx, sy, ex, ey, lineHeight, fractions; the
+    // ends are on the middle of their line), empty = no handles
+    void textMenuRequested(double x, double y, bool editable, bool selected, bool canPaste, const QString &app, const QVariantMap &sel);
+    // a selection handle is being dragged (the handles and the menu step aside) / was let go
+    void handleDragStarted();
+    void handleDragMoved(int handle, double x, double y);
+    void handleDragFinished(int handle, double x, double y);
 
 public:
     void startScreenTime()
@@ -1058,6 +1114,366 @@ private:
         write(m_uinput, &syn, sizeof(syn));
     }
 
+
+    // ---- text selection --------------------------------------------------------------------
+    // The app selects for us: a double tap on a word, Shift + touch to move an end. The taps come
+    // from a virtual touch screen with the real one's ranges, so KWin maps them the same way.
+
+    void createVirtualTouch()
+    {
+        m_vtouchFd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
+        if (m_vtouchFd < 0) {
+            return;
+        }
+        ioctl(m_vtouchFd, UI_SET_PROPBIT, INPUT_PROP_DIRECT);
+        ioctl(m_vtouchFd, UI_SET_EVBIT, EV_KEY);
+        ioctl(m_vtouchFd, UI_SET_KEYBIT, BTN_TOUCH);
+        ioctl(m_vtouchFd, UI_SET_EVBIT, EV_ABS);
+        uinput_setup setup{};
+        setup.id.bustype = BUS_VIRTUAL;
+        strncpy(setup.name, "tabletshell virtual touch", UINPUT_MAX_NAME_SIZE - 1);
+        ioctl(m_vtouchFd, UI_DEV_SETUP, &setup);
+        const std::pair<int, input_absinfo> axes[] = {
+            {ABS_X, m_touchX}, {ABS_Y, m_touchY}, {ABS_MT_POSITION_X, m_touchX}, {ABS_MT_POSITION_Y, m_touchY},
+            {ABS_MT_SLOT, input_absinfo{0, 0, 0, 0, 0, 0}}, {ABS_MT_TRACKING_ID, input_absinfo{0, 0, 65535, 0, 0, 0}},
+        };
+        for (const auto &[code, info] : axes) {
+            ioctl(m_vtouchFd, UI_SET_ABSBIT, code);
+            uinput_abs_setup abs{};
+            abs.code = code;
+            abs.absinfo = info;
+            abs.absinfo.value = 0;
+            ioctl(m_vtouchFd, UI_ABS_SETUP, &abs);
+        }
+        ioctl(m_vtouchFd, UI_DEV_CREATE);
+    }
+
+    void vEvent(int type, int code, int value)
+    {
+        input_event ev{};
+        ev.type = type;
+        ev.code = code;
+        ev.value = value;
+        write(m_vtouchFd, &ev, sizeof(ev));
+    }
+
+    // 0 = finger down, 1 = moved, 2 = lifted, at a point given as fractions of the screen
+    void vTouch(int phase, QPointF at)
+    {
+        if (m_vtouchFd < 0) {
+            return;
+        }
+        // back into the panel's own orientation (touchPoint the other way round)
+        double rx = at.x(), ry = at.y();
+        switch (m_rotation) {
+        case 2: rx = at.y(); ry = 1 - at.x(); break;
+        case 4: rx = 1 - at.x(); ry = 1 - at.y(); break;
+        case 8: rx = 1 - at.y(); ry = at.x(); break;
+        default: break;
+        }
+        const int x = m_touchX.minimum + qRound(qBound(0.0, rx, 1.0) * (m_touchX.maximum - m_touchX.minimum));
+        const int y = m_touchY.minimum + qRound(qBound(0.0, ry, 1.0) * (m_touchY.maximum - m_touchY.minimum));
+        vEvent(EV_ABS, ABS_MT_SLOT, 0);
+        if (phase == 2) {
+            vEvent(EV_ABS, ABS_MT_TRACKING_ID, -1);
+            vEvent(EV_KEY, BTN_TOUCH, 0);
+        } else {
+            if (phase == 0) {
+                vEvent(EV_ABS, ABS_MT_TRACKING_ID, m_vtrack++ & 0xffff);
+            }
+            vEvent(EV_ABS, ABS_MT_POSITION_X, x);
+            vEvent(EV_ABS, ABS_MT_POSITION_Y, y);
+            if (phase == 0) {
+                vEvent(EV_KEY, BTN_TOUCH, 1);
+            }
+            vEvent(EV_ABS, ABS_X, x);
+            vEvent(EV_ABS, ABS_Y, y);
+        }
+        vEvent(EV_SYN, SYN_REPORT, 0);
+    }
+
+    // timed input: each step runs `ms` after the one before
+    void steps(QList<std::pair<int, std::function<void()>>> list)
+    {
+        int at = 0;
+        for (auto &[ms, fn] : list) {
+            at += ms;
+            QTimer::singleShot(at, this, fn);
+        }
+    }
+
+    static QVariantMap selection(QPointF a, QPointF b, double lineHeight)
+    {
+        return {{QStringLiteral("sx"), a.x()}, {QStringLiteral("sy"), a.y()}, {QStringLiteral("ex"), b.x()},
+                {QStringLiteral("ey"), b.y()}, {QStringLiteral("lh"), lineHeight}};
+    }
+
+    // A strip of the screen through KWin (org.kde.KWin.ScreenShot2, allowed for us by
+    // tabletshell.desktop); a null image when it is not to be had
+    void capture(const QRectF &frac, std::function<void(QImage)> done)
+    {
+        QScreen *scr = builtInScreen();
+        if (!scr) {
+            done({});
+            return;
+        }
+        const QRect g = scr->geometry();
+        const QRect area = QRect(g.x() + qRound(frac.x() * g.width()), g.y() + qRound(frac.y() * g.height()),
+                                 qRound(frac.width() * g.width()), qRound(frac.height() * g.height())).intersected(g);
+        int fds[2];
+        if (area.isEmpty() || pipe2(fds, O_CLOEXEC) != 0) {
+            done({});
+            return;
+        }
+        QDBusMessage call = QDBusMessage::createMethodCall(QStringLiteral("org.kde.KWin"), QStringLiteral("/org/kde/KWin/ScreenShot2"),
+                                                           QStringLiteral("org.kde.KWin.ScreenShot2"), QStringLiteral("CaptureArea"));
+        call << area.x() << area.y() << uint(area.width()) << uint(area.height())
+             << QVariantMap{{QStringLiteral("native-resolution"), false}} << QVariant::fromValue(QDBusUnixFileDescriptor(fds[1]));
+        close(fds[1]);
+        auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(call, 3000), this);
+        connect(watcher, &QDBusPendingCallWatcher::finished, this, [watcher, fd = fds[0], done] {
+            watcher->deleteLater();
+            const QDBusReply<QVariantMap> reply = *watcher;
+            if (!reply.isValid()) {
+                close(fd);
+                done({});
+                return;
+            }
+            const QVariantMap info = reply.value();
+            const int w = info.value(QStringLiteral("width")).toInt();
+            const int h = info.value(QStringLiteral("height")).toInt();
+            const int stride = info.value(QStringLiteral("stride")).toInt();
+            const auto format = QImage::Format(info.value(QStringLiteral("format")).toInt());
+            QByteArray data;
+            data.resize(qsizetype(stride) * h);
+            qsizetype got = 0;
+            while (got < data.size()) {   // KWin writes the pixels right after the reply
+                const ssize_t n = read(fd, data.data() + got, data.size() - got);
+                if (n <= 0) {
+                    break;
+                }
+                got += n;
+            }
+            close(fd);
+            if (w <= 0 || h <= 0 || got < data.size()) {
+                done({});
+                return;
+            }
+            done(QImage(reinterpret_cast<const uchar *>(data.constData()), w, h, stride, format).copy());
+        });
+    }
+
+    QScreen *builtInScreen() const
+    {
+        const auto screens = QGuiApplication::screens();
+        for (QScreen *s : screens) {
+            if (s->name().startsWith(QLatin1String("eDP")) || s->name().startsWith(QLatin1String("LVDS")) || s->name().startsWith(QLatin1String("DSI"))) {
+                return s;
+            }
+        }
+        return screens.isEmpty() ? nullptr : screens.first();
+    }
+
+    // Where the selection highlight appeared: the pixels that changed between two pictures of the
+    // same strip, in the run through `p` (picture coordinates). An empty rect = not found.
+    static QRect changedRun(const QImage &before, const QImage &after, QPoint p)
+    {
+        if (before.size() != after.size() || before.isNull() || !QRect(QPoint(), before.size()).contains(p)) {
+            return {};
+        }
+        const QImage a = before.convertToFormat(QImage::Format_RGB32);
+        const QImage b = after.convertToFormat(QImage::Format_RGB32);
+        auto changed = [&](int x, int y) {
+            const QRgb u = a.pixel(x, y), v = b.pixel(x, y);
+            return qAbs(qRed(u) - qRed(v)) + qAbs(qGreen(u) - qGreen(v)) + qAbs(qBlue(u) - qBlue(v)) > 24;
+        };
+        // columns with a change close to the finger's row, then the run around the finger
+        const int w = a.width(), h = a.height();
+        QList<bool> col(w, false);
+        for (int x = 0; x < w; ++x) {
+            for (int y = qMax(0, p.y() - 8); y <= qMin(h - 1, p.y() + 8) && !col[x]; ++y) {
+                col[x] = changed(x, y);
+            }
+        }
+        int seed = -1;
+        for (int d = 0; d < 24 && seed < 0; ++d) {
+            if (p.x() - d >= 0 && col[p.x() - d]) {
+                seed = p.x() - d;
+            } else if (p.x() + d < w && col[p.x() + d]) {
+                seed = p.x() + d;
+            }
+        }
+        if (seed < 0) {
+            return {};
+        }
+        const int gap = 2;   // a letter stroke the highlight leaves as it was
+        int x0 = seed, x1 = seed;
+        for (int x = seed, miss = 0; x >= 0 && miss <= gap; --x) {
+            col[x] ? (x0 = x, miss = 0) : ++miss;
+        }
+        for (int x = seed, miss = 0; x < w && miss <= gap; ++x) {
+            col[x] ? (x1 = x, miss = 0) : ++miss;
+        }
+        // the caret right beside the highlight: a sliver of a few columns behind a gap
+        for (int x = x1; x > x1 - 4 && x > x0; --x) {
+            if (!col[x]) {
+                x1 = x - 1;
+                break;
+            }
+        }
+        for (int x = x0; x < x0 + 4 && x < x1; ++x) {
+            if (!col[x]) {
+                x0 = x + 1;
+                break;
+            }
+        }
+        // rows: the same, inside those columns
+        QList<bool> row(h, false);
+        for (int y = 0; y < h; ++y) {
+            for (int x = x0; x <= x1 && !row[y]; x += 2) {
+                row[y] = changed(x, y);
+            }
+        }
+        int y0 = p.y(), y1 = p.y();
+        for (int y = p.y(), miss = 0; y >= 0 && miss <= 0; --y) {
+            row[y] ? (y0 = y, miss = 0) : ++miss;
+        }
+        for (int y = p.y(), miss = 0; y < h && miss <= 0; ++y) {
+            row[y] ? (y1 = y, miss = 0) : ++miss;
+        }
+        return QRect(QPoint(x0, y0), QPoint(x1, y1));
+    }
+
+    // Long press on a word in a text field: select the word (a double tap), find its box on screen
+    // and put the handles on its ends. Nothing selected (an empty spot) = the menu without them.
+    void selectWordAt(QPointF at, bool canPaste, const QString &app)
+    {
+        const double halfBand = 0.06;
+        const QRectF band(m_windowArea.x(), at.y() - halfBand, m_windowArea.width(), 2 * halfBand);
+        capture(band, [this, at, canPaste, app, band](QImage before) {
+            const int primaryBefore = m_primaryChanges;
+            steps({{0, [this, at] { vTouch(0, at); }}, {35, [this, at] { vTouch(2, at); }},
+                   {70, [this, at] { vTouch(0, at); }}, {35, [this, at] { vTouch(2, at); }},
+                   {260, [this, at, canPaste, app, band, before, primaryBefore] {
+                       if (m_primaryChanges == primaryBefore) {
+                           Q_EMIT textMenuRequested(at.x(), at.y(), true, false, canPaste, app, {});
+                           return;
+                       }
+                       if (before.isNull()) {
+                           Q_EMIT textMenuRequested(at.x(), at.y(), true, true, canPaste, app, {});
+                           return;
+                       }
+                       capture(band, [this, at, canPaste, app, band, before](QImage after) {
+                           QScreen *scr = builtInScreen();
+                           const double sw = scr ? scr->geometry().width() : 1, sh = scr ? scr->geometry().height() : 1;
+                           // picture pixels per screen fraction
+                           const double kx = before.width() / band.width(), ky = before.height() / band.height();
+                           const QPoint p(qRound((at.x() - band.x()) * kx), qRound((at.y() - band.y()) * ky));
+                           const QRect r = changedRun(before, after, p);
+                           if (r.isEmpty() || r.height() / ky * sh > 90 || r.width() < 3) {
+                               Q_EMIT textMenuRequested(at.x(), at.y(), true, true, canPaste, app, {});
+                               return;
+                           }
+                           Q_UNUSED(sw);
+                           const double midY = band.y() + (r.top() + r.bottom() + 1) / 2.0 / ky;
+                           const QPointF a(band.x() + r.left() / kx, midY), b(band.x() + (r.right() + 1) / kx, midY);
+                           Q_EMIT textMenuRequested((a.x() + b.x()) / 2, a.y(), true, true, canPaste, app,
+                                                    selection(a, b, (r.height() + 1) / ky));
+                       });
+                   }}});
+        });
+    }
+
+    int handleAt(QPointF at) const
+    {
+        if (!m_handlesOn) {
+            return 0;
+        }
+        for (int i : {2, 1}) {   // the end first: a single letter puts them on top of each other
+            if (m_handleHit[i].contains(at)) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    // A handle picked up: put the caret on the other end, then Shift + touch at this end, and the
+    // touch follows the finger, so the app moves the end of the selection along with it
+    void beginHandleDrag(int handle, QPointF finger)
+    {
+        m_dragHandle = handle;
+        m_dragLive = false;
+        m_dragUp = false;
+        m_dragOffset = m_tip[handle] - finger;
+        m_dragLast = finger;
+        m_handlesOn = false;
+        Q_EMIT handleDragStarted();
+        const QPointF anchor = m_tip[handle == 1 ? 2 : 1];
+        const QPointF tip = m_tip[handle];
+        // two taps close together would be a double click (a word) instead
+        const int pause = QLineF(anchor, tip).length() < 0.03 ? 450 : 90;
+        steps({{60, [this, anchor] { vTouch(0, anchor); }}, {35, [this, anchor] { vTouch(2, anchor); }},
+               {pause, [this] {
+                    if (ensureUinput()) {
+                        emitKey(KEY_LEFTSHIFT, 1);
+                    }
+                }},
+               // the app has to hear about Shift before the touch (another device, another queue)
+               {60, [this, tip] {
+                    vTouch(0, tip);
+                    m_dragLive = true;
+                    if (m_dragUp) {
+                        finishHandleDrag();
+                    } else {
+                        vTouch(1, m_dragLast + m_dragOffset);
+                    }
+                }}});
+    }
+
+    void handleDragFrame(int down, int first)
+    {
+        if (down == 0) {
+            m_dragUp = true;
+            if (m_dragLive) {
+                finishHandleDrag();
+            }
+            return;
+        }
+        m_dragLast = touchPoint(first);
+        const QPointF tip = m_dragLast + m_dragOffset;
+        if (m_dragLive) {
+            vTouch(1, tip);
+        }
+        Q_EMIT handleDragMoved(m_dragHandle, tip.x(), tip.y());
+    }
+
+    void finishHandleDrag()
+    {
+        const int handle = m_dragHandle;
+        QPointF tip = m_dragLast + m_dragOffset;
+        tip = {qBound(0.0, tip.x(), 1.0), qBound(0.0, tip.y(), 1.0)};
+        vTouch(1, tip);
+        vTouch(2, tip);
+        m_dragLive = false;
+        steps({{40, [this] { emitKey(KEY_LEFTSHIFT, 0); }},
+               {80, [this, handle, tip] {
+                    m_dragHandle = 0;
+                    Q_EMIT handleDragFinished(handle, tip.x(), tip.y());
+                }}});
+    }
+
+public:
+    // TextMenu.qml: the handles on screen (or gone): their tips and where a finger takes them
+    Q_INVOKABLE void setHandles(bool on, double sx, double sy, double ex, double ey, const QRectF &startHit, const QRectF &endHit)
+    {
+        m_handlesOn = on;
+        m_tip[1] = {sx, sy};
+        m_tip[2] = {ex, ey};
+        m_handleHit[1] = startHit;
+        m_handleHit[2] = endHit;
+    }
+
+private:
     int m_uinput = -1;
     QElapsedTimer m_counting;
     bool m_tabletMode = false;
@@ -1093,6 +1509,18 @@ private:
     int m_rotation = 1;
     qint64 m_windowPid = 0;
     QRectF m_windowArea;
+    bool m_windowHome = false;
+    // text selection: the virtual touch screen (taps for the app), the handles on screen
+    int m_vtouchFd = -1;
+    int m_vtrack = 1;
+    bool m_handlesOn = false;
+    QPointF m_tip[3];          // [1] start, [2] end: middle of the line at either end
+    QRectF m_handleHit[3];     // where a finger picks the handle up
+    int m_dragHandle = 0;
+    bool m_dragLive = false;
+    bool m_dragUp = false;
+    QPointF m_dragOffset;      // tip minus finger
+    QPointF m_dragLast;
 };
 
 int main(int argc, char *argv[])

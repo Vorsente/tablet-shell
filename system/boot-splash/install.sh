@@ -1,29 +1,36 @@
 #!/bin/bash
-# Boot splash: a pulsing Arch logo with the device name, quiet boot, no boot menu (hold Space while
-# powering on to get it). Needs systemd-boot with a unified kernel image (UKI) from mkinitcpio.
+# Boot splash: a pulsing Linux penguin on black (no distribution logo, no device name), quiet boot,
+# no boot menu (hold Space while powering on to get it). Needs systemd-boot with a unified kernel
+# image (UKI) from mkinitcpio.
 # Run: sudo ./system/boot-splash/install.sh     Undo: restore the *.before-plymouth files, mkinitcpio -P
+#      --theme-only: only replace the picture of an already set up splash (updates)
 source "$(dirname "$(readlink -f "$0")")/../common.sh"
 SRC="$(dirname "$(readlink -f "$0")")"
 uki_boot || { t "Нужен systemd-boot с UKI (mkinitcpio default_uki): не меняю загрузку." \
                 "Needs systemd-boot with a UKI (mkinitcpio default_uki): boot left unchanged."; echo; exit 1; }
 
-pacman -S --needed --noconfirm plymouth librsvg
-T=/usr/share/plymouth/themes/tablet-arch
+pkg_install plymouth librsvg
+T=/usr/share/plymouth/themes/tablet-linux
 install -d "$T"
-install -m644 "$SRC"/theme/* "$T/"
-# the device's name under the logo (DMI; ThinkPads keep it in product_version)
-MODEL=$(cat /sys/class/dmi/id/product_version 2>/dev/null)
-case "$MODEL" in ""|*"System Version"*|*"To be filled"*|*Default*|*None*) MODEL=$(cat /sys/class/dmi/id/product_name 2>/dev/null) ;; esac
-sed "s|@MODEL@|${MODEL:-Arch Linux}|" "$SRC/caption.svg" | rsvg-convert -o "$T/caption.png"
-rm -rf /usr/share/plymouth/themes/thinkpad-arch     # older name of this theme
+install -m644 "$SRC"/theme/tablet-linux.* "$T/"
+# the penguin a little larger on big, sharp screens (the panel's height / 4, 200-420 px)
+H=$(head -qn1 /sys/class/drm/card*-eDP-*/modes 2>/dev/null | head -1 | cut -dx -f2)
+SIZE=$(( ${H:-1200} / 4 )); [ "$SIZE" -lt 200 ] && SIZE=200; [ "$SIZE" -gt 420 ] && SIZE=420
+rsvg-convert -w "$SIZE" -h "$SIZE" "$SRC/theme/logo.svg" -o "$T/logo.png" 2>/dev/null || install -m644 "$SRC/theme/logo.png" "$T/"
+rm -rf /usr/share/plymouth/themes/thinkpad-arch /usr/share/plymouth/themes/tablet-arch   # older names of this theme
 
 # DeviceScale=1: high-dpi tablet screens would otherwise double the images
 cat > /etc/plymouth/plymouthd.conf <<'CONF'
 [Daemon]
-Theme=tablet-arch
+Theme=tablet-linux
 ShowDelay=0
 DeviceScale=1
 CONF
+if [ "${1:-}" = --theme-only ]; then
+    mkinitcpio -P >/dev/null
+    t "Заставка загрузки обновлена." "Boot splash updated."; echo
+    exit 0
+fi
 
 # initramfs: plymouth hook right after udev (the kms hook loads the GPU driver early)
 cp -n /etc/mkinitcpio.conf /etc/mkinitcpio.conf.before-plymouth

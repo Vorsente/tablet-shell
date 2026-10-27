@@ -8,6 +8,7 @@
 # orphan cleanup can never remove Plasma.
 # Run: sudo ./system/cleanup.sh   (after the new login screen worked once)
 source "$(dirname "$(readlink -f "$0")")/common.sh"
+[ "$PM" = pacman ] || { t "Очистка знает только пакеты Arch: ничего не удалено." "The cleanup only knows Arch packages: nothing removed."; echo; exit 0; }
 REMOVE=(kup plasma-welcome drkonqi)
 # only what is not in use here
 [ -z "$(ls -A /home/*/.local/share/plasma-vault 2>/dev/null)" ] && ! grep -q . "$H/.config/plasmavaultrc" 2>/dev/null && REMOVE+=(plasma-vault)

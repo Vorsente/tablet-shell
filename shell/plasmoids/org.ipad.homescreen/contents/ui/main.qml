@@ -97,17 +97,33 @@ ContainmentItem {
     readonly property real glanceHeight: pixel && !pcMode ? Kirigami.Units.gridUnit * 4.4 : 0
     readonly property real searchHeight: pixel && !pcMode ? Kirigami.Units.gridUnit * 2.8 : 0
 
-    // Grid geometry: 7 columns in landscape, 5 in portrait, as many rows as fit
+    // Physical size: Screen.pixelDensity is logical px per mm in Qt 6 (screens without a believable
+    // size get the reference tablet's 7.085), times tabletrc [Appearance] uiScale (mirrored here by
+    // tablet-settings). Keeps icons finger-sized on any screen instead of a fixed column count.
+    readonly property real mm: (Screen.pixelDensity > 2.5 && Screen.pixelDensity < 25 ? Screen.pixelDensity : 7.085)
+                               * Math.max(50, Math.min(200, Plasmoid.configuration.uiScale)) / 100
+    // a touch that moved further than this is a swipe, not a tap
+    readonly property real tapSlop: mm * 2.5
+
+    // Grid geometry: as many ~27 mm columns as fit (24 mm in portrait), 5-10 in landscape and 4-7 in
+    // portrait (7 x 5 on the 10" reference tablet), as many rows as fit
     readonly property bool portrait: pages.height > pages.width
-    readonly property int columns: portrait ? 5 : 7
+    readonly property int columns: Math.max(portrait ? 4 : 5, Math.min(portrait ? 7 : 10,
+                                   Math.floor((pages.width - Kirigami.Units.gridUnit * 4) / (mm * (portrait ? 24 : 27)))))
     readonly property real cellWidth: pcMode ? Kirigami.Units.gridUnit * 5.5
                                              : Math.floor((pages.width - Kirigami.Units.gridUnit * 4) / columns)
-    readonly property real cellHeight: pcMode ? Kirigami.Units.gridUnit * 5.2 : Math.min(cellWidth, Kirigami.Units.gridUnit * 9)
-    readonly property int rows: Math.max(1, Math.floor((pages.height - Kirigami.Units.gridUnit) / cellHeight))
+    // a row is ~23 mm; the rows that fit share the whole height (iPadOS), so no empty band is left
+    // between the grid and the panels
+    readonly property real nominalCellHeight: Math.min(cellWidth, mm * 23)
+    readonly property real gridRoom: pages.height - Kirigami.Units.gridUnit
+    readonly property int rows: pcMode ? Math.max(1, Math.floor(gridRoom / cellHeight))
+                                       : Math.max(1, Math.floor(gridRoom / nominalCellHeight))
+    readonly property real cellHeight: pcMode ? Kirigami.Units.gridUnit * 5.2
+                                              : Math.min(nominalCellHeight * 1.4, Math.floor(gridRoom / Math.max(1, Math.floor(gridRoom / nominalCellHeight))))
     readonly property int pageSize: columns * rows
     // DeX desktop: icons in columns, top to bottom
     readonly property int pcRows: Math.max(1, Math.floor((area.height - Kirigami.Units.largeSpacing * 2) / cellHeight))
-    readonly property real iconSize: pcMode ? Kirigami.Units.gridUnit * 2.6 : Math.round(Math.min(cellWidth, cellHeight) * 0.56)
+    readonly property real iconSize: pcMode ? Kirigami.Units.gridUnit * 2.6 : Math.round(Math.min(cellWidth, nominalCellHeight) * 0.56)
 
     property bool editing: false
 
@@ -189,7 +205,8 @@ ContainmentItem {
         if (!isWidget(e)) {
             return [1, 1];
         }
-        return [Math.min(columns, e.size === "wide" ? 4 : 2), Math.min(rows, 2)];
+        // small 2x2, wide 4x2, large 4x4 (the resize button in edit mode cycles them)
+        return [Math.min(columns, e.size === "wide" || e.size === "large" ? 4 : 2), Math.min(rows, e.size === "large" ? 4 : 2)];
     }
     // First-fit packing with one bit mask per row. Each collision check is a
     // single integer AND, instead of walking every occupied cell of each tile.
@@ -315,6 +332,18 @@ ContainmentItem {
         return typeof id === "string" && id.indexOf("webapp-") === 0;
     }
 
+    // edit mode: the widget's size button, small -> wide -> large -> small
+    function resizeEntry(index) {
+        const l = layout.slice();
+        const e = l[index];
+        if (!isWidget(e)) {
+            return;
+        }
+        const next = { small: "wide", wide: "large", large: "small" };
+        l[index] = { widget: e.widget, size: next[e.size] || "wide" };
+        setLayout(l);
+    }
+
     function removeEntry(index) {
         const l = layout.slice();
         l.splice(index, 1);
@@ -386,6 +415,9 @@ ContainmentItem {
             readonly property string appId: root.normalizeId(model.favoriteId)
             readonly property string name: model.display || ""
             readonly property var icon: model.decoration
+            // an Android app gets its themed icon a moment after it appears
+            onIconChanged: Qt.callLater(root.rebuildCatalog)
+            onNameChanged: Qt.callLater(root.rebuildCatalog)
         }
         onObjectAdded: Qt.callLater(root.rebuildCatalog)
         onObjectRemoved: Qt.callLater(root.rebuildCatalog)
@@ -432,7 +464,7 @@ ContainmentItem {
                     out.push(e);
                 }
             } else if (isWidget(e)) {
-                out.push({ widget: e.widget, size: e.size === "wide" ? "wide" : "small" });
+                out.push({ widget: e.widget, size: e.size === "wide" || e.size === "large" ? e.size : "small" });
             } else if (e && e.apps) {
                 const inner = e.apps.filter(a => catalog[a] && !seen[a] && (seen[a] = true));
                 if (inner.length > 1) {
@@ -513,6 +545,25 @@ ContainmentItem {
     property int dragSrcFolder: -1
     property point dragPos: Qt.point(0, 0)
     readonly property bool dragging: dragFrom >= 0 || dragApp !== ""
+    // tablet mode: an app icon dragged down onto the dock is pinned there (it also stays here)
+    readonly property string dragAppId: dragApp !== "" ? dragApp : (dragFrom >= 0 && typeof layout[dragFrom] === "string" ? layout[dragFrom] : "")
+    readonly property bool overDock: dragging && !pcMode && dragAppId !== "" && dragPos.y > height - dockReserve
+    function pinToDock(id) {
+        const launcher = JSON.stringify("applications:" + id);
+        // Plasma's task manager keeps the pinned apps in its "launchers"; tabletd keeps a copy in
+        // tabletrc [Dock] launchers for the mode switches
+        const js = "var id = " + launcher + "; var all = null;\n"
+                 + "panels().forEach(function (p) { p.widgets().forEach(function (w) {\n"
+                 + "  if (w.type != 'org.kde.plasma.icontasks') return;\n"
+                 + "  w.currentConfigGroup = ['General'];\n"
+                 + "  var raw = w.readConfig('launchers', []);\n"
+                 + "  var l = Array.isArray(raw) ? raw : String(raw || '').split(',').filter(function (x) { return x; });\n"
+                 + "  if (l.indexOf(id) < 0) { l.push(id); w.writeConfig('launchers', l); }\n"
+                 + "  if (!all) all = l;\n"
+                 + "}); });\n"
+                 + "if (all) ConfigFile('tabletrc', 'Dock').writeEntry('launchers', all.join(','));\n";
+        runCommand(["qdbus6", "org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell.evaluateScript", js]);
+    }
     readonly property var dragEntry: dragApp !== "" ? dragApp : (dragFrom >= 0 ? layout[dragFrom] : null)
 
     // What is under the finger right now (drives the folder highlight)
@@ -588,6 +639,12 @@ ContainmentItem {
 
     function finishDrag() {
         if (!dragging) {
+            return;
+        }
+        if (overDock) {
+            const id = dragAppId;
+            cancelDrag();
+            pinToDock(id);
             return;
         }
         let from = dragFrom;
@@ -727,6 +784,13 @@ ContainmentItem {
                                   + (root.pixel ? root.searchHeight + root.pageDotsClearance : 0)
             clip: true
             interactive: !root.editing
+            // smoother page turns: the pages next to the current one are built in advance (no
+            // hitch when one first slides in), the snap after letting go glides a little longer,
+            // and a fast flick does not overshoot into a jump
+            Binding { target: pages.contentItem; property: "cacheBuffer"; value: Math.max(0, pages.width * 2) }
+            Binding { target: pages.contentItem; property: "highlightMoveDuration"; value: 340 }
+            Binding { target: pages.contentItem; property: "flickDeceleration"; value: 2600 * root.mm / 7.085 }
+            Binding { target: pages.contentItem; property: "maximumFlickVelocity"; value: pages.width * 3 }
 
             WheelHandler {
                 acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
@@ -1551,6 +1615,26 @@ ContainmentItem {
         }
     }
 
+    // over the dock: what letting go does
+    Rectangle {
+        visible: root.overDock
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: root.height - root.dockReserve - height - Kirigami.Units.largeSpacing
+        width: dockHint.implicitWidth + Kirigami.Units.gridUnit * 1.6
+        height: dockHint.implicitHeight + Kirigami.Units.largeSpacing
+        radius: height / 2
+        color: root.pal.sheet
+        border.color: root.pal.sheetBorder
+        Text {
+            id: dockHint
+            anchors.centerIn: parent
+            text: Tr.t("Отпустите, чтобы добавить в док")
+            color: root.pal.text
+            font.pixelSize: Kirigami.Units.gridUnit * 0.8
+            font.weight: Font.DemiBold
+        }
+    }
+
     // Icon following the finger while dragging
     Item {
         id: ghost
@@ -1576,7 +1660,7 @@ ContainmentItem {
             visible: root.isWidget(root.dragEntry)
             home: root
             kind: visible ? root.dragEntry.widget : ""
-            wide: visible && root.dragEntry.size === "wide"
+            wide: visible && (root.dragEntry.size === "wide" || root.dragEntry.size === "large")
         }
     }
 

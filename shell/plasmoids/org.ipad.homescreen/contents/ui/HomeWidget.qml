@@ -274,7 +274,13 @@ Rectangle {
                         font.pixelSize: card.u * 2.2
                         font.weight: Font.DemiBold
                     }
-                    Caption { anchors.horizontalCenter: parent.horizontalCenter; text: card.d.model }
+                    // inside the ring: never wider than its hole
+                    Caption {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: Math.min(implicitWidth, Math.min(parent.parent.width, parent.parent.height) * 0.62)
+                        horizontalAlignment: Text.AlignHCenter
+                        text: card.d.model
+                    }
                 }
             }
             ColumnLayout {
@@ -360,6 +366,7 @@ Rectangle {
     Component {
         id: screentimeView
         ColumnLayout {
+            id: screenTimeBox
             readonly property var s: card.d.screentime || { total: 0, top: [] }
             spacing: card.u * 0.4
             Caption { text: Tr.t("Экранное время"); color: card.text; Layout.fillWidth: true }
@@ -379,11 +386,13 @@ Rectangle {
                     spacing: card.u * 0.15
                     RowLayout {
                         Layout.fillWidth: true
-                        Caption { text: modelData.name; Layout.fillWidth: true }
+                        // a long app name is cut, the time beside it never is
+                        Caption { text: modelData.name; Layout.fillWidth: true; Layout.preferredWidth: 1 }
                         Caption { text: card.d.duration(modelData.seconds) }
                     }
+                    // bar length from the card's width (the row's own width followed the bar: it overflowed)
                     Rectangle {
-                        Layout.preferredWidth: Math.max(card.u * 0.4, parent.width * modelData.seconds / Math.max(1, s.top[0].seconds))
+                        Layout.preferredWidth: Math.max(card.u * 0.4, screenTimeBox.width * modelData.seconds / Math.max(1, screenTimeBox.s.top[0].seconds))
                         Layout.preferredHeight: card.u * 0.45
                         radius: height / 2
                         color: [card.blue, card.home.pal.cyan, card.orange][index]

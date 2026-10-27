@@ -50,6 +50,7 @@ Kirigami.ApplicationWindow {
         case "weatherCity": return String(backend.homeScreen("weatherCity", "") || backend.containmentConfig("org.ipad.dashboard", "weatherCity", ""));
         case "appearance": return backend.run([home + "/.local/bin/appearance", "status"]).trim() || "auto";
         case "shellStyle": return uiStyle.name;
+        case "uiScale": return String(Math.round(uiStyle.userScale * 100));
         case "info": return item.get();
         case "im": {
             const im = String(backend.read("kwinrc", "Wayland", "InputMethod", ""));
@@ -71,6 +72,11 @@ Kirigami.ApplicationWindow {
             break;
         case "appearance": backend.start([home + "/.local/bin/appearance", v]); break;
         case "shellStyle": backend.start([home + "/.local/bin/shell-style", v]); break;
+        // the shell reads tabletrc; the home screen gets a copy in its own configuration
+        case "uiScale":
+            backend.write("tabletrc", "Appearance", "uiScale", v, false);
+            backend.setHomeScreen("uiScale", Number(v));
+            break;
         case "im":
             backend.write("kwinrc", "Wayland", "InputMethod",
                           v === "own" ? home + "/.local/share/applications/tablet-keyboard.desktop"
@@ -180,6 +186,8 @@ Kirigami.ApplicationWindow {
               label: Tr.t("Проценты на индикаторе"), note: Tr.t("Число рядом с полосами громкости и яркости") }),
             make(tabletrc("Effects", "textMenu", true), { type: "switch",
               label: Tr.t("Меню текста при удержании"), note: Tr.t("Как на телефоне: удержите палец на поле ввода или выделите текст — появятся «Вырезать», «Копировать», «Вставить»") }),
+            make(tabletrc("Effects", "textSelect", true), { type: "switch",
+              label: Tr.t("Выделение слова удержанием"), note: Tr.t("Удержите палец на слове в поле ввода — оно выделится, а края выделения можно тянуть за капли") }),
             make(tabletrc("Effects", "unlockSound", true), { type: "switch",
               label: Tr.t("Звук разблокировки"), note: Tr.t("Мягкий щелчок, когда экран разблокирован") }),
             make(tabletrc("Effects", "lockSound", true), { type: "switch",
@@ -189,6 +197,10 @@ Kirigami.ApplicationWindow {
             { type: "choice", store: "shellStyle", label: Tr.t("Стиль всей оболочки"),
               note: Tr.t("Apple — исходный интерфейс. Pixel — Material Design: рабочий стол, панели, иконки, настройки, клавиатура, блокировка и вход."),
               options: [{ value: "apple", label: "Apple / iPadOS" }, { value: "pixel", label: "Google Pixel / Material Design" }] },
+            { type: "choice", store: "uiScale", label: Tr.t("Размер элементов"),
+              note: Tr.t("Иконки, жесты и панели оболочки уже подстроены под размер и плотность экрана; здесь их можно сделать крупнее или мельче"),
+              options: [{ value: "85", label: Tr.t("Мельче") }, { value: "100", label: Tr.t("Авто") },
+                        { value: "115", label: Tr.t("Крупнее") }, { value: "130", label: Tr.t("Ещё крупнее") }] },
             { type: "choice", store: "appearance", label: Tr.t("Оформление"),
               options: [{ value: "light", label: Tr.t("Светлое") }, { value: "dark", label: Tr.t("Тёмное") }, { value: "auto", label: Tr.t("Авто (по времени)") }] },
             make(tabletrc("Appearance", "liveWallpaper", true), { type: "switch", apply: "livewallpaper",

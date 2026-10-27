@@ -17,14 +17,14 @@ Window {
     id: win
     visible: true
     color: "transparent"
-    width: label.implicitWidth + menuButton.width + exitButton.width + 36
-    height: Math.max(label.implicitHeight + 10, 30)
+    width: label.implicitWidth + menuButton.width + exitButton.width + 36 * uiStyle.dp
+    height: Math.max(label.implicitHeight + 10 * uiStyle.dp, 30 * uiStyle.dp)
 
     LayerShell.Window.scope: "tabletshell-pill"
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorRight
-    LayerShell.Window.margins.top: 6
-    LayerShell.Window.margins.right: 10
+    LayerShell.Window.margins.top: 6 * uiStyle.dp
+    LayerShell.Window.margins.right: 10 * uiStyle.dp
     LayerShell.Window.exclusionZone: -1
     LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
 
@@ -115,11 +115,11 @@ Window {
             id: label
             anchors.verticalCenter: parent.verticalCenter
             anchors.left: parent.left
-            anchors.leftMargin: 12
+            anchors.leftMargin: 12 * uiStyle.dp
             text: win.text
             color: win.goalReached ? "#ffffff" : "#d0d0d0"
             font.family: "FreeMono"
-            font.pixelSize: 15
+            font.pixelSize: 15 * uiStyle.dp
             font.bold: true
         }
 
@@ -128,8 +128,8 @@ Window {
             id: menuButton
             anchors.verticalCenter: parent.verticalCenter
             anchors.right: exitButton.left
-            anchors.rightMargin: 4
-            width: parent.height - 8
+            anchors.rightMargin: 4 * uiStyle.dp
+            width: parent.height - 8 * uiStyle.dp
             height: width
             radius: width / 2
             color: menuArea.pressed || typewriterPanel.visible ? Qt.rgba(1, 1, 1, 0.35) : Qt.rgba(1, 1, 1, 0.15)
@@ -143,7 +143,7 @@ Window {
             MouseArea {
                 id: menuArea
                 anchors.fill: parent
-                anchors.margins: -6
+                anchors.margins: -6 * uiStyle.dp
                 onClicked: typewriterPanel.visible = !typewriterPanel.visible
             }
         }
@@ -153,8 +153,8 @@ Window {
             id: exitButton
             anchors.verticalCenter: parent.verticalCenter
             anchors.right: parent.right
-            anchors.rightMargin: 4
-            width: parent.height - 8
+            anchors.rightMargin: 4 * uiStyle.dp
+            width: parent.height - 8 * uiStyle.dp
             height: width
             radius: width / 2
             color: exitArea.pressed ? Qt.rgba(1, 1, 1, 0.35) : Qt.rgba(1, 1, 1, 0.15)
@@ -168,7 +168,7 @@ Window {
             MouseArea {
                 id: exitArea
                 anchors.fill: parent
-                anchors.margins: -6   // easier to hit with a finger
+                anchors.margins: -6 * uiStyle.dp   // easier to hit with a finger
                 onClicked: {
                     // close the editor window normally (it saves); if something else is in front,
                     // ask ghostwriter itself to quit

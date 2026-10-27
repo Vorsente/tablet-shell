@@ -13,7 +13,7 @@ if [ -z "$dir" ]; then
 fi
 mkdir -p "$dir"
 if ! command -v ghostwriter >/dev/null; then
-    notify-send -a "$(t "Печатная машинка" "Typewriter")" -i dialog-error "$(t "Ghostwriter не установлен" "Ghostwriter is not installed")" "sudo pacman -S ghostwriter"
+    notify-send -a "$(t "Печатная машинка" "Typewriter")" -i dialog-error "$(t "Ghostwriter не установлен" "Ghostwriter is not installed")" "$(t "Установите пакет ghostwriter (Discover или менеджер пакетов)" "Install the ghostwriter package (Discover or the package manager)")"
     exit 1
 fi
 pgrep -x ghostwriter >/dev/null && exit 0

@@ -1,4 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="900" height="80">
-  <text x="450" y="52" text-anchor="middle" font-family="Inter" font-weight="500" font-size="40"
-        letter-spacing="6" fill="#d8dee9">@MODEL@</text>
-</svg>
