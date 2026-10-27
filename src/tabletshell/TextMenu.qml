@@ -272,7 +272,6 @@ Window {
     Item {
         anchors.fill: parent
         opacity: win.open
-        scale: 0.92 + 0.08 * win.open
         transformOrigin: win.below ? Item.Top : Item.Bottom
 
         // soft shadow

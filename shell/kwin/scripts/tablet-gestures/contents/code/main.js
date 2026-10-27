@@ -84,3 +84,30 @@ function reportWaydroid(closing) {
 workspace.windowAdded.connect(function (w) { if (isWaydroid(w)) reportWaydroid(); });
 workspace.windowRemoved.connect(function (w) { if (isWaydroid(w)) reportWaydroid(w); });
 reportWaydroid();
+
+// Tablet mode: a newly opened app fills the screen as it is now. Apps restore the size they had
+// last time; after the screen was rotated that size belongs to the other orientation and the
+// window stuck out or left a gap. KWin's own "maximizing" placement runs before that restore, so
+// the window is maximized again a moment later.
+function fitNewWindow(w) {
+    if (!w.normalWindow || w.transient || w.fullScreen || !w.maximizable || w.specialWindow) {
+        return;
+    }
+    callDBus("org.kde.KWin", "/org/kde/KWin", "org.freedesktop.DBus.Properties", "Get",
+             "org.kde.KWin.TabletModeManager", "tabletMode", function (tablet) {
+        if (!tablet) {
+            return;
+        }
+        w.setMaximize(true, true);
+        var again = new QTimer();
+        again.singleShot = true;
+        again.interval = 350;
+        again.timeout.connect(function () {
+            if (!w.deleted && !w.fullScreen) {
+                w.setMaximize(true, true);
+            }
+        });
+        again.start();
+    });
+}
+workspace.windowAdded.connect(fitNewWindow);

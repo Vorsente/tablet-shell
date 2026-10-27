@@ -22,15 +22,16 @@ ColumnLayout {
     readonly property int phase: done ? 4 : stage === "installing" ? 2 + (step >= 3 ? 1 : 0) : stage === "preparing" || stage === "authorizing" ? 1 : 0
     readonly property color accent: failed ? Kirigami.Theme.negativeTextColor
                                   : done ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.highlightColor
-    readonly property real ring: Kirigami.Units.gridUnit * 6
+    // whole, even pixels: a fractional size put the ring and the turning symbol off centre
+    readonly property real ring: Math.round(Kirigami.Units.gridUnit * 3) * 2
 
     spacing: Kirigami.Units.largeSpacing
 
     Item {
         id: stageBox
         Layout.alignment: Qt.AlignHCenter
-        Layout.preferredWidth: anim.ring * 1.6
-        Layout.preferredHeight: anim.ring * 1.25
+        Layout.preferredWidth: Math.round(anim.ring * 0.8) * 2
+        Layout.preferredHeight: Math.round(anim.ring * 0.625) * 2
 
         // the ring: a track and the progress arc
         Canvas {
@@ -72,7 +73,7 @@ ColumnLayout {
         // the soft glow of the accent behind the symbol
         Rectangle {
             anchors.centerIn: parent
-            width: anim.ring * 0.62
+            width: Math.round(anim.ring * 0.31) * 2
             height: width
             radius: width / 2
             color: Qt.alpha(anim.accent, 0.14)
@@ -88,8 +89,10 @@ ColumnLayout {
         Kirigami.Icon {
             id: symbol
             anchors.centerIn: parent
-            width: anim.ring * 0.34
+            width: Math.round(anim.ring * 0.17) * 2
             height: width
+            // drawn at exactly this size, so it turns around its own centre
+            roundToIconSize: false
             isMask: true
             color: anim.accent
             source: anim.failed ? "dialog-error-symbolic"

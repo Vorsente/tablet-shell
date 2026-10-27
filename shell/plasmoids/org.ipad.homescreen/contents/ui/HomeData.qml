@@ -33,7 +33,7 @@ QtObject {
         ru: Tr.t("Россия"), ua: Tr.t("Украина"), kz: Tr.t("Казахстан"), us: Tr.t("США"), gb: Tr.t("Великобритания"),
         ca: Tr.t("Канада"), au: Tr.t("Австралия"), in: Tr.t("Индия"), de: Tr.t("Германия"), at: Tr.t("Австрия"),
         ch: Tr.t("Швейцария"), fr: Tr.t("Франция"), it: Tr.t("Италия"), es: Tr.t("Испания"), pt: Tr.t("Португалия"),
-        br: Tr.t("Бразилия"), nl: Tr.t("Нидерланды"), pl: Tr.t("Польша"), cz: Tr.t("Чехия"), se: Tr.t("Швеция"),
+        br: Tr.t("Бразилия"), nl: Tr.t("Нидерланды"), pl: Tr.t("Польша"), cz: Tr.t("Чехия"), sk: Tr.t("Словакия"), se: Tr.t("Швеция"),
         no: Tr.t("Норвегия"), tr: Tr.t("Турция"), il: Tr.t("Израиль"), jp: Tr.t("Япония"), kr: Tr.t("Южная Корея"),
     })
     readonly property string newsTitle: newsCountry === "ru" ? Tr.t("Новости России") : Tr.t("Новости: ") + (countryNames[newsCountry] || newsCountry.toUpperCase())

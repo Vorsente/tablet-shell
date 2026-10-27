@@ -95,11 +95,10 @@ modeanim "" coding
 if command -v notify-send >/dev/null; then
     notify-send -a "tablet-shell" -i applications-development         "$(trmsg 'Режим кодинга' 'Coding mode')"         "$(trmsg 'Режим кодинга включён. Открывается LazyVim.' 'Coding mode is on. LazyVim is opening.')" >/dev/null 2>&1 || true
 fi
-if [[ "$focus" == true ]]; then
-    # Inhibitor is tied to this process' DBus connection and released on exit.
-    "$HOME/.local/bin/tabletshell" codingfocus >/dev/null 2>&1 &
-    focus_pid=$!
-fi
+# The pill in the corner (battery, clock, × to leave; like the typewriter's, without words). It
+# also holds the notification inhibition while focus is on (released when it exits).
+TYPEWRITER_FOCUS="$focus" TYPEWRITER_SOUND=0 PILL_MODE=coding "$HOME/.local/bin/tabletshell" pill >/dev/null 2>&1 &
+focus_pid=$!
 if [[ "$power_saver" == true ]] && command -v powerprofilesctl >/dev/null; then
     powerprofilesctl set power-saver >/dev/null 2>&1 || true
 fi
@@ -131,8 +130,43 @@ fi
 ) >/dev/null 2>&1 &
 ready_pid=$!
 
+# Only LazyVim on the screen: this Konsole gets its own UI files with both toolbars hidden and its
+# own window state (XDG_DATA_HOME / XDG_STATE_HOME for Konsole alone; the normal Konsole keeps
+# its toolbars), a profile without scroll bar and margin, full screen, no menu and tab bar.
+# nvim gets the real directories back (its plugins live there).
+chrome="$HOME/.local/share/tablet-shell/coding-terminal"
+mkdir -p "$chrome/data/kxmlgui5/konsole" "$chrome/data/konsole" "$chrome/state"
+cat > "$chrome/data/kxmlgui5/konsole/konsoleui.rc" <<'RC'
+<?xml version="1.0"?>
+<!DOCTYPE gui SYSTEM "kpartgui.dtd">
+<gui name="konsole" version="999">
+    <ToolBar name="mainToolBar" hidden="true" noMerge="1"><text>Main Toolbar</text></ToolBar>
+</gui>
+RC
+cat > "$chrome/data/kxmlgui5/konsole/sessionui.rc" <<'RC'
+<?xml version="1.0"?>
+<!DOCTYPE gui SYSTEM "kpartgui.dtd">
+<gui name="session" version="999">
+    <ToolBar name="sessionToolbar" hidden="true" noMerge="1"><text>Session Toolbar</text></ToolBar>
+</gui>
+RC
+cat > "$chrome/data/konsole/TabletShellCoding.profile" <<'PROFILE'
+[General]
+Name=TabletShellCoding
+Parent=FALLBACK/
+TerminalMargin=0
+[Appearance]
+Font=JetBrainsMono Nerd Font,12,-1,5,50,0,0,0,0,0
+[Scrolling]
+ScrollBarPosition=2
+PROFILE
+data_home=${XDG_DATA_HOME:-$HOME/.local/share}
+state_home=${XDG_STATE_HOME:-$HOME/.local/state}
+
 # --nofork keeps the process attached to the coding session, so closing Konsole
 # restores power, display, KWin effects and notifications. -e must be LAST.
 # The project directory is opened in LazyVim without touching existing files.
-konsole --nofork --fullscreen --hide-menubar --hide-tabbar --profile TabletShellCoding \
-    --workdir "$folder" -e env NVIM_APPNAME=tablet-shell-lazyvim nvim .
+XDG_DATA_HOME="$chrome/data" XDG_STATE_HOME="$chrome/state" \
+konsole --separate --nofork --fullscreen --hide-menubar --hide-tabbar --profile TabletShellCoding \
+    --workdir "$folder" -e env XDG_DATA_HOME="$data_home" XDG_STATE_HOME="$state_home" \
+    NVIM_APPNAME=tablet-shell-lazyvim nvim .

@@ -804,7 +804,8 @@ QJsonObject screenTimeToday()
     }
     std::sort(apps.begin(), apps.end(), [](const auto &a, const auto &b) { return a.first > b.first; });
     QJsonArray top;
-    for (int i = 0; i < qMin(4, int(apps.size())); ++i) {
+    // up to 12: the home widget turns pages through them
+    for (int i = 0; i < qMin(12, int(apps.size())); ++i) {
         const QJsonObject info = lookupApp(apps[i].second);
         top.append(QJsonObject{{QStringLiteral("name"), info.value(QStringLiteral("name")).toString(apps[i].second)},
                                {QStringLiteral("icon"), info.value(QStringLiteral("icon"))},
@@ -1594,7 +1595,7 @@ const Country countries[] = {
     {"gb", "🇬🇧", "en-GB", "en"}, {"ca", "🇨🇦", "en-CA", "en"}, {"au", "🇦🇺", "en-AU", "en"}, {"in", "🇮🇳", "en-IN", "en"},
     {"de", "🇩🇪", "de", "de"}, {"at", "🇦🇹", "de", "de"}, {"ch", "🇨🇭", "de", "de"}, {"fr", "🇫🇷", "fr", "fr"},
     {"it", "🇮🇹", "it", "it"}, {"es", "🇪🇸", "es", "es"}, {"pt", "🇵🇹", "pt-PT", "pt-150"}, {"br", "🇧🇷", "pt-BR", "pt-419"},
-    {"nl", "🇳🇱", "nl", "nl"}, {"pl", "🇵🇱", "pl", "pl"}, {"cz", "🇨🇿", "cs", "cs"}, {"se", "🇸🇪", "sv", "sv"},
+    {"nl", "🇳🇱", "nl", "nl"}, {"pl", "🇵🇱", "pl", "pl"}, {"cz", "🇨🇿", "cs", "cs"}, {"sk", "🇸🇰", "sk", "sk"}, {"se", "🇸🇪", "sv", "sv"},
     {"no", "🇳🇴", "no", "no"}, {"tr", "🇹🇷", "tr", "tr"}, {"il", "🇮🇱", "he", "he"}, {"jp", "🇯🇵", "ja", "ja"},
     {"kr", "🇰🇷", "ko", "ko"},
 };

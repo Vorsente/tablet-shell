@@ -71,19 +71,38 @@ Window {
     }
 
     function toggle() {
-        if (!visible) {
-            refresh();
+        if (visible) {
+            dismiss();
+            return;
         }
-        visible = !visible;
+        refresh();
+        visible = true;
     }
+    // dims the whole screen and dissolves in / out (nothing grows or shrinks)
+    property real shown: 0
+    onVisibleChanged: if (visible) { fadeOut.stop(); fadeIn.restart(); }
+    NumberAnimation { id: fadeIn; target: win; property: "shown"; from: 0; to: 1; duration: 160; easing.type: Easing.OutCubic }
+    SequentialAnimation {
+        id: fadeOut
+        NumberAnimation { target: win; property: "shown"; to: 0; duration: 160; easing.type: Easing.InCubic }
+        ScriptAction { script: win.visible = false }
+    }
+    function dismiss() {
+        if (visible && !fadeOut.running) {
+            fadeOut.start();
+        }
+    }
+
 
     Rectangle {
         anchors.fill: parent
         color: Qt.rgba(0, 0, 0, 0.45)
-        MouseArea { anchors.fill: parent; onClicked: win.visible = false }
+        MouseArea { anchors.fill: parent; onClicked: win.dismiss() }
+        opacity: win.shown
     }
 
     Rectangle {
+        opacity: win.shown
         anchors.centerIn: parent
         width: Math.min(parent.width - (Kirigami.Units.gridUnit * uiStyle.dp) * 2, (Kirigami.Units.gridUnit * uiStyle.dp) * 30)
         height: Math.min(parent.height - (Kirigami.Units.gridUnit * uiStyle.dp) * 2, content.implicitHeight + (Kirigami.Units.gridUnit * uiStyle.dp) * 2)

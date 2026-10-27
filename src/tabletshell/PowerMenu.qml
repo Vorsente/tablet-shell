@@ -100,7 +100,6 @@ Window {
     Item {
         anchors.fill: parent
         opacity: win.shown
-        scale: 0.96 + 0.04 * win.shown
 
         visible: !uiStyle.pixel
 

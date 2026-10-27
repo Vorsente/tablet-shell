@@ -5,7 +5,8 @@
 // ≡ opens the typewriter panel (scenes, statistics, versions, export: TypewriterPanel.qml).
 // Today's running word count is kept in $XDG_RUNTIME_DIR/typewriter-live for the statistics and
 // the home screen widgets.
-// Started by ~/.local/bin/typewriter, which passes TYPEWRITER_* variables.
+// Started by ~/.local/bin/typewriter, which passes TYPEWRITER_* variables; coding mode starts it
+// with PILL_MODE=coding: battery and clock only, × closes the coding terminal.
 import QtQuick
 import QtQuick.Window
 import QtMultimedia
@@ -17,7 +18,7 @@ Window {
     id: win
     visible: true
     color: "transparent"
-    width: label.implicitWidth + menuButton.width + exitButton.width + 36 * uiStyle.dp
+    width: label.implicitWidth + (menuButton.visible ? menuButton.width : 0) + exitButton.width + 36 * uiStyle.dp
     height: Math.max(label.implicitHeight + 10 * uiStyle.dp, 30 * uiStyle.dp)
 
     LayerShell.Window.scope: "tabletshell-pill"
@@ -29,6 +30,7 @@ Window {
     LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
 
     property string text: ""
+    readonly property bool coding: shell.env("PILL_MODE") === "coding"
     readonly property string file: shell.env("TYPEWRITER_FILE")
     readonly property int baseline: parseInt(shell.env("TYPEWRITER_BASELINE")) || 0
     readonly property int earlierToday: parseInt(shell.env("TYPEWRITER_TODAY")) || 0
@@ -126,6 +128,7 @@ Window {
         // ≡: the typewriter panel
         Rectangle {
             id: menuButton
+            visible: !win.coding
             anchors.verticalCenter: parent.verticalCenter
             anchors.right: exitButton.left
             anchors.rightMargin: 4 * uiStyle.dp
@@ -170,6 +173,11 @@ Window {
                 anchors.fill: parent
                 anchors.margins: -6 * uiStyle.dp   // easier to hit with a finger
                 onClicked: {
+                    if (win.coding) {
+                        // the coding terminal (LazyVim asks about unsaved files itself)
+                        shell.start(["pkill", "-TERM", "-f", "profile TabletShellCoding"]);
+                        return;
+                    }
                     // close the editor window normally (it saves); if something else is in front,
                     // ask ghostwriter itself to quit
                     if (shell.run(["qdbus6", "org.ipad.TabletShell", "/", "org.ipad.TabletShell.CurrentApp"]).indexOf("ghostwriter") !== -1) {

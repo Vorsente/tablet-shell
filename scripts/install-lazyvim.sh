@@ -56,6 +56,27 @@ if [[ ! -f "$marker" ]]; then
     touch "$marker"
 fi
 
+# Tree-sitter parsers: LazyVim otherwise downloads and compiles ~25 of them the first time a file
+# is opened (minutes on an Atom, the screen full of messages: it looked broken). Needs a C compiler
+# and the tree-sitter CLI. Own marker, so earlier installs get them with the next update.
+parsers="$config/.tablet-shell-parsers-ready"
+if [[ ! -f "$parsers" ]]; then
+    echo 'Installing the LazyVim tree-sitter parsers...'
+    if NVIM_APPNAME=tablet-shell-lazyvim timeout 1800 nvim --headless "+lua local ok, err = pcall(function()
+            local P = require('lazy.core.config').plugins['nvim-treesitter']
+            local opts = require('lazy.core.plugin').values(P, 'opts', false)
+            require('lazy').load({ plugins = { 'nvim-treesitter' } })
+            local task = require('nvim-treesitter').install(opts.ensure_installed or {})
+            if task and task.wait then task:wait(1700000) end
+        end)
+        if not ok then io.stderr:write(tostring(err) .. '\\n'); vim.cmd('cq') end
+        vim.cmd('qa')" >/dev/null 2>&1; then
+        touch "$parsers"
+    else
+        echo 'Tree-sitter parsers could not be installed (C compiler, tree-sitter CLI, network?); LazyVim will try on first use.' >&2
+    fi
+fi
+
 # Own Konsole profile: no changes to the user's normal terminal or Apple/Pixel themes.
 profile_dir="$HOME/.local/share/konsole"
 mkdir -p -- "$profile_dir"

@@ -784,13 +784,12 @@ ContainmentItem {
                                   + (root.pixel ? root.searchHeight + root.pageDotsClearance : 0)
             clip: true
             interactive: !root.editing
-            // smoother page turns: the pages next to the current one are built in advance (no
-            // hitch when one first slides in), the snap after letting go glides a little longer,
-            // and a fast flick does not overshoot into a jump
+            // quick, smooth page turns: the pages next to the current one are built in advance (no
+            // hitch when one first slides in), the snap after letting go is short and a flick may
+            // be fast
             Binding { target: pages.contentItem; property: "cacheBuffer"; value: Math.max(0, pages.width * 2) }
-            Binding { target: pages.contentItem; property: "highlightMoveDuration"; value: 340 }
-            Binding { target: pages.contentItem; property: "flickDeceleration"; value: 2600 * root.mm / 7.085 }
-            Binding { target: pages.contentItem; property: "maximumFlickVelocity"; value: pages.width * 3 }
+            Binding { target: pages.contentItem; property: "highlightMoveDuration"; value: 210 }
+            Binding { target: pages.contentItem; property: "maximumFlickVelocity"; value: pages.width * 6 }
 
             WheelHandler {
                 acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad

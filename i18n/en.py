@@ -750,6 +750,7 @@ EN = {
     'Украина': 'Ukraine',
     'Франция': 'France',
     'Чехия': 'Czechia',
+    'Словакия': 'Slovakia',
     'Швейцария': 'Switzerland',
     'Швеция': 'Sweden',
     'Южная Корея': 'South Korea',

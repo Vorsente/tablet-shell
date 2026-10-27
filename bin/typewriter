@@ -113,11 +113,25 @@ autosave=$!
 
 # The animation holds the screen until ghostwriter's window is in front (ModeReady), otherwise it
 # uncovered the old screen while the editor was still starting. Its own timer gives up after a while.
+# ghostwriter opens as a normal window (its own full screen is remembered only sometimes):
+# a one-off KWin script puts its window into full screen
+fullscreen() {
+    local js="${XDG_RUNTIME_DIR:-/tmp}/typewriter-fullscreen.js" id
+    printf '%s\n' "workspace.windowList().forEach(function (w) {" \
+        "    if (w.normalWindow && /ghostwriter/i.test((w.resourceClass || '') + ' ' + (w.desktopFileName || ''))) w.fullScreen = true;" \
+        "});" > "$js"
+    qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript typewriter-fullscreen >/dev/null 2>&1
+    id=$(qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.loadScript "$js" typewriter-fullscreen 2>/dev/null)
+    [ -n "$id" ] && qdbus6 org.kde.KWin "/Scripting/Script$id" org.kde.kwin.Script.run >/dev/null 2>&1
+    sleep 0.3
+    qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript typewriter-fullscreen >/dev/null 2>&1
+}
 (
     for _ in $(seq 120); do
         sleep 0.25
         shellcall CurrentApp | grep -qi ghostwriter && break
     done
+    fullscreen
     sleep 0.4   # the window's first frame
     shellcall ModeReady >/dev/null
     sleep 1.4   # the animation flies into the screen and fades (ModeTransition.qml: 1.1 s)

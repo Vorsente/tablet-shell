@@ -694,26 +694,11 @@ Window {
         opacity: win.dim
         MouseArea { anchors.fill: parent; onClicked: win.dismiss() }
     }
-    // Material: the modules sit on an opaque quick-settings sheet (Apple: glass on the backdrop)
-    Rectangle {
-        visible: win.pixel
-        readonly property real pad: win.sp * 1.6
-        x: stage.x - pad
-        y: stage.y - pad
-        width: stage.width + pad * 2
-        height: stage.height + pad * 2
-        radius: win.gu * 1.6
-        color: win.materialDark ? "#141218" : "#ECE6F0"
-        opacity: stage.opacity
-        scale: stage.scale
-        transformOrigin: Item.TopRight
-    }
-
     ParallelAnimation {
         id: enter
-        NumberAnimation { target: stage; property: "opacity"; from: 0; to: 1; duration: 180; easing.type: Easing.OutCubic }
-        NumberAnimation { target: win; property: "dim"; from: 0; to: 1; duration: 180; easing.type: Easing.OutCubic }
-        NumberAnimation { target: stage; property: "scale"; from: 0.94; to: 1; duration: 260; easing.type: Easing.OutBack; easing.overshoot: 1.2 }
+        // the whole screen dims and the modules dissolve in (no panel growing out of a corner)
+        NumberAnimation { target: stage; property: "opacity"; from: 0; to: 1; duration: 160; easing.type: Easing.OutCubic }
+        NumberAnimation { target: win; property: "dim"; from: 0; to: 1; duration: 160; easing.type: Easing.OutCubic }
     }
 
     Flickable {

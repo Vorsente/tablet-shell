@@ -376,13 +376,21 @@ Rectangle {
                 font.pixelSize: card.u * 2.6
                 font.weight: card.home.pixel ? Font.Medium : Font.Light
             }
-            Item { Layout.fillHeight: true }
-            Repeater {
-                model: (s.top || []).slice(0, card.wide ? 3 : 2)
-                delegate: ColumnLayout {
+            // all of today's apps, a page at a time: swipe sideways or tap the dots
+            Pager {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                items: screenTimeBox.s.top || []
+                rowHeight: card.u * 2.2
+                spacing: card.u * 0.3
+                dotColor: card.text
+                swipe: card.swipe
+                onHeld: card.held()
+                row: ColumnLayout {
                     required property var modelData
                     required property int index
-                    Layout.fillWidth: true
+                    width: parent ? parent.width : 0
+                    height: card.u * 2.2
                     spacing: card.u * 0.15
                     RowLayout {
                         Layout.fillWidth: true
@@ -395,7 +403,7 @@ Rectangle {
                         Layout.preferredWidth: Math.max(card.u * 0.4, screenTimeBox.width * modelData.seconds / Math.max(1, screenTimeBox.s.top[0].seconds))
                         Layout.preferredHeight: card.u * 0.45
                         radius: height / 2
-                        color: [card.blue, card.home.pal.cyan, card.orange][index]
+                        color: [card.blue, card.home.pal.cyan, card.orange][index % 3]
                     }
                 }
             }

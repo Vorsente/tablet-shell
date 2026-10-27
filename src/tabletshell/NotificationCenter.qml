@@ -29,8 +29,27 @@ Window {
     LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
 
     function toggle() {
-        visible = !visible;
+        if (visible) {
+            dismiss();
+        } else {
+            visible = true;
+        }
     }
+    // dims the whole screen and dissolves in / out (nothing grows or shrinks)
+    property real shown: 0
+    onVisibleChanged: if (visible) { fadeOut.stop(); fadeIn.restart(); }
+    NumberAnimation { id: fadeIn; target: win; property: "shown"; from: 0; to: 1; duration: 160; easing.type: Easing.OutCubic }
+    SequentialAnimation {
+        id: fadeOut
+        NumberAnimation { target: win; property: "shown"; to: 0; duration: 160; easing.type: Easing.InCubic }
+        ScriptAction { script: win.visible = false }
+    }
+    function dismiss() {
+        if (visible && !fadeOut.running) {
+            fadeOut.start();
+        }
+    }
+
 
     // Out of process, so the watcher model (Plasma's own history model only works inside plasmashell)
     NotificationManager.WatchedNotificationsModel { id: history }
@@ -54,11 +73,13 @@ Window {
     Rectangle {
         anchors.fill: parent
         color: Qt.rgba(0, 0, 0, 0.35)
-        MouseArea { anchors.fill: parent; onClicked: win.visible = false }
+        MouseArea { anchors.fill: parent; onClicked: win.dismiss() }
+        opacity: win.shown
     }
 
     Rectangle {
         id: panel
+        opacity: win.shown
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         anchors.right: parent.right

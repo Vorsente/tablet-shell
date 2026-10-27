@@ -1,7 +1,8 @@
 // Privacy indicator: while an app records, a dot on the panel, orange for the microphone, green
-// for the camera (steady, not animated). Only the dot: a small window in the middle of the bar
-// (tablet: the status bar on top, its middle is the spacer; PC: the bottom bar), so it never covers
-// notifications. Touches pass through. Data: shell.micApps / shell.cameraApps.
+// for the camera (steady, not animated). Only the dot, at the right end of the bar along its outer
+// edge, above the tray icons like on iPadOS (tablet: the status bar on top; PC: the bottom bar),
+// so it never covers notifications or icons. Touches pass through.
+// Data: shell.micApps / shell.cameraApps.
 import QtQuick
 import QtQuick.Window
 
@@ -25,9 +26,12 @@ Window {
 
     LayerShell.Window.scope: "tabletshell-recording"
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
-    LayerShell.Window.anchors: shell.tabletMode ? LayerShell.Window.AnchorTop : LayerShell.Window.AnchorBottom
-    LayerShell.Window.margins.top: Math.round((bar - dot) / 2)
-    LayerShell.Window.margins.bottom: Math.round((bar - dot) / 2)
+    LayerShell.Window.anchors: (shell.tabletMode ? LayerShell.Window.AnchorTop : LayerShell.Window.AnchorBottom)
+                               | LayerShell.Window.AnchorRight
+    // tablet: in the corner at the top of the status bar; PC: along the top edge of the bottom bar
+    LayerShell.Window.margins.top: Math.round(2 * uiStyle.dp)
+    LayerShell.Window.margins.bottom: Math.round(bar - dot - 2 * uiStyle.dp)
+    LayerShell.Window.margins.right: Math.round(6 * uiStyle.dp)
     LayerShell.Window.exclusionZone: -1
     LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
 

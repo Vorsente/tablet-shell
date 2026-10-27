@@ -15,7 +15,7 @@ Window {
     id: strip
 
     readonly property real dp: uiStyle.dp
-    readonly property real threshold: 90 * dp  // to the right (~13 mm)
+    readonly property real threshold: 64 * dp  // to the right (~9 mm): a short pull is enough
     property real pull: 0                       // how far the finger is from where it started
     property real fingerY: 0
     property bool dragging: false

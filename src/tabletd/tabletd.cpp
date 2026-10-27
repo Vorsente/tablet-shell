@@ -427,7 +427,13 @@ public Q_SLOTS:
     {
         apply(tablet);
         if (!tablet && (setting("Modes", "askTypewriter", true) || setting("Modes", "askCoding", true))) {
-            askTypewriter();
+            // after the mode change animation: a popup sent during it was hidden under the
+            // full-screen animation and often timed out unseen
+            QTimer::singleShot(2600, this, [this] {
+                if (!m_tablet) {
+                    askTypewriter();
+                }
+            });
         }
     }
 
@@ -1122,12 +1128,19 @@ private:
         msg << T(QStringLiteral("Режимы работы")) << uint(0) << QStringLiteral("applications-development")
             << T(QStringLiteral("Клавиатура подключена."))
             << T(QStringLiteral("Можно писать тексты или открыть LazyVim для программирования."))
-            << actions << QVariantMap() << 15000;
+            // shown even with Do Not Disturb on (it answers the keyboard being attached right now)
+            << actions << QVariantMap{{QStringLiteral("urgency"), QVariant::fromValue(uchar(2))}} << 20000;
         auto *watcher = new QDBusPendingCallWatcher(bus().asyncCall(msg), this);
         connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher] {
             QDBusPendingReply<uint> r = *watcher;
             if (r.isValid()) {
                 m_askId = r.value();
+                // critical popups stay until closed: take it away after 20 s like a normal one
+                const uint id = m_askId;
+                QTimer::singleShot(20000, this, [id] {
+                    asyncCall(QStringLiteral("org.freedesktop.Notifications"), QStringLiteral("/org/freedesktop/Notifications"),
+                              QStringLiteral("org.freedesktop.Notifications"), QStringLiteral("CloseNotification"), {id});
+                });
             }
             watcher->deleteLater();
         });

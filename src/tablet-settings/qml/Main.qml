@@ -143,7 +143,7 @@ Kirigami.ApplicationWindow {
         ["at", "🇦🇹 " + Tr.t("Австрия")], ["ch", "🇨🇭 " + Tr.t("Швейцария")], ["fr", "🇫🇷 " + Tr.t("Франция")],
         ["it", "🇮🇹 " + Tr.t("Италия")], ["es", "🇪🇸 " + Tr.t("Испания")], ["pt", "🇵🇹 " + Tr.t("Португалия")],
         ["br", "🇧🇷 " + Tr.t("Бразилия")], ["nl", "🇳🇱 " + Tr.t("Нидерланды")], ["pl", "🇵🇱 " + Tr.t("Польша")],
-        ["cz", "🇨🇿 " + Tr.t("Чехия")], ["se", "🇸🇪 " + Tr.t("Швеция")], ["no", "🇳🇴 " + Tr.t("Норвегия")],
+        ["cz", "🇨🇿 " + Tr.t("Чехия")], ["sk", "🇸🇰 " + Tr.t("Словакия")], ["se", "🇸🇪 " + Tr.t("Швеция")], ["no", "🇳🇴 " + Tr.t("Норвегия")],
         ["tr", "🇹🇷 " + Tr.t("Турция")], ["il", "🇮🇱 " + Tr.t("Израиль")], ["jp", "🇯🇵 " + Tr.t("Япония")],
         ["kr", "🇰🇷 " + Tr.t("Южная Корея")],
     ].map(c => ({ value: c[0], label: c[1] }))
@@ -699,14 +699,17 @@ Kirigami.ApplicationWindow {
                     contentItem: RowLayout {
                         spacing: Kirigami.Units.largeSpacing
                         Rectangle {
-                            implicitWidth: app.touch ? Kirigami.Units.gridUnit * 2.35 : Kirigami.Units.gridUnit * 1.8
+                            implicitWidth: Math.round((app.touch ? Kirigami.Units.gridUnit * 2.35 : Kirigami.Units.gridUnit * 1.8) / 2) * 2
                             implicitHeight: implicitWidth
+                            Layout.alignment: Qt.AlignVCenter
                             radius: app.pixel ? implicitHeight / 2 : implicitHeight * 0.28
                             color: app.pixel ? Qt.alpha(Kirigami.Theme.highlightColor, sectionRow.current ? 0.25 : 0.13) : "transparent"
                             Kirigami.Icon {
                                 anchors.centerIn: parent
-                                width: parent.width * 0.57
+                                // even whole pixels at exactly that size: centred in its tile
+                                width: Math.round(parent.width * 0.285) * 2
                                 height: width
+                                roundToIconSize: false
                                 source: modelData.icon
                                 color: app.pixel ? Kirigami.Theme.highlightColor : Kirigami.Theme.textColor
                                 isMask: app.pixel
