@@ -67,7 +67,7 @@ Window {
     onVisibleChanged: {
         if (visible) {
             dndClock = new Date();
-            if (!pulling) {
+            if (!pulling && !armed) {
                 pull = 1;
                 enter.restart();
             }
@@ -239,28 +239,44 @@ Window {
             win.dismiss();
             notificationCenter.toggle();
         }
-        // a finger from the top edge: the panel follows it (tabletshell reads the touch screen)
-        function onControlPullStarted() {
-            notificationCenter.visible = false;
-            if (win.visible && !win.closing) {
-                win.pullIgnored = true;   // already open: a pull from the top closes it
-                win.dismiss();
-                return;
+        // a finger from the top edge: the panel follows it (tabletshell reads the touch screen).
+        // Armed = the finger is down on the edge: the window is mapped and filled invisibly right
+        // away, so the first frames of the pull do not wait for it (on an Atom that was a jump).
+        function onControlPullArmed() {
+            if (win.visible) {
+                return;   // open (or closing): a pull closes it
             }
-            win.pullIgnored = false;
             leave.stop();
             enter.stop();
             settleOpen.stop();
             settleClose.stop();
             win.closing = false;
-            win.pulling = true;
+            win.armed = true;
+            win.pullTarget = 0;
             win.pull = 0;
             win.refresh();
             win.visible = true;
         }
+        function onControlPullDisarmed() {
+            if (win.armed && !win.pulling && !win.settling) {
+                win.armed = false;
+                win.visible = false;
+                win.pull = 1;
+            }
+        }
+        function onControlPullStarted() {
+            notificationCenter.visible = false;
+            if (!win.armed) {
+                if (win.visible && !win.closing) {
+                    win.dismiss();   // already open: a pull from the top closes it
+                }
+                return;
+            }
+            win.pulling = true;
+        }
         function onControlPullMoved(dy) {
             if (win.pulling) {
-                win.pull = Math.max(0, Math.min(1, dy / win.pullDistance));
+                win.pullTarget = Math.max(0, Math.min(1, dy / win.pullDistance));
             }
         }
         function onControlPullFinished(dy, velocity, cancelled) {
@@ -268,6 +284,7 @@ Window {
                 return;
             }
             win.pulling = false;
+            win.armed = false;
             win.settling = true;
             // a flick opens it from anywhere, a flick back up closes it; otherwise past 40 %
             const open = !cancelled && velocity > -0.3 && (velocity > 0.6 || win.pull > 0.4);
@@ -677,7 +694,7 @@ Window {
     // ---- blur behind the glass -------------------------------------------------------------------
     property var glassItems: []
     function updateBlur() {
-        if (!visible || closing || pulling || settling) {
+        if (!visible || closing || armed || pulling || settling) {
             return;
         }
         if (pixel) { shell.blurBehind(win, []); return; }
@@ -712,13 +729,19 @@ Window {
 
     // Pulled with a finger: pull 0..1 is how far it came down (fully at pullDistance of the screen
     // height); the modules fade in and slide down from above with it, the screen dims with it
+    property bool armed: false
     property bool pulling: false
     property bool settling: false
-    property bool pullIgnored: false
     property real pull: 1
+    property real pullTarget: 0        // where the finger is; pull catches up with it every frame
     readonly property real pullDistance: 0.25
+    FrameAnimation {
+        running: win.pulling
+        // touch reports come in steps and not on frame time: follow them smoothly (~40 ms lag)
+        onTriggered: win.pull += (win.pullTarget - win.pull) * (1 - Math.exp(-frameTime * 25))
+    }
     onPullChanged: {
-        if (pulling || settling) {
+        if (pulling || settling || armed) {
             stage.opacity = pull;
             dim = pull;
         }
@@ -748,6 +771,7 @@ Window {
             return;
         }
         closing = true;
+        armed = false;
         pulling = false;
         settling = false;
         settleOpen.stop();

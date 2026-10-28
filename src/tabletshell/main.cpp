@@ -600,6 +600,9 @@ public:
             m_touchStart = m_touchLast = touchPoint(first);
             m_fromTop = down == 1 && m_touchStart.y() < kTopEdge && edgeOn("topEdge");
             m_pulling = false;
+            if (m_fromTop) {
+                Q_EMIT controlPullArmed();   // the panel gets ready while the finger is still near the edge
+            }
             m_fromRight = down == 1 && m_touchStart.x() > 1 - kRightEdge && edgeOn("rightEdge");
             m_primaryAtDown = m_primaryChanges;
             Q_EMIT touchStarted(m_touchStart.x(), m_touchStart.y());
@@ -616,6 +619,10 @@ public:
                 Q_EMIT controlPullFinished(m_touchLast.y() - m_touchStart.y(), m_pullVelocity, false);
                 return;
             }
+            if (m_fromTop) {
+                m_fromTop = false;
+                Q_EMIT controlPullDisarmed();   // a tap on the top bar
+            }
             // held, then carried far without selecting anything: a slow swipe, not a long press
             const bool swiped = QLineF(m_touchStart, m_touchLast).length() > 0.08 && m_primaryChanges == m_primaryAtDown;
             if (m_held && !m_cancelled && !swiped) {
@@ -630,6 +637,9 @@ public:
             if (m_pulling) {
                 m_pulling = false;
                 Q_EMIT controlPullFinished(m_touchLast.y() - m_touchStart.y(), 0, true);
+            } else if (m_fromTop) {
+                m_fromTop = false;
+                Q_EMIT controlPullDisarmed();
             }
             return;
         }
@@ -652,6 +662,7 @@ public:
                 Q_EMIT controlPullStarted();
             } else if (!m_pulling && std::abs(d.x()) > 0.03) {
                 m_fromTop = false;   // sideways along the top bar: not a pull
+                Q_EMIT controlPullDisarmed();
             }
             if (m_pulling) {
                 // screen heights per second, smoothed over the last frames
@@ -1164,6 +1175,8 @@ Q_SIGNALS:
     void toggleRequested();
     // the control center follows a finger from the top edge: dy = how far down (of the screen
     // height); on release the speed (screen heights per second, + = down); cancelled = a second finger
+    void controlPullArmed();       // a finger went down on the top edge: a pull may follow
+    void controlPullDisarmed();    // it did not (a tap, sideways, a second finger)
     void controlPullStarted();
     void controlPullMoved(double dy);
     void controlPullFinished(double dy, double velocity, bool cancelled);
