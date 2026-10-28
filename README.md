@@ -225,7 +225,7 @@ see a half-switched desktop.
 | Widgets and Today | iOS widgets | Material widgets: own colour per widget, calendar grid, progress bars |
 | Control center | round controls, tall brightness and volume sliders | wide tiles on a sheet, horizontal brightness and volume sliders |
 | Colours | system accent | Material You: from the wallpaper (*Auto* or one of its colours) or a basic colour, picked in **Settings → Appearance → Accent colour** |
-| Icons | MacTahoe | Colloid + round adaptive app icons |
+| Icons | MacTahoe | Colloid + round adaptive app icons; optionally themed in two tones of the wallpaper (**Settings → Home screen**) |
 | Type | Inter | Roboto Flex (it has Cyrillic) |
 
 Light / dark / automatic is a separate setting and works with both. Each style remembers its own
@@ -235,7 +235,7 @@ wallpaper. The choice survives updates.
 
 | Where | Gesture | Does |
 | --- | --- | --- |
-| top edge | swipe down | control center |
+| top edge | swipe down | control center (follows the finger; let go past 40 % or flick to open) |
 | right edge | swipe in | notification center |
 | left edge | swipe in | back |
 | bottom edge | swipe up / swipe up and hold | home / running apps |

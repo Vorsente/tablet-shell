@@ -36,6 +36,7 @@ ContainmentItem {
     readonly property real pageDotsClearance: Kirigami.Units.smallSpacing * 3
     readonly property bool pixel: Plasmoid.configuration.shellStyle === "pixel"
     readonly property bool showBadges: Plasmoid.configuration.showBadges
+    readonly property bool themedIcons: Plasmoid.configuration.themedIcons
     readonly property string weatherCity: Plasmoid.configuration.weatherCity
 
     // Light/dark like iPadOS: follows the Plasma colour scheme (org.ipad.light / org.ipad.dark,

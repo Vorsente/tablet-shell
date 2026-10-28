@@ -294,6 +294,7 @@ for p in shell/plasmoids/*; do
     sync_dir "$p" "$SHARE/plasma/plasmoids/$(basename "$p")"
 done
 skipped shaders || install -Dm644 build/weather.frag.qsb "$SHARE/plasma/plasmoids/org.ipad.homescreen/contents/ui/shaders/weather.frag.qsb"
+skipped shaders || [ ! -s build/themed-icon.frag.qsb ] || install -Dm644 build/themed-icon.frag.qsb "$SHARE/plasma/plasmoids/org.ipad.homescreen/contents/ui/shaders/themed-icon.frag.qsb"
 sync_dir shell/wallpapers/org.ipad.daynight "$SHARE/plasma/wallpapers/org.ipad.daynight"
 # bundled wallpaper packages: Apple-like and Material-specific day/night packs
 if [ -d shell/wallpaper-packs ]; then

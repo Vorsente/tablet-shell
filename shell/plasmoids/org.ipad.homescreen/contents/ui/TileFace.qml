@@ -98,11 +98,26 @@ ColumnLayout {
                 spacing: parent.width * 0.06
                 Repeater {
                     model: face.isFolder && face.home.pixel ? face.entry.apps.slice(0, 4) : []
-                    delegate: Kirigami.Icon {
+                    // themed icons: the apps inside are round and two-toned like the rest
+                    delegate: Item {
+                        id: mini
                         required property var modelData
+                        readonly property string icon: face.home.catalog[modelData] ? face.home.catalog[modelData].icon : ""
                         width: face.home.iconSize * 0.3
                         height: width
-                        source: face.home.catalog[modelData] ? face.home.catalog[modelData].icon : ""
+                        Kirigami.Icon {
+                            anchors.fill: parent
+                            visible: !face.home.themedIcons
+                            source: visible ? mini.icon : ""
+                        }
+                        Loader {
+                            anchors.fill: parent
+                            active: face.home.themedIcons
+                            sourceComponent: AppIcon {
+                                home: face.home
+                                source: mini.icon
+                            }
+                        }
                     }
                 }
             }

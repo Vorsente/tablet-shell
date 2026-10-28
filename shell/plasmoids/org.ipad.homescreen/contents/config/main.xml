@@ -11,6 +11,8 @@
     <entry name="uiScale" type="Int"><default>100</default></entry>
     <!-- red unread badges on app icons (tablet-settings app) -->
     <entry name="showBadges" type="Bool"><default>true</default></entry>
+    <!-- Material look: app icons in two tones of the wallpaper's palette (AppIcon.qml) -->
+    <entry name="themedIcons" type="Bool"><default>false</default></entry>
     <!-- the wallpaper by the current weather (WeatherEffects.qml); with live wallpapers (tabletrc
          [Appearance] liveWallpaper, mirrored here by tablet-settings) it moves: rain runs, snow falls -->
     <entry name="weatherOnWallpaper" type="Bool"><default>true</default></entry>

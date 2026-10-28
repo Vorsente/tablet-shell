@@ -33,10 +33,10 @@ CACHE_KEY=$( { printf '%s\n' "$PREFIX" "$CXX" "$CXXFLAGS";
     "${compiler[@]}" --version 2>/dev/null | head -1 || true
     pkg-config --modversion Qt6Core Qt6WaylandClient Qt6WebEngineQuick 2>/dev/null || true
     find src i18n -type f \( -name '*.cpp' -o -name '*.h' -o -name '*.py' \) -print0 | sort -z | xargs -0 -r sha256sum
-    sha256sum build.sh scripts/build-target.sh scripts/build-keyboard.sh shell/plasmoids/org.ipad.homescreen/contents/ui/shaders/weather.frag;
+    sha256sum build.sh scripts/build-target.sh scripts/build-keyboard.sh shell/plasmoids/org.ipad.homescreen/contents/ui/shaders/weather.frag shell/plasmoids/org.ipad.homescreen/contents/ui/shaders/themed-icon.frag;
 } | sha256sum | cut -d' ' -f1)
 CACHE="$CACHE_BASE/$CACHE_KEY"
-CACHE_BIN=(tabletd tablet-tools tabletshell tablet-settings tablet-keyboard tablet-greeter webapp-runner weather.frag.qsb en.json)
+CACHE_BIN=(tabletd tablet-tools tabletshell tablet-settings tablet-keyboard tablet-greeter webapp-runner weather.frag.qsb themed-icon.frag.qsb en.json)
 if [[ "$EXCLUDE_INPUT_LOCK" == 0 && -f "$CACHE/.complete" ]]; then
     valid=1
     for asset in "${CACHE_BIN[@]}"; do [[ -s "$CACHE/$asset" ]] || valid=0; done

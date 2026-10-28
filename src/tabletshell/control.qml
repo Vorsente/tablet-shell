@@ -67,7 +67,10 @@ Window {
     onVisibleChanged: {
         if (visible) {
             dndClock = new Date();
-            enter.restart();
+            if (!pulling) {
+                pull = 1;
+                enter.restart();
+            }
             blurTimer.restart();
         } else {
             trimTimer.restart();
@@ -235,6 +238,40 @@ Window {
         function onNotificationsRequested() {
             win.dismiss();
             notificationCenter.toggle();
+        }
+        // a finger from the top edge: the panel follows it (tabletshell reads the touch screen)
+        function onControlPullStarted() {
+            notificationCenter.visible = false;
+            if (win.visible && !win.closing) {
+                win.pullIgnored = true;   // already open: a pull from the top closes it
+                win.dismiss();
+                return;
+            }
+            win.pullIgnored = false;
+            leave.stop();
+            enter.stop();
+            settleOpen.stop();
+            settleClose.stop();
+            win.closing = false;
+            win.pulling = true;
+            win.pull = 0;
+            win.refresh();
+            win.visible = true;
+        }
+        function onControlPullMoved(dy) {
+            if (win.pulling) {
+                win.pull = Math.max(0, Math.min(1, dy / win.pullDistance));
+            }
+        }
+        function onControlPullFinished(dy, velocity, cancelled) {
+            if (!win.pulling) {
+                return;
+            }
+            win.pulling = false;
+            win.settling = true;
+            // a flick opens it from anywhere, a flick back up closes it; otherwise past 40 %
+            const open = !cancelled && velocity > -0.3 && (velocity > 0.6 || win.pull > 0.4);
+            (open ? settleOpen : settleClose).restart();
         }
         function onToggleRequested() {
             notificationCenter.visible = false;
@@ -640,7 +677,7 @@ Window {
     // ---- blur behind the glass -------------------------------------------------------------------
     property var glassItems: []
     function updateBlur() {
-        if (!visible || closing) {
+        if (!visible || closing || pulling || settling) {
             return;
         }
         if (pixel) { shell.blurBehind(win, []); return; }
@@ -672,11 +709,49 @@ Window {
     // only the screen getting lighter again.
     property bool closing: false
     property real dim: 0
+
+    // Pulled with a finger: pull 0..1 is how far it came down (fully at pullDistance of the screen
+    // height); the modules fade in and slide down from above with it, the screen dims with it
+    property bool pulling: false
+    property bool settling: false
+    property bool pullIgnored: false
+    property real pull: 1
+    readonly property real pullDistance: 0.25
+    onPullChanged: {
+        if (pulling || settling) {
+            stage.opacity = pull;
+            dim = pull;
+        }
+    }
+    NumberAnimation {
+        id: settleOpen
+        target: win; property: "pull"; to: 1
+        duration: Math.max(90, 220 * (1 - win.pull)); easing.type: Easing.OutCubic
+        onFinished: {
+            win.settling = false;
+            blurTimer.restart();
+        }
+    }
+    SequentialAnimation {
+        id: settleClose
+        NumberAnimation { target: win; property: "pull"; to: 0; duration: Math.max(90, 200 * win.pull); easing.type: Easing.OutCubic }
+        ScriptAction {
+            script: {
+                win.settling = false;
+                win.visible = false;
+                win.pull = 1;
+            }
+        }
+    }
     function dismiss() {
         if (!visible || closing) {
             return;
         }
         closing = true;
+        pulling = false;
+        settling = false;
+        settleOpen.stop();
+        settleClose.stop();
         blurTimer.stop();
         shell.blurBehind(win, []);
         enter.stop();
@@ -690,6 +765,7 @@ Window {
             script: {
                 win.visible = false;
                 win.closing = false;
+                win.pull = 1;
             }
         }
     }
@@ -723,6 +799,7 @@ Window {
         width: win.cols * win.cell + (win.cols - 1) * win.sp
         height: Math.min(column.implicitHeight, win.height - anchors.topMargin - win.gu)
         transformOrigin: Item.TopRight
+        transform: Translate { y: -(1 - win.pull) * win.gu * 3 }
         onHeightChanged: blurTimer.restart()
 
         MouseArea { anchors.fill: parent }  // taps between the modules do not close it

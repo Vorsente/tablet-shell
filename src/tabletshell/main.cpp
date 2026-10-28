@@ -599,6 +599,7 @@ public:
             m_touchSlot = first;
             m_touchStart = m_touchLast = touchPoint(first);
             m_fromTop = down == 1 && m_touchStart.y() < kTopEdge && edgeOn("topEdge");
+            m_pulling = false;
             m_fromRight = down == 1 && m_touchStart.x() > 1 - kRightEdge && edgeOn("rightEdge");
             m_primaryAtDown = m_primaryChanges;
             Q_EMIT touchStarted(m_touchStart.x(), m_touchStart.y());
@@ -610,6 +611,11 @@ public:
         if (down == 0) {
             m_touching = false;
             m_holdTimer->stop();
+            if (m_pulling) {
+                m_pulling = false;
+                Q_EMIT controlPullFinished(m_touchLast.y() - m_touchStart.y(), m_pullVelocity, false);
+                return;
+            }
             // held, then carried far without selecting anything: a slow swipe, not a long press
             const bool swiped = QLineF(m_touchStart, m_touchLast).length() > 0.08 && m_primaryChanges == m_primaryAtDown;
             if (m_held && !m_cancelled && !swiped) {
@@ -621,21 +627,41 @@ public:
         if (down > 1) {
             m_cancelled = true;   // pinch, two-finger scroll
             m_holdTimer->stop();
+            if (m_pulling) {
+                m_pulling = false;
+                Q_EMIT controlPullFinished(m_touchLast.y() - m_touchStart.y(), 0, true);
+            }
             return;
         }
         if (m_contacts[m_touchSlot].id >= 0) {
             m_touchLast = touchPoint(m_touchSlot);
         }
-        // pulled down from the top edge: the control center (the touch also went to the panel
-        // there as usual, so a tap on the tray or the clock still works)
+        // pulled down from the top edge: the control center comes down with the finger and opens
+        // or goes back on release (control.qml decides by distance and speed). The touch also
+        // went to the panel there as usual, so a tap on the tray or the clock still works.
         if (m_fromTop) {
             const QPointF d = m_touchLast - m_touchStart;
-            if (d.y() > 0.05 && std::abs(d.x()) < d.y()) {
-                m_fromTop = false;
+            if (!m_pulling && d.y() > 0.015 && std::abs(d.x()) < d.y()) {
+                m_pulling = true;
                 m_cancelled = true;
                 m_holdTimer->stop();
                 m_edgePulled.start();
-                Q_EMIT toggleRequested();
+                m_pullClock.start();
+                m_pullLastY = m_touchLast.y();
+                m_pullVelocity = 0;
+                Q_EMIT controlPullStarted();
+            } else if (!m_pulling && std::abs(d.x()) > 0.03) {
+                m_fromTop = false;   // sideways along the top bar: not a pull
+            }
+            if (m_pulling) {
+                // screen heights per second, smoothed over the last frames
+                const qint64 ms = m_pullClock.restart();
+                if (ms > 0) {
+                    const double v = (m_touchLast.y() - m_pullLastY) * 1000.0 / ms;
+                    m_pullVelocity = 0.6 * v + 0.4 * m_pullVelocity;
+                }
+                m_pullLastY = m_touchLast.y();
+                Q_EMIT controlPullMoved(d.y());
                 return;
             }
         }
@@ -665,6 +691,10 @@ public:
     static constexpr qreal kTopEdge = 0.03;     // of the screen height
     static constexpr qreal kRightEdge = 0.02;   // of the screen width
     QElapsedTimer m_edgePulled;
+    QElapsedTimer m_pullClock;
+    bool m_pulling = false;
+    double m_pullLastY = 0;
+    double m_pullVelocity = 0;
     bool justPulled() const
     {
         return m_edgePulled.isValid() && m_edgePulled.elapsed() < 800;
@@ -1132,6 +1162,11 @@ public Q_SLOTS:
 Q_SIGNALS:
     void tabletModeChanged();
     void toggleRequested();
+    // the control center follows a finger from the top edge: dy = how far down (of the screen
+    // height); on release the speed (screen heights per second, + = down); cancelled = a second finger
+    void controlPullStarted();
+    void controlPullMoved(double dy);
+    void controlPullFinished(double dy, double velocity, bool cancelled);
     void notificationsRequested();
     void screenTimeRequested();
     void modeTransitionRequested(const QString &from, const QString &to, bool sound);

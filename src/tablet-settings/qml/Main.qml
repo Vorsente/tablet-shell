@@ -246,6 +246,8 @@ Kirigami.ApplicationWindow {
         { title: Tr.t("Домашний экран"), icon: "go-home-symbolic", webApps: true, items: [
             { type: "switch", store: "home", key: "showBadges", def: true,
               label: Tr.t("Значки уведомлений"), note: Tr.t("Красный счётчик непрочитанного на иконках") },
+            { type: "switch", store: "home", key: "themedIcons", def: false, label: Tr.t("Иконки в цвет обоев (стиль Pixel)"),
+              note: Tr.t("Все иконки перекрашиваются в два тона палитры Material You, как тематические иконки на Pixel") },
             { type: "switch", store: "home", key: "weatherOnWallpaper", def: true, label: Tr.t("Погода на обоях"),
               note: Tr.t("Обои становятся зимними, дождливыми или туманными; с живыми обоями капли бегут по стеклу и падает снег") },
             { type: "button", label: Tr.t("Расположение иконок"), note: Tr.t("Вернуть порядок «избранное, затем по алфавиту»"),

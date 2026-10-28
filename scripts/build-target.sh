@@ -87,6 +87,8 @@ case "$name" in
  shaders)
   "$QSB" --glsl '100es,120,150' --hlsl 50 --msl 12 -o "$OUT/weather.frag.qsb" \
     shell/plasmoids/org.ipad.homescreen/contents/ui/shaders/weather.frag
+  "$QSB" --glsl '100es,120,150' --hlsl 50 --msl 12 -o "$OUT/themed-icon.frag.qsb" \
+    shell/plasmoids/org.ipad.homescreen/contents/ui/shaders/themed-icon.frag
   ;;
  sounds-shell)
   mkdir -p "$OUT/sounds/shell"
