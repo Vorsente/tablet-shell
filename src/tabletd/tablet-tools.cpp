@@ -63,6 +63,8 @@ int typewriterRuntimeCommand(const QString &file);
 // app icons in the icon theme's style (icons.cpp)
 int appIconsCommand(const QStringList &args);
 
+int materialYouCommand(const QStringList &args);   // material-you.cpp
+
 namespace
 {
 const QString home = QDir::homePath();
@@ -490,6 +492,11 @@ int wallpaperSet(const QString &path)
         greeter.writeEntry("WallpaperPlugin", live ? QStringLiteral("org.ipad.daynight") : QStringLiteral("org.kde.image"));
     }
     syncGreeterWallpaper();
+    // Material You: the Pixel colours follow the new wallpaper
+    if (KConfig(QStringLiteral("tabletrc"), KConfig::SimpleConfig).group(QStringLiteral("Appearance"))
+            .readEntry(QStringLiteral("shellStyle"), QString()) == QLatin1String("pixel")) {
+        materialYouCommand({});
+    }
     return 0;
 }
 
@@ -1858,6 +1865,9 @@ int main(int argc, char *argv[])
         return 2;
     }
     QCoreApplication app(argc, argv);
+    if (tool == QLatin1String("material-you")) {
+        return materialYouCommand(args);
+    }
     if (tool == QLatin1String("wallpaper")) {
         if (args.size() >= 1 && args[0] == QLatin1String("list")) {
             return wallpaperList();

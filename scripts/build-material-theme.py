@@ -17,10 +17,13 @@ def frame(prefix, fill, radius=16):
         'bottomleft': f'M 0 32 A {r} {r} 0 0 0 {r} {32+r} V 32 Z',
         'bottomright': f'M {32+r} 32 A {r} {r} 0 0 1 32 {32+r} V 32 Z',
     }
-    pieces = [f'<path id="{prefix}{key}" fill="{fill}" d="{d}"/>' for key,d in paths.items()]
+    # fill None: the colour scheme's background (class ColorScheme-Background), so the plates
+    # follow the Material You scheme of tablet-tools material-you without a theme reload
+    paint = f'fill="{fill}"' if fill else 'class="ColorScheme-Background" style="fill:currentColor"'
+    pieces = [f'<path id="{prefix}{key}" {paint} d="{d}"/>' for key,d in paths.items()]
     for key,x,y,w,h in [('top',r,0,32-r,r),('bottom',r,32,32-r,r),
                         ('left',0,r,r,32-r),('right',32,r,r,32-r),('center',r,r,32-r,32-r)]:
-        pieces.append(f'<rect id="{prefix}{key}" x="{x}" y="{y}" width="{w}" height="{h}" fill="{fill}"/>')
+        pieces.append(f'<rect id="{prefix}{key}" x="{x}" y="{y}" width="{w}" height="{h}" {paint}/>')
     return '\n'.join(pieces)
 
 def rgb(value):
@@ -56,13 +59,16 @@ DecorationHover={rgb(primary)}''')
     target.mkdir(parents=True, exist_ok=True)
     (ROOT/'shell/color-schemes').mkdir(exist_ok=True)
     (ROOT/'shell/color-schemes'/f'{name}.colors').write_text(colors)
-    (target/'colors').write_text(colors)
+    # no colors file: Plasma then takes the current colour scheme (kdeglobals), which
+    # tablet-tools material-you keeps in the wallpaper's palette
+    (target/'colors').unlink(missing_ok=True)
     (target/'metadata.json').write_text(json.dumps({'KPlugin':{'Id':theme,'Name':'Tablet Pixel '+mode.title(),'Description':'Opaque Material surfaces for Tablet Shell','Version':'1.0','License':'GPL-3.0-or-later'},'X-Plasma-API':'5.0'},indent=2)+'\n')
     (target/'plasmarc').write_text('[Settings]\nFallbackTheme=default\n[ContrastEffect]\nenabled=false\n[BlurBehindEffect]\nenabled=false\n')
     for resource in ['widgets/panel-background.svg','widgets/background.svg','dialogs/background.svg','widgets/tooltip.svg']:
         file=target/resource; file.parent.mkdir(parents=True,exist_ok=True)
         # Explicit opaque fallback mirrors the composited surface.
-        svg='<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48">\n'+frame('',plate,12 if 'panel-' in resource else 16)+ '\n'+frame('mask-','#000000',12 if 'panel-' in resource else 16)+'\n<rect id="hint-stretch-borders" width="1" height="1" fill="none"/>\n</svg>\n'
+        style='<style type="text/css" id="current-color-scheme">.ColorScheme-Background { color:'+plate+'; }</style>\n'
+        svg='<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48">\n'+style+frame('',None,12 if 'panel-' in resource else 16)+ '\n'+frame('mask-','#000000',12 if 'panel-' in resource else 16)+'\n<rect id="hint-stretch-borders" width="1" height="1" fill="none"/>\n</svg>\n'
         file.write_text(svg)
     defaults=ROOT/f'shell/look-and-feel/org.tabletshell.pixel.{mode}/contents/defaults'
     content=defaults.read_text().replace('ColorScheme=Breeze'+mode.title(),'ColorScheme='+name).replace('name=default','name='+theme)

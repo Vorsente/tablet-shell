@@ -20,7 +20,7 @@ Window {
     flags: Qt.WindowTransparentForInput
     title: Tr.t("Смена режима")
 
-    LayerShell.Window.scope: "tabletshell-mode"
+    LayerShell.Window.scope: "dock"
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom
                                | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight
@@ -43,11 +43,12 @@ Window {
     property real typed: 0    // lines typed on it
     property real warm: 0     // reading mode
     property real code: 0     // coding mode: editor
+    property real turn: 0     // 1 = the tablet held upright (portrait), as the real one is
     property string caption: ""
     property string subtitle: ""
 
     readonly property var props: ["scrim", "zoom", "kb", "lift", "bump", "glow", "mon", "cable", "monOn",
-                                  "home", "desk", "paper", "typed", "warm", "code"]
+                                  "home", "desk", "paper", "typed", "warm", "code", "turn"]
 
     // ---- timeline: keyframes per property, evaluated from one clock ------------------------------
     property real t: 0
@@ -112,12 +113,18 @@ Window {
         effect.play();
     }
 
+    // how the tablet was last held without the keyboard (the screen turns to landscape when the
+    // keyboard comes, so it is remembered from tablet mode)
+    property bool tabletPortrait: Screen.height > Screen.width
+    readonly property bool screenPortrait: Screen.height > Screen.width
+    onScreenPortraitChanged: if (shell.tabletMode) tabletPortrait = screenPortrait
     function deviceMode() {
         return shell.tabletMode ? "tablet" : "pc";
     }
     function base(mode) {
-        const s = { kb: 0, mon: 0, cable: 0, monOn: 0, home: 1, desk: 0, paper: 0, typed: 0, warm: 0, code: 0 };
-        const pc = { kb: 1, home: 0, desk: 1 };
+        const s = { kb: 0, mon: 0, cable: 0, monOn: 0, home: 1, desk: 0, paper: 0, typed: 0, warm: 0, code: 0,
+                    turn: tabletPortrait ? 1 : 0 };
+        const pc = { kb: 1, home: 0, desk: 1, turn: 0 };
         if (mode === "pc" || mode === "dock") {
             Object.assign(s, pc);
         }
@@ -181,6 +188,11 @@ Window {
             cueAt(c, "release");
             c += 600;
         }
+        // turned to landscape before the keyboard is attached, upright again after it is taken off
+        if (a.turn > b.turn) {
+            key("turn", b.turn, c, 650, "inout");
+            c += 700;
+        }
         if (a.kb < b.kb) {
             key("kb", 1, c, 750, "back");
             cueAt(c + 560, "snap");
@@ -198,6 +210,10 @@ Window {
         } else if (a.home !== b.home) {
             screens(c);
             c += 450;
+        }
+        if (a.turn < b.turn) {
+            key("turn", b.turn, c, 650, "inout");
+            c += 700;
         }
         if (a.mon < b.mon) {
             key("mon", 1, c, 650, "back");
@@ -563,6 +579,7 @@ Window {
                     width: parent.width
                     height: 206
                     y: -win.lift * 60 + win.bump * 6
+                    rotation: -90 * win.turn
                     radius: 14
                     color: "#111113"
                     border.color: "#4a4a4e"
@@ -574,6 +591,24 @@ Window {
                         radius: 5
                         color: "black"
                         clip: true
+
+                        // the picture turns with the tablet, then rotates upright once it is
+                        // turned (like auto-rotation)
+                        Item {
+                        id: upright
+                        property real a: win.turn
+                        Connections {
+                            target: win
+                            function onTurnChanged() {
+                                if (win.turn > 0.98) upright.a = 1;
+                                else if (win.turn < 0.02) upright.a = 0;
+                            }
+                        }
+                        Behavior on a { NumberAnimation { duration: 260; easing.type: Easing.InOutCubic } }
+                        anchors.centerIn: parent
+                        rotation: 90 * a
+                        width: parent.width + (parent.height - parent.width) * a
+                        height: parent.height + (parent.width - parent.height) * a
 
                         Wallpaper { anchors.fill: parent }
 
@@ -711,6 +746,7 @@ Window {
                             anchors.fill: parent
                             color: "#ff9500"
                             opacity: win.warm * 0.18
+                        }
                         }
                     }
 

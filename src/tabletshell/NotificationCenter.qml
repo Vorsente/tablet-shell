@@ -10,6 +10,7 @@ import org.kde.kirigami as Kirigami
 import org.kde.plasma.components as PC3
 import org.kde.notificationmanager as NotificationManager
 import "Tr.js" as Tr
+import "MaterialYou.js" as MY
 
 Window {
     id: win
@@ -17,11 +18,11 @@ Window {
     color: "transparent"
     title: Tr.t("Уведомления")
     readonly property bool materialDark: Kirigami.ColorUtils.brightnessForColor(Kirigami.Theme.textColor) === Kirigami.ColorUtils.Light
-    readonly property color materialSurface: materialDark ? "#25232C" : "#F9F4FF"
-    readonly property color materialCard: materialDark ? "#36343F" : "#E9E2F0"
-    readonly property color materialText: materialDark ? "#F1EAF5" : "#1D1B20"
+    readonly property color materialSurface: materialDark ? MY.you("#25232C", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#F9F4FF", uiStyle.pixel, Kirigami.Theme.highlightColor)
+    readonly property color materialCard: materialDark ? MY.you("#36343F", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#E9E2F0", uiStyle.pixel, Kirigami.Theme.highlightColor)
+    readonly property color materialText: materialDark ? MY.you("#F1EAF5", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#1D1B20", uiStyle.pixel, Kirigami.Theme.highlightColor)
 
-    LayerShell.Window.scope: "tabletshell-notifications"
+    LayerShell.Window.scope: "dock"
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom
                                | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight
@@ -87,7 +88,7 @@ Window {
         width: Math.min(parent.width - (Kirigami.Units.gridUnit * uiStyle.dp) * 2, (Kirigami.Units.gridUnit * uiStyle.dp) * 24)
         radius: uiStyle.pixel ? (Kirigami.Units.gridUnit * uiStyle.dp) * 2.1 : (Kirigami.Units.gridUnit * uiStyle.dp) * 1.4
         color: uiStyle.pixel ? win.materialSurface : Qt.rgba(0.12, 0.12, 0.15, 0.9)
-        border.color: uiStyle.pixel ? (win.materialDark ? "#625C69" : "#D8CEDF") : Qt.rgba(1, 1, 1, 0.16)
+        border.color: uiStyle.pixel ? (win.materialDark ? MY.you("#625C69", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#D8CEDF", uiStyle.pixel, Kirigami.Theme.highlightColor)) : Qt.rgba(1, 1, 1, 0.16)
         border.width: uiStyle.pixel ? 0 : 1
 
         MouseArea { anchors.fill: parent }  // keep taps inside

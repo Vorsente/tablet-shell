@@ -1,33 +1,161 @@
 #!/bin/bash
-# System snapshots (btrfs root subvolume @, home stays untouched).
-#   tablet-snapshot create [reason]   read-only snapshot of @ into @snapshots/<date>_<reason>;
-#                                     with reason "update" also refreshes the bootable copy @rescue
-#   tablet-snapshot list              snapshot names, newest first
-#   tablet-snapshot restore NAME      after the next reboot the system is that snapshot; the current
-#                                     system is kept as @before-restore (one level of undo)
-#   tablet-snapshot delete NAME
-# Snapshots are visible read-only in /.snapshots. Runs as root (pacman hook, pkexec from Settings).
+# System snapshots on a btrfs root (home stays untouched).
+#   tablet-snapshot create [reason]   new snapshot: Snapper's own when the system uses Snapper
+#                                     (openSUSE), else a read-only snapshot of @ into
+#                                     @snapshots/<date>_<reason>; with reason "update" also
+#                                     refreshes the bootable copy @rescue
+#   tablet-snapshot scan              index of every snapshot on the root file system into
+#                                     /var/lib/tablet/snapshots.json (readable by everyone; the
+#                                     Settings app shows it): this tool's, Snapper's (openSUSE,
+#                                     /.snapshots/N/snapshot + info.xml), Timeshift's and any other
+#                                     snapshot subvolume
+#   tablet-snapshot list              snapshot ids, newest first
+#   tablet-snapshot restore ID        after the next reboot the system is that snapshot. Root in a
+#                                     subvolume @ (Arch, Timeshift layouts): the current system is
+#                                     kept as @before-restore (one level of undo); root booted from
+#                                     the default subvolume (openSUSE): snapper rollback
+#   tablet-snapshot delete ID
+# IDs: tablet:<name> (a bare <name> too), snapper:<number>, timeshift:<name>, btrfs:<path>.
+# Runs as root (pacman hook, systemd path/timer units, pkexec from Settings).
 set -euo pipefail
 KEEP=10
 DEV=$(findmnt -no SOURCE / | sed 's/\[.*//')
 TOP=/run/tablet-btrfs
+INDEX=/var/lib/tablet/snapshots.json
 
 die() { echo "tablet-snapshot: $*" >&2; exit 1; }
 [ "$(id -u)" = 0 ] || die "must run as root"
+[ "$(findmnt -no FSTYPE /)" = btrfs ] || die "the root file system is not btrfs"
+
+# the root subvolume as mounted ("/@", "/@/.snapshots/1/snapshot", "/" for the top level)
+ROOT_SUBVOL=$(findmnt -no FSROOT / | sed 's#^/##')
+# the "@" layout: root in a named subvolume at the top (Arch installer, Ubuntu, Timeshift)
+at_layout() { [ "$ROOT_SUBVOL" = @ ]; }
+have_snapper() { command -v snapper >/dev/null && [ -f /etc/snapper/configs/root ]; }
 
 mount_top() {
     mkdir -p "$TOP"
     mountpoint -q "$TOP" || mount -o subvolid=5 "$DEV" "$TOP"
     trap 'umount "$TOP" 2>/dev/null || true' EXIT
-    [ -d "$TOP/@snapshots" ] || btrfs subvolume create "$TOP/@snapshots" >/dev/null
 }
 
-valid_name() { [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}_[a-z-]+$ ]] || die "bad snapshot name: $1"; }
+valid_name() { [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}_[a-z-]+$ ]]; }
+
+json() {   # a JSON string
+    local s=${1//\\/\\\\}
+    s=${s//\"/\\\"}
+    s=${s//$'\t'/ }
+    s=${s//$'\n'/ }
+    printf '"%s"' "${s//$'\r'/}"
+}
+xml_value() {   # <tag>value</tag> from a Snapper info.xml
+    sed -n "s#.*<$2>\(.*\)</$2>.*#\1#p" "$1" 2>/dev/null | head -1 \
+        | sed 's/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g; s/&apos;/'"'"'/g; s/&amp;/\&/g'
+}
+
+# "<path>\t<otime>" of every snapshot subvolume (paths from the top level)
+snapshot_paths() {
+    local list
+    list=$(btrfs subvolume list -s "$TOP" | sed -n 's/.* otime \([^ ]* [^ ]*\) path \(.*\)$/\2\t\1/p')
+    [ -z "$list" ] || printf '%s\n' "$list"
+    # the system before the last restore: the old @ renamed, a snapshot only if @ was one; its
+    # time is the rename's
+    if [ -d "$TOP/@before-restore" ] && ! grep -q '^@before-restore	' <<< "$list"; then
+        printf '@before-restore\t%s\n' "$(stat -c %z "$TOP/@before-restore" | cut -c1-19)"
+    fi
+}
+
+# one index entry per snapshot, newest first
+scan() {
+    mount_top
+    local default_path entries=() path otime id kind epoch desc type flag ro restore
+    default_path=$(btrfs subvolume get-default "$TOP" | sed -n 's/.* path \(.*\)$/\1/p')
+    while IFS=$'\t' read -r path otime; do
+        [ -n "$path" ] || continue
+        # the running system, the boot default and the rescue copy are not snapshots to offer
+        [ "$path" = "$ROOT_SUBVOL" ] || [ "$path" = "$default_path" ] || [ "$path" = @rescue ] && continue
+        # containers keep their layers as snapshots
+        [[ "$path" =~ (^|/)var/lib/(docker|containers|machines|portables)/ ]] && continue
+        epoch=$(date -d "$otime" +%s 2>/dev/null || echo 0)
+        desc=""; type=""; flag=""
+        if [[ "$path" =~ ^@snapshots/([^/]+)$ ]] && valid_name "${BASH_REMATCH[1]}"; then
+            kind=tablet; id="tablet:${BASH_REMATCH[1]}"; type=${BASH_REMATCH[1]##*_}
+        elif [ "$path" = @before-restore ]; then
+            kind=tablet; id="tablet:before-restore"; type=before-restore
+        elif [[ "$path" =~ (^|/)\.snapshots/([0-9]+)/snapshot$ ]]; then
+            kind=snapper; id="snapper:${BASH_REMATCH[2]}"
+            local info="$TOP/${path%/snapshot}/info.xml"
+            desc=$(xml_value "$info" description)
+            type=$(xml_value "$info" type)
+            local when; when=$(xml_value "$info" date)
+            [ -n "$when" ] && epoch=$(date -u -d "$when" +%s 2>/dev/null || echo "$epoch")
+            grep -q '<key>important</key>[[:space:]]*<value>yes</value>' "$info" 2>/dev/null && flag=important
+            [ "${BASH_REMATCH[2]}" = 0 ] && continue   # snapper's "current" pseudo entry
+        elif [[ "$path" =~ ^timeshift-btrfs/snapshots/([^/]+)/@$ ]]; then
+            kind=timeshift; id="timeshift:${BASH_REMATCH[1]}"
+            local info="$TOP/timeshift-btrfs/snapshots/${BASH_REMATCH[1]}/info.json"
+            desc=$(sed -n 's/.*"comments"[[:space:]]*:[[:space:]]*"\(.*\)".*/\1/p' "$info" 2>/dev/null | head -1)
+            type=$(sed -n 's/.*"tags"[[:space:]]*:[[:space:]]*"\(.*\)".*/\1/p' "$info" 2>/dev/null | head -1)
+            local created; created=$(sed -n 's/.*"created"[[:space:]]*:[[:space:]]*"\([0-9]*\)".*/\1/p' "$info" 2>/dev/null | head -1)
+            [ -n "$created" ] && epoch=$created
+        elif [[ "$path" =~ ^timeshift-btrfs/ ]]; then
+            continue   # Timeshift's @home and others belong to an entry above
+        else
+            kind=btrfs; id="btrfs:$path"
+        fi
+        ro=$(btrfs property get -ts "$TOP/$path" ro 2>/dev/null | sed -n 's/^ro=//p')
+        # restorable: any full system in the @ layout, Snapper's own through snapper rollback
+        restore=false
+        if at_layout && [ -d "$TOP/$path/etc" ] && [ -d "$TOP/$path/usr" ]; then
+            restore=true
+        elif [ "$kind" = snapper ] && have_snapper; then
+            restore=true
+        fi
+        entries+=("$epoch	{\"id\":$(json "$id"),\"kind\":\"$kind\",\"path\":$(json "$path"),\"time\":$epoch,\"type\":$(json "$type"),\"description\":$(json "$desc"),\"important\":$([ "$flag" = important ] && echo true || echo false),\"readonly\":$([ "$ro" = true ] && echo true || echo false),\"restore\":$restore}")
+    done < <(snapshot_paths)
+    mkdir -p "$(dirname "$INDEX")"
+    {
+        printf '{"root":%s,"layout":"%s","snapper":%s,"snapshots":[' "$(json "$ROOT_SUBVOL")" \
+            "$(at_layout && echo at || echo default)" "$(have_snapper && echo true || echo false)"
+        printf '%s\n' "${entries[@]}" | sort -rn | cut -f2- | paste -sd, | tr -d '\n'
+        printf ']}\n'
+    } > "$INDEX.new"
+    chmod 644 "$INDEX.new"
+    mv "$INDEX.new" "$INDEX"
+}
+
+# the subvolume path of an id, checked against the snapshots that really exist
+resolve() {
+    local id=$1 path
+    valid_name "$id" && id="tablet:$id"
+    case "$id" in
+        tablet:before-restore) path=@before-restore ;;
+        tablet:*) valid_name "${id#tablet:}" || die "bad snapshot id: $id"; path="@snapshots/${id#tablet:}" ;;
+        snapper:*) [[ "${id#snapper:}" =~ ^[0-9]+$ ]] || die "bad snapshot id: $id"
+                   path=$(snapshot_paths | cut -f1 | grep -E "(^|/)\.snapshots/${id#snapper:}/snapshot$" | head -1) ;;
+        timeshift:*) path="timeshift-btrfs/snapshots/${id#timeshift:}/@" ;;
+        btrfs:*) path=${id#btrfs:} ;;
+        *) die "bad snapshot id: $id" ;;
+    esac
+    [ -n "$path" ] && snapshot_paths | cut -f1 | grep -qxF -- "$path" || die "no such snapshot: $id"
+    [ "$path" != "$ROOT_SUBVOL" ] || die "that is the running system"
+    printf '%s' "$path"
+}
 
 case "${1:-}" in
 create)
     reason=$(echo "${2:-manual}" | tr -cd 'a-z-')
+    if ! at_layout && have_snapper; then
+        # openSUSE: Snapper owns the snapshots (and its boot menu entries)
+        snapper --no-dbus create --type single --cleanup-algorithm number \
+            --description "tablet-shell: ${reason:-manual}" --userdata important=yes
+        scan
+        echo "snapshot: snapper"
+        exit 0
+    fi
+    at_layout || die "root is not in subvolume @ and Snapper is not set up"
     mount_top
+    [ -d "$TOP/@snapshots" ] || btrfs subvolume create "$TOP/@snapshots" >/dev/null
     name="$(date +%Y-%m-%d_%H-%M-%S)_${reason:-manual}"
     btrfs subvolume snapshot -r "$TOP/@" "$TOP/@snapshots/$name" >/dev/null
     echo "snapshot: $name"
@@ -40,31 +168,58 @@ create)
         uki=$(sed -n 's/^default_uki="\(.*\)"/\1/p' /etc/mkinitcpio.d/*.preset 2>/dev/null | head -1)
         [ -f "$uki" ] && cp "$uki" /boot/EFI/Linux/arch-linux-rescue.efi
     fi
-    # keep the newest $KEEP snapshots
-    ls -1 "$TOP/@snapshots" | sort -r | tail -n +$((KEEP + 1)) | while read -r old; do
+    # keep the newest $KEEP of this tool's snapshots (other tools clean up their own)
+    ls -1 "$TOP/@snapshots" | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}_' | sort -r | tail -n +$((KEEP + 1)) | while read -r old; do
         btrfs subvolume delete "$TOP/@snapshots/$old" >/dev/null
     done
+    scan
+    ;;
+scan)
+    scan
     ;;
 list)
-    ls -1 /.snapshots 2>/dev/null | sort -r
+    [ -f "$INDEX" ] || scan
+    sed 's/},{/}\n{/g' "$INDEX" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p'
     ;;
 restore)
-    name="${2:-}"; valid_name "$name"
+    id="${2:-}"
     mount_top
-    [ -d "$TOP/@snapshots/$name" ] || die "no such snapshot: $name"
-    [ -d "$TOP/@before-restore" ] && btrfs subvolume delete "$TOP/@before-restore" >/dev/null
-    # the running system keeps working from the renamed subvolume until the reboot
-    mv "$TOP/@" "$TOP/@before-restore"
-    btrfs subvolume snapshot "$TOP/@snapshots/$name" "$TOP/@" >/dev/null
-    echo "restored $name: reboot to use it (the previous system is kept as @before-restore)"
+    path=$(resolve "$id")
+    if at_layout; then
+        [ -d "$TOP/$path/etc" ] && [ -d "$TOP/$path/usr" ] || die "$id is not a whole system"
+        # a writable copy first (the source may be @before-restore itself), then swap; the
+        # running system keeps working from the renamed subvolume until the reboot
+        [ -d "$TOP/@.restoring" ] && btrfs subvolume delete "$TOP/@.restoring" >/dev/null
+        btrfs subvolume snapshot "$TOP/$path" "$TOP/@.restoring" >/dev/null
+        # Snapper/Timeshift snapshots of the same layout mount @ already; a nested
+        # .snapshots subvolume does not come along (snapshots are not recursive)
+        [ -d "$TOP/@before-restore" ] && btrfs subvolume delete "$TOP/@before-restore" >/dev/null
+        mv "$TOP/@" "$TOP/@before-restore"
+        mv "$TOP/@.restoring" "$TOP/@"
+        echo "restored $id: reboot to use it (the previous system is kept as @before-restore)"
+    elif [[ "$id" == snapper:* ]] && have_snapper; then
+        # openSUSE: a writable copy becomes the default subvolume (Snapper's own rollback)
+        snapper --no-dbus rollback "${id#snapper:}"
+        echo "restored $id: reboot to use it"
+    else
+        die "this system boots from the default subvolume: restore it with its own tool"
+    fi
+    scan
     ;;
 delete)
-    name="${2:-}"; valid_name "$name"
+    id="${2:-}"
     mount_top
-    btrfs subvolume delete "$TOP/@snapshots/$name" >/dev/null
+    path=$(resolve "$id")
+    case "$id" in
+        snapper:*) if have_snapper; then snapper --no-dbus delete "${id#snapper:}"; else btrfs subvolume delete "$TOP/$path" >/dev/null; fi ;;
+        timeshift:*) if command -v timeshift >/dev/null; then timeshift --delete --snapshot "${id#timeshift:}" --scripted >/dev/null
+                     else btrfs subvolume delete "$TOP/$path" >/dev/null; fi ;;
+        *) btrfs subvolume delete "$TOP/$path" >/dev/null ;;
+    esac
+    scan
     ;;
 *)
-    echo "usage: tablet-snapshot create [reason] | list | restore NAME | delete NAME" >&2
+    echo "usage: tablet-snapshot create [reason] | scan | list | restore ID | delete ID" >&2
     exit 2
     ;;
 esac

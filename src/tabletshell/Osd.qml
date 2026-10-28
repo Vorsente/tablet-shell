@@ -13,6 +13,7 @@ import org.kde.plasma.private.mobileshell.screenbrightnessplugin as ScreenBright
 import org.kde.layershell as LayerShell
 import org.kde.kirigami as Kirigami
 import "Tr.js" as Tr
+import "MaterialYou.js" as MY
 
 Window {
     id: win
@@ -22,7 +23,7 @@ Window {
     width: Math.round(gu * 21)
     height: Math.round(gu * (pixel ? 4.4 : 3.8))
 
-    LayerShell.Window.scope: "tabletshell-osd"
+    LayerShell.Window.scope: "dock"
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop
     LayerShell.Window.margins.top: Math.round(gu * 2.6)
@@ -32,11 +33,11 @@ Window {
     readonly property real gu: (Kirigami.Units.gridUnit * uiStyle.dp)
     readonly property bool pixel: uiStyle.pixel
     readonly property bool materialDark: Kirigami.ColorUtils.brightnessForColor(Kirigami.Theme.textColor) === Kirigami.ColorUtils.Light
-    readonly property color ink: pixel ? (materialDark ? "#F4EFF4" : "#1D1B20") : "white"
-    readonly property color fill: pixel ? (materialDark ? "#36343B" : "#ECE6F0") : Qt.rgba(0.11, 0.11, 0.13, 0.62)
-    readonly property color rim: pixel ? (materialDark ? "#49454F" : "#CAC4D0") : Qt.rgba(1, 1, 1, 0.14)
-    readonly property color lit: pixel ? (materialDark ? "#D0BCFF" : "#6750A4") : "white"
-    readonly property color unlit: pixel ? (materialDark ? "#49454F" : "#E6E0E9") : Qt.rgba(1, 1, 1, 0.2)
+    readonly property color ink: pixel ? (materialDark ? MY.you("#F4EFF4", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#1D1B20", uiStyle.pixel, Kirigami.Theme.highlightColor)) : "white"
+    readonly property color fill: pixel ? (materialDark ? MY.you("#36343B", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#ECE6F0", uiStyle.pixel, Kirigami.Theme.highlightColor)) : Qt.rgba(0.11, 0.11, 0.13, 0.62)
+    readonly property color rim: pixel ? (materialDark ? MY.you("#49454F", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#CAC4D0", uiStyle.pixel, Kirigami.Theme.highlightColor)) : Qt.rgba(1, 1, 1, 0.14)
+    readonly property color lit: pixel ? (materialDark ? MY.you("#D0BCFF", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#6750A4", uiStyle.pixel, Kirigami.Theme.highlightColor)) : "white"
+    readonly property color unlit: pixel ? (materialDark ? MY.you("#49454F", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#E6E0E9", uiStyle.pixel, Kirigami.Theme.highlightColor)) : Qt.rgba(1, 1, 1, 0.2)
     readonly property int segments: 16
 
     property string icon: ""

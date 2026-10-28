@@ -9,6 +9,7 @@ import org.kde.layershell as LayerShell
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.components as PC3
 import "Tr.js" as Tr
+import "MaterialYou.js" as MY
 
 Window {
     id: win
@@ -16,7 +17,7 @@ Window {
     color: "transparent"
     title: Tr.t("Экранное время")
 
-    LayerShell.Window.scope: "tabletshell-screentime"
+    LayerShell.Window.scope: "dock"
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom
                                | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight
@@ -107,8 +108,8 @@ Window {
         width: Math.min(parent.width - (Kirigami.Units.gridUnit * uiStyle.dp) * 2, (Kirigami.Units.gridUnit * uiStyle.dp) * 30)
         height: Math.min(parent.height - (Kirigami.Units.gridUnit * uiStyle.dp) * 2, content.implicitHeight + (Kirigami.Units.gridUnit * uiStyle.dp) * 2)
         radius: uiStyle.pixel ? (Kirigami.Units.gridUnit * uiStyle.dp) * 2.1 : (Kirigami.Units.gridUnit * uiStyle.dp) * 1.4
-        color: uiStyle.pixel ? "#25232C" : Qt.rgba(0.12, 0.12, 0.15, 0.92)
-        border.color: uiStyle.pixel ? "#625C69" : Qt.rgba(1, 1, 1, 0.16)
+        color: uiStyle.pixel ? MY.you("#25232C", uiStyle.pixel, Kirigami.Theme.highlightColor) : Qt.rgba(0.12, 0.12, 0.15, 0.92)
+        border.color: uiStyle.pixel ? MY.you("#625C69", uiStyle.pixel, Kirigami.Theme.highlightColor) : Qt.rgba(1, 1, 1, 0.16)
         border.width: uiStyle.pixel ? 0 : 1
 
         MouseArea { anchors.fill: parent }  // keep taps inside
@@ -173,7 +174,7 @@ Window {
                             Layout.preferredWidth: (Kirigami.Units.gridUnit * uiStyle.dp) * 1.6
                             Layout.preferredHeight: Math.max(3, ((Kirigami.Units.gridUnit * uiStyle.dp) * 5) * modelData.total / win.maxDay)
                             radius: 4
-                            color: index === 6 ? (uiStyle.pixel ? "#D0BCFF" : Kirigami.Theme.highlightColor) : Qt.rgba(1, 1, 1, 0.35)
+                            color: index === 6 ? (uiStyle.pixel ? MY.you("#D0BCFF", uiStyle.pixel, Kirigami.Theme.highlightColor) : Kirigami.Theme.highlightColor) : Qt.rgba(1, 1, 1, 0.35)
                         }
                         PC3.Label {
                             Layout.alignment: Qt.AlignHCenter

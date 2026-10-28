@@ -7,9 +7,11 @@
 // The bubble is drawn in the strip itself: a separate transparent overlay got no frame
 // callbacks from KWin and never repainted during the swipe.
 import QtQuick
+import org.kde.kirigami as Kirigami
 import QtQuick.Window
 
 import org.kde.layershell as LayerShell
+import "MaterialYou.js" as MY
 
 Window {
     id: strip
@@ -25,7 +27,7 @@ Window {
     color: "transparent"
     width: Math.round(dragging ? 160 * dp : 10 * dp)
 
-    LayerShell.Window.scope: "tabletshell-back-edge"
+    LayerShell.Window.scope: "dock"
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.anchors: LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom
     // keep clear of the control center (top edge) and the home gesture (bottom edge)
@@ -80,7 +82,7 @@ Window {
         radius: width / 2
         x: -width + Math.min(strip.reach * 0.8, width + 24 * strip.dp)
         y: strip.fingerY - height / 2
-        color: uiStyle.pixel ? (strip.armed ? "#D0BCFF" : "#49454F") : strip.armed ? "#ffffff" : Qt.rgba(0.1, 0.1, 0.11, 0.85)
+        color: uiStyle.pixel ? (strip.armed ? MY.you("#D0BCFF", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#49454F", uiStyle.pixel, Kirigami.Theme.highlightColor)) : strip.armed ? MY.you("#ffffff", uiStyle.pixel, Kirigami.Theme.highlightColor) : Qt.rgba(0.1, 0.1, 0.11, 0.85)
         border.color: Qt.rgba(1, 1, 1, 0.3)
         border.width: strip.armed ? 0 : 1
         scale: strip.armed ? 1.08 : 1
@@ -91,7 +93,7 @@ Window {
             anchors.centerIn: parent
             anchors.horizontalCenterOffset: 6 * strip.dp
             text: "‹"
-            color: strip.armed ? "#000000" : "#ffffff"
+            color: strip.armed ? MY.you("#000000", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#ffffff", uiStyle.pixel, Kirigami.Theme.highlightColor)
             opacity: Math.min(1, strip.pull / strip.threshold)
             font.pixelSize: 40 * strip.dp
             font.bold: true

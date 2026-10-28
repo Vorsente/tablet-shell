@@ -378,12 +378,19 @@ Item {
             readonly property var s: material.d.screentime || { total: 0, top: [] }
             spacing: material.u * 0.35
             Display { text: material.d.duration(s.total || 0); font.pixelSize: material.u * 2.8 }
-            Item { Layout.fillHeight: true }
-            Repeater {
-                model: (s.top || []).slice(0, material.wide || material.height > material.u * 13 ? 3 : 2)
+            // all of today's apps: scroll down for the rest
+            ScrollList {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                model: s.top || []
+                rowHeight: material.u * 2.4
+                spacing: material.u * 0.35
+                barColor: material.on
+                swipe: material.swipe
                 delegate: ColumnLayout {
                     required property var modelData
-                    Layout.fillWidth: true
+                    width: ListView.view ? ListView.view.width - material.u * 0.4 : 0
+                    height: material.u * 2.4
                     spacing: material.u * 0.15
                     RowLayout {
                         Layout.fillWidth: true

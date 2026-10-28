@@ -376,20 +376,19 @@ Rectangle {
                 font.pixelSize: card.u * 2.6
                 font.weight: card.home.pixel ? Font.Medium : Font.Light
             }
-            // all of today's apps, a page at a time: swipe sideways or tap the dots
-            Pager {
+            // all of today's apps: scroll down for the rest
+            ScrollList {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                items: screenTimeBox.s.top || []
+                model: screenTimeBox.s.top || []
                 rowHeight: card.u * 2.2
                 spacing: card.u * 0.3
-                dotColor: card.text
+                barColor: card.text
                 swipe: card.swipe
-                onHeld: card.held()
-                row: ColumnLayout {
+                delegate: ColumnLayout {
                     required property var modelData
                     required property int index
-                    width: parent ? parent.width : 0
+                    width: ListView.view ? ListView.view.width : 0
                     height: card.u * 2.2
                     spacing: card.u * 0.15
                     RowLayout {

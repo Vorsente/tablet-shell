@@ -15,7 +15,7 @@ Window {
     width: 44 * uiStyle.dp
     height: 50 * uiStyle.dp
 
-    LayerShell.Window.scope: "tabletshell-texthandle"
+    LayerShell.Window.scope: "dock"
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorLeft
     LayerShell.Window.exclusionZone: -1

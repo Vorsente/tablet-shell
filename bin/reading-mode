@@ -1,7 +1,7 @@
 #!/bin/bash
 # Reading mode: reading-mode on|off|toggle|status
 # Active window full screen, warm screen colour, dimmer brightness, Do Not Disturb, and Firefox's
-# Reader View when Firefox is in front. "off" restores everything.
+# Reader View when Firefox is in front, a × in the corner to leave. "off" restores everything.
 state="${XDG_RUNTIME_DIR:-/tmp}/reading-mode"
 # the built-in screen (eDP-1, DSI-1, ...)
 out=$("$HOME/.local/bin/tablet-tools" hardware | grep -o '"internalOutput":"[^"]*"' | cut -d'"' -f4)
@@ -29,6 +29,11 @@ on() {
     kde-inhibit --notifications sleep infinity >/dev/null 2>&1 &
     echo $! > "$state/inhibit"
     kwin_key "Window Fullscreen"
+    # × in the corner to leave (battery and clock beside it), unless turned off in Settings
+    if [ "$(kreadconfig6 --file tabletrc --group Reading --key closeButton --default true)" = true ]; then
+        TYPEWRITER_FOCUS=false TYPEWRITER_SOUND=0 PILL_MODE=reading "$HOME/.local/bin/tabletshell" pill >/dev/null 2>&1 &
+        echo $! > "$state/pill"
+    fi
     if [ "$1" = firefox ]; then
         qdbus6 org.ipad.TabletShell / org.ipad.TabletShell.Key "ctrl+alt+r" >/dev/null 2>&1
     fi
@@ -41,6 +46,7 @@ off() {
     set_night NightTemperature "${temp:-4500}"; set_night Mode "${mode:-DarkLight}"; set_night Active "${active:-false}"
     b=$(cat "$state/brightness"); [ -n "$b" ] && kscreen-doctor "output.$out.brightness.$b" >/dev/null 2>&1
     kill "$(cat "$state/inhibit")" 2>/dev/null
+    [ -f "$state/pill" ] && kill "$(cat "$state/pill")" 2>/dev/null
     kwin_key "Window Fullscreen"
     rm -rf "$state"
 }

@@ -92,6 +92,8 @@ Kirigami.ApplicationWindow {
         } else if (item.apply === "livewallpaper") {
             backend.start([home + "/.local/bin/wallpaper", "live", v ? "on" : "off"]);
             backend.setHomeScreen("liveWallpaper", v);   // weather on the wallpaper moves only then
+        } else if (item.apply === "materialYou") {
+            backend.start([home + "/.local/bin/tablet-tools", "material-you", "--apply"]);
         } else if (item.apply === "tabletshell") {
             backend.start(["systemctl", "--user", "restart", "tabletshell.service"]);
         } else if (item.apply === "homeData") {
@@ -203,6 +205,9 @@ Kirigami.ApplicationWindow {
                         { value: "115", label: Tr.t("Крупнее") }, { value: "130", label: Tr.t("Ещё крупнее") }] },
             { type: "choice", store: "appearance", label: Tr.t("Оформление"),
               options: [{ value: "light", label: Tr.t("Светлое") }, { value: "dark", label: Tr.t("Тёмное") }, { value: "auto", label: Tr.t("Авто (по времени)") }] },
+            make(tabletrc("Appearance", "materialYou", true), { type: "switch", apply: "materialYou",
+              label: Tr.t("Цвета из обоев (Material You, стиль Pixel)"),
+              note: Tr.t("Панели, виджеты, клавиатура и приложения окрашиваются в тон обоев; выключено — фиолетовая палитра Material") }),
             make(tabletrc("Appearance", "liveWallpaper", true), { type: "switch", apply: "livewallpaper",
               label: Tr.t("Живые обои"), note: Tr.t("Светлый вариант со светлой темой, тёмный — с тёмной; плавный переход") }),
             make({store:"kconfig", file:"tabletrc", group:"Appearance", key:"weatherAnimation", def:false},
@@ -399,6 +404,8 @@ Kirigami.ApplicationWindow {
               label: Tr.t("Тёплый цвет экрана"), note: Tr.t("Меньше — теплее") }),
             make(tabletrc("Reading", "brightness", 50), { type: "number", min: 10, max: 100, step: 5, suffix: " %",
               label: Tr.t("Яркость не выше") }),
+            make(tabletrc("Reading", "closeButton", true), { type: "switch", label: Tr.t("Кнопка выхода ×"),
+              note: Tr.t("В углу экрана, рядом с батареей и часами") }),
         ] },
         { title: Tr.t("Экранное время"), icon: "chronometer-symbolic", items: [
             { type: "button", label: Tr.t("Статистика за неделю"), button: Tr.t("Показать"), icon: "view-statistics",

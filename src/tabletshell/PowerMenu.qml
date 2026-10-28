@@ -8,6 +8,7 @@ import QtQuick.Window
 import org.kde.layershell as LayerShell
 import org.kde.kirigami as Kirigami
 import "Tr.js" as Tr
+import "MaterialYou.js" as MY
 
 Window {
     id: win
@@ -15,7 +16,7 @@ Window {
     color: "transparent"
     title: Tr.t("Меню питания")
 
-    LayerShell.Window.scope: "tabletshell-power"
+    LayerShell.Window.scope: "dock"
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom
                                | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight
@@ -111,7 +112,7 @@ Window {
             width: 440 * uiStyle.dp
             height: 76 * uiStyle.dp
             radius: height / 2
-            color: uiStyle.pixel ? "#49454F" : Qt.rgba(1, 1, 1, 0.16)
+            color: uiStyle.pixel ? MY.you("#49454F", uiStyle.pixel, Kirigami.Theme.highlightColor) : Qt.rgba(1, 1, 1, 0.16)
             border.color: Qt.rgba(1, 1, 1, 0.22)
 
             Text {
@@ -144,7 +145,7 @@ Window {
                     height: 30 * uiStyle.dp
                     source: "system-shutdown-symbolic"
                     isMask: true
-                    color: "#FF3B30"
+                    color: MY.you("#FF3B30", uiStyle.pixel, Kirigami.Theme.highlightColor)
                 }
                 Behavior on x { enabled: !drag.active; NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
                 // knob sits 6 px inside the track
@@ -237,14 +238,14 @@ Window {
         width: Math.min(parent.width - 32 * uiStyle.dp, 420 * uiStyle.dp)
         height: actions.implicitHeight + 64 * uiStyle.dp
         radius: 28 * uiStyle.dp
-        color: "#2B2932"
+        color: MY.you("#2B2932", uiStyle.pixel, Kirigami.Theme.highlightColor)
         opacity: win.shown
         Column {
             id: actions
             anchors.centerIn: parent
             width: parent.width - 48 * uiStyle.dp
             spacing: 16 * uiStyle.dp
-            Text { text: Tr.t("Меню питания"); color: "#E6E0E9"; font.pixelSize: 24; font.family: "Noto Sans" }
+            Text { text: Tr.t("Меню питания"); color: MY.you("#E6E0E9", uiStyle.pixel, Kirigami.Theme.highlightColor); font.pixelSize: 24; font.family: "Noto Sans" }
             Grid {
                 width: parent.width
                 columns: 2
@@ -261,7 +262,7 @@ Window {
                         width: (actions.width - 12 * uiStyle.dp) / 2
                         height: 100 * uiStyle.dp
                         radius: 24 * uiStyle.dp
-                        color: materialTap.pressed ? "#D0BCFF" : "#4A4458"
+                        color: materialTap.pressed ? MY.you("#D0BCFF", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#4A4458", uiStyle.pixel, Kirigami.Theme.highlightColor)
                         Column {
                             anchors.centerIn: parent
                             spacing: 10 * uiStyle.dp
@@ -270,11 +271,11 @@ Window {
                                 width: 28 * uiStyle.dp; height: 28 * uiStyle.dp
                                 source: modelData.icon
                                 isMask: true
-                                color: materialTap.pressed ? "#381E72" : "#E8DEF8"
+                                color: materialTap.pressed ? MY.you("#381E72", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#E8DEF8", uiStyle.pixel, Kirigami.Theme.highlightColor)
                             }
                             Text {
                                 text: modelData.label
-                                color: materialTap.pressed ? "#381E72" : "#E8DEF8"
+                                color: materialTap.pressed ? MY.you("#381E72", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#E8DEF8", uiStyle.pixel, Kirigami.Theme.highlightColor)
                                 font.pixelSize: 14 * uiStyle.dp
                             }
                         }
@@ -288,8 +289,8 @@ Window {
                 }
             }
             Rectangle {
-                width: parent.width; height: 48 * uiStyle.dp; radius: 24 * uiStyle.dp; color: "#D0BCFF"
-                Text { anchors.centerIn: parent; text: Tr.t("Отмена"); color: "#381E72"; font.pixelSize: 16 }
+                width: parent.width; height: 48 * uiStyle.dp; radius: 24 * uiStyle.dp; color: MY.you("#D0BCFF", uiStyle.pixel, Kirigami.Theme.highlightColor)
+                Text { anchors.centerIn: parent; text: Tr.t("Отмена"); color: MY.you("#381E72", uiStyle.pixel, Kirigami.Theme.highlightColor); font.pixelSize: 16 }
                 MouseArea { anchors.fill: parent; enabled: !win.leaving; onClicked: win.close() }
             }
         }

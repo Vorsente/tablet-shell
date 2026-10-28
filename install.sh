@@ -303,6 +303,8 @@ if [ -d shell/wallpaper-packs ]; then
     done
 fi
 for p in shell/desktoptheme/*; do sync_dir "$p" "$SHARE/plasma/desktoptheme/$(basename "$p")"; done
+# the Pixel themes follow the colour scheme now (Material You): no colours of their own
+rm -f "$SHARE"/plasma/desktoptheme/tablet-pixel-*/colors
 # compact rounded task highlight instead of a block over the whole task cell (Pixel and WhiteSur)
 python3 -I scripts/make-task-highlight.py "$SHARE"/plasma/desktoptheme/tablet-pixel-* >/dev/null
 python3 -I scripts/make-task-highlight.py --apple "$SHARE"/plasma/desktoptheme/WhiteSurLiquid* >/dev/null
@@ -635,6 +637,10 @@ fi
 # At the end: base.sh may switch the network over to NetworkManager, nothing may need it after that.
 # system/apply.sh runs every part on its own and reports each one (logs in ~/.local/state/tablet-shell).
 GREETER_PENDING="$HOME/.local/state/tablet-shell/greeter-refresh-needed"
+# Material You: the Pixel colour schemes from the wallpaper (the bundled ones above are the
+# baseline purple); applied at once when the Pixel look is on
+"$BIN/tablet-tools" material-you --apply >/dev/null 2>&1 || true
+
 GREETER_INSTALLED=
 [ -r /etc/greetd/config.toml ] && grep -Eq 'tablet-greeter|tablet-shell-greeter' /etc/greetd/config.toml && GREETER_INSTALLED=1
 if [ -n "$SUDO_OK" ]; then

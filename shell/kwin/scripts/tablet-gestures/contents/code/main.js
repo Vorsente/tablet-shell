@@ -3,14 +3,27 @@ function shellCall(method) {
     callDBus("org.ipad.TabletShell", "/", "org.ipad.TabletShell", method);
 }
 // each edge can be turned off in the tablet-settings app (kwinrc [Script-tablet-gestures])
-if (readConfig("topEdge", true)) {
-    registerTouchScreenEdge(KWin.ElectricTop, function () { shellCall("ToggleControlCenter"); });
+// Top and right: tabletshell reads the pulls from the touch screen itself when it can
+// (edgesByShell): a KWin touch edge keeps the touches that start on it, so taps on the top bar
+// (the tray arrow in the corner) got lost
+var edges = {};
+function edge(border, key, method) {
+    var want = readConfig(key, true) && !readConfig("edgesByShell", false);
+    if (want && !edges[key]) {
+        registerTouchScreenEdge(border, function () { shellCall(method); });
+    } else if (!want && edges[key]) {
+        unregisterTouchScreenEdge(border);
+    }
+    edges[key] = want;
 }
+function applyEdges() {
+    edge(KWin.ElectricTop, "topEdge", "ToggleControlCenter");
+    edge(KWin.ElectricRight, "rightEdge", "ToggleNotifications");
+}
+applyEdges();
+options.configChanged.connect(applyEdges);
 // left edge = Back: tabletshell's BackGesture.qml (an arrow that follows the finger; KWin's touch
 // edge only reports a finished swipe), still switched by leftEdge in this group
-if (readConfig("rightEdge", true)) {
-    registerTouchScreenEdge(KWin.ElectricRight, function () { shellCall("ToggleNotifications"); });
-}
 
 // Screen time: report which app is in front (desktop file name, or window class)
 function reportActive(w) {

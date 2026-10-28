@@ -37,6 +37,10 @@ case "$name" in
   dirs+=(shell/plasmoids/org.ipad.homescreen/contents/ui shell/plasmoids/org.ipad.dashboard/contents/ui
          shell/wallpapers/org.ipad.daynight/contents/ui)
   python3 -I i18n/build.py "$OUT/en.json" "${dirs[@]}" >/dev/null
+  # Material You colour helper: the same copy next to every QML tree that imports it
+  for d in "${dirs[@]}"; do
+      [[ -f "$d/MaterialYou.js" ]] && ! cmp -s scripts/MaterialYou.js "$d/MaterialYou.js" && cp scripts/MaterialYou.js "$d/MaterialYou.js" || true
+  done
   ;;
  tabletd)
   "$MOC" src/tabletd/tabletd.cpp -o "$OUT/tabletd.moc"
@@ -45,7 +49,7 @@ case "$name" in
   ;;
  tablet-tools)
   qt_args qt Qt6Gui Qt6Network Qt6DBus Qt6Core
-  "${CXX_CMD[@]}" "${FLAGS[@]}" -Ii18n src/tabletd/tablet-tools.cpp src/tabletd/typewriter.cpp src/tabletd/icons.cpp -o "$OUT/tablet-tools" "${qt[@]}" "${KCONFIG[@]}"
+  "${CXX_CMD[@]}" "${FLAGS[@]}" -Ii18n src/tabletd/tablet-tools.cpp src/tabletd/typewriter.cpp src/tabletd/icons.cpp src/tabletd/material-you.cpp -o "$OUT/tablet-tools" "${qt[@]}" "${KCONFIG[@]}"
   ;;
  tabletshell)
   ui_moc

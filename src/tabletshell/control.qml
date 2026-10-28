@@ -15,6 +15,7 @@ import org.kde.plasma.private.mobileshell.screenbrightnessplugin as ScreenBright
 import org.kde.notificationmanager as NotificationManager
 import QtMultimedia
 import "Tr.js" as Tr
+import "MaterialYou.js" as MY
 
 Window {
     id: win
@@ -22,7 +23,10 @@ Window {
     color: "transparent"
     title: Tr.t("Пункт управления")
 
-    LayerShell.Window.scope: "tabletshell-control"
+    // KWin takes the window type from the scope; an unknown scope makes a normal window, which
+    // KWin's Scale effect grows out of the centre (the dimming too). Docks are never animated, so
+    // only the shell's own fades are seen (all tabletshell layers use "dock").
+    LayerShell.Window.scope: "dock"
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom
                                | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight
@@ -368,15 +372,15 @@ Window {
     // frosted, a little lighter than the dimmed backdrop (KWin blurs what is behind)
     // Pixel uses distinct Material light/dark surfaces; the Apple translucency is unchanged.
     readonly property bool materialDark: Kirigami.ColorUtils.brightnessForColor(Kirigami.Theme.textColor) === Kirigami.ColorUtils.Light
-    readonly property color materialInk: materialDark ? "#F4EFF4" : "#1D1B20"
+    readonly property color materialInk: materialDark ? MY.you("#F4EFF4", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#1D1B20", uiStyle.pixel, Kirigami.Theme.highlightColor)
     readonly property color headerInk: pixel ? materialInk : "white"
-    readonly property color materialOnAccent: materialDark ? "#211A2E" : "#FFFFFF"
-    readonly property color glassFill: pixel ? (materialDark ? "#2B2932" : "#F7F2FA") : Qt.rgba(0.96, 0.96, 1, 0.13)
-    readonly property color glassRim: pixel ? (materialDark ? "#57515E" : "#D8CEDF") : Qt.rgba(1, 1, 1, 0.12)
-    readonly property color offFill: pixel ? (materialDark ? "#49454F" : "#E6E0E9") : Qt.rgba(1, 1, 1, 0.17)
-    readonly property color blue: pixel ? (materialDark ? "#D0BCFF" : "#6750A4") : "#0A84FF"
-    readonly property color orange: pixel ? (materialDark ? "#FFB86C" : "#935F00") : "#FF9F0A"
-    readonly property color purple: pixel ? (materialDark ? "#B69DF8" : "#6750A4") : "#5E5CE6"
+    readonly property color materialOnAccent: materialDark ? MY.you("#211A2E", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#FFFFFF", uiStyle.pixel, Kirigami.Theme.highlightColor)
+    readonly property color glassFill: pixel ? (materialDark ? MY.you("#2B2932", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#F7F2FA", uiStyle.pixel, Kirigami.Theme.highlightColor)) : Qt.rgba(0.96, 0.96, 1, 0.13)
+    readonly property color glassRim: pixel ? (materialDark ? MY.you("#57515E", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#D8CEDF", uiStyle.pixel, Kirigami.Theme.highlightColor)) : Qt.rgba(1, 1, 1, 0.12)
+    readonly property color offFill: pixel ? (materialDark ? MY.you("#49454F", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#E6E0E9", uiStyle.pixel, Kirigami.Theme.highlightColor)) : Qt.rgba(1, 1, 1, 0.17)
+    readonly property color blue: pixel ? (materialDark ? MY.you("#D0BCFF", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#6750A4", uiStyle.pixel, Kirigami.Theme.highlightColor)) : MY.you("#0A84FF", uiStyle.pixel, Kirigami.Theme.highlightColor)
+    readonly property color orange: pixel ? (materialDark ? MY.you("#FFB86C", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#935F00", uiStyle.pixel, Kirigami.Theme.highlightColor)) : MY.you("#FF9F0A", uiStyle.pixel, Kirigami.Theme.highlightColor)
+    readonly property color purple: pixel ? (materialDark ? MY.you("#B69DF8", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#6750A4", uiStyle.pixel, Kirigami.Theme.highlightColor)) : MY.you("#5E5CE6", uiStyle.pixel, Kirigami.Theme.highlightColor)
 
     // one band of a glass rim: the outline of `target`, cut to its top (or bottom) `part` pixels
     component RimPart: Item {
@@ -506,7 +510,7 @@ Window {
                 implicitWidth: Math.round(Kirigami.Units.iconSizes.smallMedium * uiStyle.dp)
                 implicitHeight: implicitWidth
                 isMask: true
-                color: win.pixel ? (control.on ? win.materialOnAccent : win.materialInk) : control.on && Qt.colorEqual(control.onColor, "white") ? "#1C1C1E" : "white"
+                color: win.pixel ? (control.on ? win.materialOnAccent : win.materialInk) : control.on && Qt.colorEqual(control.onColor, "white") ? MY.you("#1C1C1E", uiStyle.pixel, Kirigami.Theme.highlightColor) : "white"
             }
             MouseArea {
                 id: area
@@ -551,8 +555,10 @@ Window {
             // Plasma Mobile's screenshot and power tiles wait for the mobile shell, which is not
             // running here: the control center does these itself
             if (/view-fullscreen|screenshot/.test(icon)) {
+                // Spectacle itself: the screen (after the control center faded) in its window,
+                // to crop, draw on, copy or save
                 win.dismiss();
-                shell.start(["sh", "-c", "sleep 0.5; exec spectacle --background --fullscreen"]);
+                shell.start(["sh", "-c", "sleep 0.5; exec spectacle --fullscreen"]);
                 return;
             }
             if (/system-shutdown|application-exit/.test(icon)) {
@@ -608,7 +614,7 @@ Window {
             implicitWidth: Math.round(Kirigami.Units.iconSizes.smallMedium * uiStyle.dp)
             implicitHeight: implicitWidth
             isMask: true
-            color: win.pixel ? (slider.shown >= 0.5 ? win.materialOnAccent : win.materialInk) : slider.shown * slider.height > win.cell * 0.28 + height / 2 ? "#3A3A3C" : "white"
+            color: win.pixel ? (slider.shown >= 0.5 ? win.materialOnAccent : win.materialInk) : slider.shown * slider.height > win.cell * 0.28 + height / 2 ? MY.you("#3A3A3C", uiStyle.pixel, Kirigami.Theme.highlightColor) : "white"
         }
         MouseArea {
             id: drag
@@ -758,7 +764,7 @@ Window {
                         implicitWidth: Math.round(Kirigami.Units.iconSizes.smallMedium * uiStyle.dp)
                         implicitHeight: implicitWidth
                         isMask: true
-                        color: win.charging ? (win.pixel ? (win.materialDark ? "#6DD58C" : "#146C2E") : "#30D158") : win.headerInk
+                        color: win.charging ? (win.pixel ? (win.materialDark ? MY.you("#6DD58C", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#146C2E", uiStyle.pixel, Kirigami.Theme.highlightColor)) : MY.you("#30D158", uiStyle.pixel, Kirigami.Theme.highlightColor)) : win.headerInk
                     }
                 }
             }
@@ -987,7 +993,7 @@ Window {
                     label: on ? Tr.t("Android: стоп") : "Android"
                     iconName: "folder-android-symbolic"
                     on: win.android
-                    onColor: win.pixel ? (win.materialDark ? "#6DD58C" : "#146C2E") : "#30D158"
+                    onColor: win.pixel ? (win.materialDark ? MY.you("#6DD58C", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#146C2E", uiStyle.pixel, Kirigami.Theme.highlightColor)) : MY.you("#30D158", uiStyle.pixel, Kirigami.Theme.highlightColor)
                     onActivated: {
                         if (on) {
                             shell.start(["waydroid", "session", "stop"]);

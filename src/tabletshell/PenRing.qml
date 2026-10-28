@@ -7,6 +7,7 @@ import QtQuick.Window
 import org.kde.layershell as LayerShell
 import org.kde.kirigami as Kirigami
 import "Tr.js" as Tr
+import "MaterialYou.js" as MY
 
 Window {
     id: win
@@ -14,7 +15,7 @@ Window {
     color: "transparent"
     title: Tr.t("Инструменты пера")
 
-    LayerShell.Window.scope: "tabletshell-penring"
+    LayerShell.Window.scope: "dock"
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom
                                | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight
@@ -35,7 +36,7 @@ Window {
     // an unrelated palette from the active Qt/Plasma theme, making icons invisible.
     readonly property bool pixelLook: uiStyle.pixel
     readonly property color buttonSurface: pixelLook ? (Kirigami.Theme.backgroundColor) : Qt.rgba(0.14, 0.16, 0.20, 0.98)
-    readonly property color buttonText: pixelLook ? Kirigami.Theme.textColor : "#ffffff"
+    readonly property color buttonText: pixelLook ? Kirigami.Theme.textColor : MY.you("#ffffff", uiStyle.pixel, Kirigami.Theme.highlightColor)
     readonly property color buttonAccent: Kirigami.Theme.highlightColor
     readonly property color buttonPressedText: Kirigami.Theme.highlightedTextColor
 
@@ -176,7 +177,7 @@ Window {
             flags: Qt.WindowTransparentForInput
             width: row.implicitWidth + 32 * uiStyle.dp
             height: 48 * uiStyle.dp
-            LayerShell.Window.scope: "tabletshell-penhint"
+            LayerShell.Window.scope: "dock"
             LayerShell.Window.layer: LayerShell.Window.LayerOverlay
             LayerShell.Window.anchors: LayerShell.Window.AnchorTop
             LayerShell.Window.margins.top: 56 * uiStyle.dp

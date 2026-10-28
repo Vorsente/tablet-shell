@@ -6,10 +6,12 @@
 // hold space = trackpad (move the cursor); swipe across space = switch language; double space
 // = ". "; double-tap shift = caps lock (green LED); hold the globe = menu.
 import QtQuick
+import org.kde.kirigami as Kirigami
 import QtMultimedia
 import "Layouts.js" as L
 import "Emoji.js" as E
 import "Tr.js" as Tr
+import "MaterialYou.js" as MY
 
 Item {
     id: root
@@ -48,17 +50,17 @@ Item {
                                : Application.styleHints.colorScheme === Qt.ColorScheme.Dark
     QtObject {
         id: pal
-        readonly property color bg: root.pixel ? (root.dark ? "#201D26" : "#F3EDF7") : root.dark ? "#1C1C1E" : "#D3D6DD"
-        readonly property color hairline: root.pixel ? (root.dark ? "#49454F" : "#CAC4D0") : root.dark ? "#2C2C2E" : "#BFC3CB"
-        readonly property color key: root.pixel ? (root.dark ? "#49454F" : "#FFFFFF") : root.dark ? "#56565B" : "#FFFFFF"
-        readonly property color keyDown: root.pixel ? (root.dark ? "#6750A4" : "#D0BCFF") : root.dark ? "#3A3A3E" : "#C9CCD3"
-        readonly property color special: root.pixel ? (root.dark ? "#625B71" : "#E6E0E9") : root.dark ? "#353539" : "#AEB4BF"
+        readonly property color bg: root.pixel ? (root.dark ? MY.you("#201D26", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#F3EDF7", uiStyle.pixel, Kirigami.Theme.highlightColor)) : root.dark ? MY.you("#1C1C1E", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#D3D6DD", uiStyle.pixel, Kirigami.Theme.highlightColor)
+        readonly property color hairline: root.pixel ? (root.dark ? MY.you("#49454F", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#CAC4D0", uiStyle.pixel, Kirigami.Theme.highlightColor)) : root.dark ? MY.you("#2C2C2E", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#BFC3CB", uiStyle.pixel, Kirigami.Theme.highlightColor)
+        readonly property color key: root.pixel ? (root.dark ? MY.you("#49454F", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#FFFFFF", uiStyle.pixel, Kirigami.Theme.highlightColor)) : root.dark ? MY.you("#56565B", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#FFFFFF", uiStyle.pixel, Kirigami.Theme.highlightColor)
+        readonly property color keyDown: root.pixel ? (root.dark ? MY.you("#6750A4", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#D0BCFF", uiStyle.pixel, Kirigami.Theme.highlightColor)) : root.dark ? MY.you("#3A3A3E", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#C9CCD3", uiStyle.pixel, Kirigami.Theme.highlightColor)
+        readonly property color special: root.pixel ? (root.dark ? MY.you("#625B71", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#E6E0E9", uiStyle.pixel, Kirigami.Theme.highlightColor)) : root.dark ? MY.you("#353539", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#AEB4BF", uiStyle.pixel, Kirigami.Theme.highlightColor)
         readonly property color shadow: root.pixel ? "transparent" : root.dark ? Qt.rgba(0, 0, 0, 0.55) : Qt.rgba(0.35, 0.37, 0.42, 0.55)
-        readonly property color text: root.pixel ? (root.dark ? "#E6E0E9" : "#1D1B20") : root.dark ? "#FFFFFF" : "#0B0B0C"
-        readonly property color subText: root.dark ? "#A1A1A8" : "#7C818B"
-        readonly property color ledOff: root.dark ? "#2A2A2D" : "#9097A3"
-        readonly property color popup: root.pixel ? (root.dark ? "#605D68" : "#EADDFF") : root.dark ? "#6A6A70" : "#FFFFFF"
-        readonly property color accent: root.pixel ? (root.dark ? "#D0BCFF" : "#6750A4") : "#0A84FF"
+        readonly property color text: root.pixel ? (root.dark ? MY.you("#E6E0E9", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#1D1B20", uiStyle.pixel, Kirigami.Theme.highlightColor)) : root.dark ? MY.you("#FFFFFF", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#0B0B0C", uiStyle.pixel, Kirigami.Theme.highlightColor)
+        readonly property color subText: root.dark ? MY.you("#A1A1A8", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#7C818B", uiStyle.pixel, Kirigami.Theme.highlightColor)
+        readonly property color ledOff: root.dark ? MY.you("#2A2A2D", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#9097A3", uiStyle.pixel, Kirigami.Theme.highlightColor)
+        readonly property color popup: root.pixel ? (root.dark ? MY.you("#605D68", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#EADDFF", uiStyle.pixel, Kirigami.Theme.highlightColor)) : root.dark ? MY.you("#6A6A70", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#FFFFFF", uiStyle.pixel, Kirigami.Theme.highlightColor)
+        readonly property color accent: root.pixel ? (root.dark ? MY.you("#D0BCFF", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#6750A4", uiStyle.pixel, Kirigami.Theme.highlightColor)) : MY.you("#0A84FF", uiStyle.pixel, Kirigami.Theme.highlightColor)
     }
 
     // ---- key clicks (sounds/make-sounds.py): letters, backspace, the rest ----
@@ -411,6 +413,8 @@ Item {
                 if (!st || st.done || st.i < 0) continue;
                 const k = root.keys[st.i];
                 const dx = tp.x - st.x0, dy = tp.y - st.y0;
+                // how far the finger went: a long way is a swipe, not a key (see onReleased)
+                st.moved = Math.max(st.moved, Math.hypot(dx, dy));
                 if (root.popup && root.popup.id === tp.pointId) {
                     const n = root.popup.options.length;
                     const w = root.popup.cell;
@@ -463,6 +467,8 @@ Item {
                     root.trackpad = false;
                 } else if (st.swipe) {
                     root.switchLanguage();
+                } else if (st.moved > root.keyH * 0.9 && !st.flick) {
+                    // a swipe that crossed the keyboard (scrolling, a system gesture): types nothing
                 } else if (k.spec[0] !== "bs") {
                     root.typeKey(k, st);
                 }

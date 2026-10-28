@@ -6,7 +6,8 @@
 // Today's running word count is kept in $XDG_RUNTIME_DIR/typewriter-live for the statistics and
 // the home screen widgets.
 // Started by ~/.local/bin/typewriter, which passes TYPEWRITER_* variables; coding mode starts it
-// with PILL_MODE=coding: battery and clock only, × closes the coding terminal.
+// with PILL_MODE=coding: battery and clock only, × closes the coding terminal; reading mode with
+// PILL_MODE=reading: the same, × leaves reading mode (tabletrc [Reading] closeButton).
 import QtQuick
 import QtQuick.Window
 import QtMultimedia
@@ -21,7 +22,7 @@ Window {
     width: label.implicitWidth + (menuButton.visible ? menuButton.width : 0) + exitButton.width + 36 * uiStyle.dp
     height: Math.max(label.implicitHeight + 10 * uiStyle.dp, 30 * uiStyle.dp)
 
-    LayerShell.Window.scope: "tabletshell-pill"
+    LayerShell.Window.scope: "dock"
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorRight
     LayerShell.Window.margins.top: 6 * uiStyle.dp
@@ -30,7 +31,8 @@ Window {
     LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
 
     property string text: ""
-    readonly property bool coding: shell.env("PILL_MODE") === "coding"
+    readonly property bool coding: shell.env("PILL_MODE") === "coding" || reading
+    readonly property bool reading: shell.env("PILL_MODE") === "reading"
     readonly property string file: shell.env("TYPEWRITER_FILE")
     readonly property int baseline: parseInt(shell.env("TYPEWRITER_BASELINE")) || 0
     readonly property int earlierToday: parseInt(shell.env("TYPEWRITER_TODAY")) || 0
@@ -173,6 +175,10 @@ Window {
                 anchors.fill: parent
                 anchors.margins: -6 * uiStyle.dp   // easier to hit with a finger
                 onClicked: {
+                    if (win.reading) {
+                        shell.start([shell.env("HOME") + "/.local/bin/reading-mode", "off"]);
+                        return;
+                    }
                     if (win.coding) {
                         // the coding terminal (LazyVim asks about unsaved files itself)
                         shell.start(["pkill", "-TERM", "-f", "profile TabletShellCoding"]);

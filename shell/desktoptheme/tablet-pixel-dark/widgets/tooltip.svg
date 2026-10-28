@@ -1,13 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48">
-<path id="topleft" fill="#2B2932" d="M 16 0 A 16 16 0 0 0 0 16 H 16 Z"/>
-<path id="topright" fill="#2B2932" d="M 32 0 A 16 16 0 0 1 48 16 H 32 Z"/>
-<path id="bottomleft" fill="#2B2932" d="M 0 32 A 16 16 0 0 0 16 48 V 32 Z"/>
-<path id="bottomright" fill="#2B2932" d="M 48 32 A 16 16 0 0 1 32 48 V 32 Z"/>
-<rect id="top" x="16" y="0" width="16" height="16" fill="#2B2932"/>
-<rect id="bottom" x="16" y="32" width="16" height="16" fill="#2B2932"/>
-<rect id="left" x="0" y="16" width="16" height="16" fill="#2B2932"/>
-<rect id="right" x="32" y="16" width="16" height="16" fill="#2B2932"/>
-<rect id="center" x="16" y="16" width="16" height="16" fill="#2B2932"/>
+<style type="text/css" id="current-color-scheme">.ColorScheme-Background { color:#2B2932; }</style>
+<path id="topleft" class="ColorScheme-Background" style="fill:currentColor" d="M 16 0 A 16 16 0 0 0 0 16 H 16 Z"/>
+<path id="topright" class="ColorScheme-Background" style="fill:currentColor" d="M 32 0 A 16 16 0 0 1 48 16 H 32 Z"/>
+<path id="bottomleft" class="ColorScheme-Background" style="fill:currentColor" d="M 0 32 A 16 16 0 0 0 16 48 V 32 Z"/>
+<path id="bottomright" class="ColorScheme-Background" style="fill:currentColor" d="M 48 32 A 16 16 0 0 1 32 48 V 32 Z"/>
+<rect id="top" x="16" y="0" width="16" height="16" class="ColorScheme-Background" style="fill:currentColor"/>
+<rect id="bottom" x="16" y="32" width="16" height="16" class="ColorScheme-Background" style="fill:currentColor"/>
+<rect id="left" x="0" y="16" width="16" height="16" class="ColorScheme-Background" style="fill:currentColor"/>
+<rect id="right" x="32" y="16" width="16" height="16" class="ColorScheme-Background" style="fill:currentColor"/>
+<rect id="center" x="16" y="16" width="16" height="16" class="ColorScheme-Background" style="fill:currentColor"/>
 <path id="mask-topleft" fill="#000000" d="M 16 0 A 16 16 0 0 0 0 16 H 16 Z"/>
 <path id="mask-topright" fill="#000000" d="M 32 0 A 16 16 0 0 1 48 16 H 32 Z"/>
 <path id="mask-bottomleft" fill="#000000" d="M 0 32 A 16 16 0 0 0 16 48 V 32 Z"/>

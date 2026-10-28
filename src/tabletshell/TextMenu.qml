@@ -10,6 +10,7 @@ import QtQuick.Window
 import org.kde.layershell as LayerShell
 import org.kde.kirigami as Kirigami
 import "Tr.js" as Tr
+import "MaterialYou.js" as MY
 
 Window {
     id: win
@@ -19,7 +20,7 @@ Window {
     width: bubble.width + 2 * pad
     height: bubble.height + arrow.height + 2 * pad
 
-    LayerShell.Window.scope: "tabletshell-textmenu"
+    LayerShell.Window.scope: "dock"
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorLeft
     LayerShell.Window.exclusionZone: -1
@@ -28,7 +29,7 @@ Window {
     readonly property bool pixelLook: uiStyle.pixel
     readonly property real pad: 10 * uiStyle.dp   // room for the shadow
     readonly property color surface: pixelLook ? Kirigami.Theme.backgroundColor : Qt.rgba(0.17, 0.17, 0.18, 0.97)
-    readonly property color ink: pixelLook ? Kirigami.Theme.textColor : "#ffffff"
+    readonly property color ink: pixelLook ? Kirigami.Theme.textColor : MY.you("#ffffff", uiStyle.pixel, Kirigami.Theme.highlightColor)
     readonly property color pressedInk: pixelLook ? Kirigami.Theme.highlightColor : Qt.rgba(1, 1, 1, 0.16)
 
     property string app: ""
@@ -129,7 +130,7 @@ Window {
         color: "transparent"
         transientParent: null
         flags: Qt.WindowTransparentForInput
-        LayerShell.Window.scope: "tabletshell-texthandle-drag"
+        LayerShell.Window.scope: "dock"
         LayerShell.Window.layer: LayerShell.Window.LayerOverlay
         LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom
                                    | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight

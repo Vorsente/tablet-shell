@@ -14,6 +14,7 @@ import org.kde.ksysguard.sensors as Sensors
 import org.kde.notificationmanager as NotificationManager
 import org.kde.plasma.private.mpris as Mpris
 import "Tr.js" as Tr
+import "MaterialYou.js" as MY
 
 ContainmentItem {
     id: root
@@ -34,21 +35,21 @@ ContainmentItem {
         // Material type: Roboto Flex when installed (install-material-icons.sh)
         readonly property string fontFamily: root.pixel && Qt.fontFamilies().indexOf("Roboto Flex") >= 0
                                              ? "Roboto Flex" : Kirigami.Theme.defaultFont.family
-        readonly property color background: root.pixel ? (root.dark ? "#141218" : "#FEF7FF") : "#000000"
-        readonly property color plate: root.pixel ? (root.dark ? "#2B2932" : "#F3EDF7") : "#1C1C1E"
-        readonly property color label: root.pixel ? (root.dark ? "#E6E0E9" : "#1D1B20") : "#FFFFFF"
-        readonly property color secondary: root.pixel ? (root.dark ? "#CAC4D0" : "#49454F") : Qt.rgba(235 / 255, 235 / 255, 245 / 255, 0.6)
-        readonly property color tertiary: root.pixel ? (root.dark ? "#938F99" : "#79747E") : Qt.rgba(235 / 255, 235 / 255, 245 / 255, 0.3)
-        readonly property color blue: root.pixel ? (root.dark ? "#D0BCFF" : "#6750A4") : "#0A84FF"
-        readonly property color green: root.pixel ? (root.dark ? "#81C995" : "#146C2E") : "#30D158"
-        readonly property color yellow: root.pixel ? (root.dark ? "#F9DE81" : "#755B00") : "#FFD60A"
-        readonly property color orange: root.pixel ? (root.dark ? "#FFB86C" : "#825500") : "#FF9F0A"
-        readonly property color red: root.pixel ? (root.dark ? "#F2B8B5" : "#B3261E") : "#FF453A"
-        readonly property color purple: root.pixel ? (root.dark ? "#D0BCFF" : "#6750A4") : "#BF5AF2"
-        readonly property color teal: root.pixel ? (root.dark ? "#80D5D0" : "#006A66") : "#64D2FF"
-        readonly property color claude: "#D97757"
-        readonly property color pink: root.pixel ? (root.dark ? "#EFB8C8" : "#7D5260") : "#FF375F"
-        readonly property color indigo: root.pixel ? (root.dark ? "#B69DF8" : "#625B71") : "#5E5CE6"
+        readonly property color background: root.pixel ? (root.dark ? MY.you("#141218", root.pixel, Kirigami.Theme.highlightColor) : MY.you("#FEF7FF", root.pixel, Kirigami.Theme.highlightColor)) : MY.you("#000000", root.pixel, Kirigami.Theme.highlightColor)
+        readonly property color plate: root.pixel ? (root.dark ? MY.you("#2B2932", root.pixel, Kirigami.Theme.highlightColor) : MY.you("#F3EDF7", root.pixel, Kirigami.Theme.highlightColor)) : MY.you("#1C1C1E", root.pixel, Kirigami.Theme.highlightColor)
+        readonly property color label: root.pixel ? (root.dark ? MY.you("#E6E0E9", root.pixel, Kirigami.Theme.highlightColor) : MY.you("#1D1B20", root.pixel, Kirigami.Theme.highlightColor)) : MY.you("#FFFFFF", root.pixel, Kirigami.Theme.highlightColor)
+        readonly property color secondary: root.pixel ? (root.dark ? MY.you("#CAC4D0", root.pixel, Kirigami.Theme.highlightColor) : MY.you("#49454F", root.pixel, Kirigami.Theme.highlightColor)) : Qt.rgba(235 / 255, 235 / 255, 245 / 255, 0.6)
+        readonly property color tertiary: root.pixel ? (root.dark ? MY.you("#938F99", root.pixel, Kirigami.Theme.highlightColor) : MY.you("#79747E", root.pixel, Kirigami.Theme.highlightColor)) : Qt.rgba(235 / 255, 235 / 255, 245 / 255, 0.3)
+        readonly property color blue: root.pixel ? (root.dark ? MY.you("#D0BCFF", root.pixel, Kirigami.Theme.highlightColor) : MY.you("#6750A4", root.pixel, Kirigami.Theme.highlightColor)) : MY.you("#0A84FF", root.pixel, Kirigami.Theme.highlightColor)
+        readonly property color green: root.pixel ? (root.dark ? MY.you("#81C995", root.pixel, Kirigami.Theme.highlightColor) : MY.you("#146C2E", root.pixel, Kirigami.Theme.highlightColor)) : MY.you("#30D158", root.pixel, Kirigami.Theme.highlightColor)
+        readonly property color yellow: root.pixel ? (root.dark ? MY.you("#F9DE81", root.pixel, Kirigami.Theme.highlightColor) : MY.you("#755B00", root.pixel, Kirigami.Theme.highlightColor)) : MY.you("#FFD60A", root.pixel, Kirigami.Theme.highlightColor)
+        readonly property color orange: root.pixel ? (root.dark ? MY.you("#FFB86C", root.pixel, Kirigami.Theme.highlightColor) : MY.you("#825500", root.pixel, Kirigami.Theme.highlightColor)) : MY.you("#FF9F0A", root.pixel, Kirigami.Theme.highlightColor)
+        readonly property color red: root.pixel ? (root.dark ? MY.you("#F2B8B5", root.pixel, Kirigami.Theme.highlightColor) : MY.you("#B3261E", root.pixel, Kirigami.Theme.highlightColor)) : MY.you("#FF453A", root.pixel, Kirigami.Theme.highlightColor)
+        readonly property color purple: root.pixel ? (root.dark ? MY.you("#D0BCFF", root.pixel, Kirigami.Theme.highlightColor) : MY.you("#6750A4", root.pixel, Kirigami.Theme.highlightColor)) : MY.you("#BF5AF2", root.pixel, Kirigami.Theme.highlightColor)
+        readonly property color teal: root.pixel ? (root.dark ? MY.you("#80D5D0", root.pixel, Kirigami.Theme.highlightColor) : MY.you("#006A66", root.pixel, Kirigami.Theme.highlightColor)) : MY.you("#64D2FF", root.pixel, Kirigami.Theme.highlightColor)
+        readonly property color claude: MY.you("#D97757", root.pixel, Kirigami.Theme.highlightColor)
+        readonly property color pink: root.pixel ? (root.dark ? MY.you("#EFB8C8", root.pixel, Kirigami.Theme.highlightColor) : MY.you("#7D5260", root.pixel, Kirigami.Theme.highlightColor)) : MY.you("#FF375F", root.pixel, Kirigami.Theme.highlightColor)
+        readonly property color indigo: root.pixel ? (root.dark ? MY.you("#B69DF8", root.pixel, Kirigami.Theme.highlightColor) : MY.you("#625B71", root.pixel, Kirigami.Theme.highlightColor)) : MY.you("#5E5CE6", root.pixel, Kirigami.Theme.highlightColor)
     }
 
     // ---- sensors --------------------------------------------------------------------------

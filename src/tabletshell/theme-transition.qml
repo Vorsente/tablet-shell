@@ -19,7 +19,7 @@ Window {
     color: "transparent"
     visible: true
     title: Tr.t("Смена стиля")
-    LayerShell.Window.scope: "tabletshell-theme-transition"
+    LayerShell.Window.scope: "dock"
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom
                                | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight
@@ -185,7 +185,7 @@ Window {
             width: 120
             height: 120
             title: Tr.t("Смена стиля")
-            LayerShell.Window.scope: "tabletshell-theme-loader"
+            LayerShell.Window.scope: "dock"
             LayerShell.Window.layer: LayerShell.Window.LayerOverlay
             LayerShell.Window.anchors: LayerShell.Window.AnchorNone   // no edge: centred by the compositor
             LayerShell.Window.exclusionZone: -1

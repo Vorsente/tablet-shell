@@ -21,7 +21,7 @@ Window {
     width: 440 * uiStyle.dp
     height: 600 * uiStyle.dp
 
-    LayerShell.Window.scope: "tabletshell-typewriter-panel"
+    LayerShell.Window.scope: "dock"
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorRight
     LayerShell.Window.margins.top: 46 * uiStyle.dp

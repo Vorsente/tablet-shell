@@ -477,6 +477,7 @@ public:
             ioctl(m_touchFd, EVIOCGABS(ABS_MT_POSITION_Y), &m_touchY);
             break;
         }
+        takeEdges(m_touchFd >= 0);
         if (m_touchFd < 0) {
             return;
         }
@@ -511,9 +512,14 @@ public:
             QTimer::singleShot(5000, primary, [primary] { startPrimaryWatch(primary); });
         });
         startPrimaryWatch(primary);
-        // touches come in the panel's own orientation; follow the screen's rotation
+        // touches come in the panel's own orientation; follow the screen's rotation (once it has
+        // settled: a rotation changes the geometry several times, and the screen is busy redrawing)
+        m_rotationRead = new QTimer(this);
+        m_rotationRead->setSingleShot(true);
+        m_rotationRead->setInterval(400);
+        connect(m_rotationRead, &QTimer::timeout, this, &Shell::readRotation);
         auto watchScreen = [this](QScreen *s) {
-            connect(s, &QScreen::geometryChanged, this, &Shell::readRotation);
+            connect(s, &QScreen::geometryChanged, m_rotationRead, qOverload<>(&QTimer::start));
         };
         for (QScreen *s : QGuiApplication::screens()) {
             watchScreen(s);
@@ -592,6 +598,8 @@ public:
             m_cancelled = down > 1;
             m_touchSlot = first;
             m_touchStart = m_touchLast = touchPoint(first);
+            m_fromTop = down == 1 && m_touchStart.y() < kTopEdge && edgeOn("topEdge");
+            m_fromRight = down == 1 && m_touchStart.x() > 1 - kRightEdge && edgeOn("rightEdge");
             m_primaryAtDown = m_primaryChanges;
             Q_EMIT touchStarted(m_touchStart.x(), m_touchStart.y());
             if (!m_cancelled) {
@@ -602,7 +610,9 @@ public:
         if (down == 0) {
             m_touching = false;
             m_holdTimer->stop();
-            if (m_held && !m_cancelled) {
+            // held, then carried far without selecting anything: a slow swipe, not a long press
+            const bool swiped = QLineF(m_touchStart, m_touchLast).length() > 0.08 && m_primaryChanges == m_primaryAtDown;
+            if (m_held && !m_cancelled && !swiped) {
                 // let the app take focus / finish its selection first
                 QTimer::singleShot(150, this, [this, at = m_touchLast] { offerTextMenu(at); });
             }
@@ -616,10 +626,59 @@ public:
         if (m_contacts[m_touchSlot].id >= 0) {
             m_touchLast = touchPoint(m_touchSlot);
         }
+        // pulled down from the top edge: the control center (the touch also went to the panel
+        // there as usual, so a tap on the tray or the clock still works)
+        if (m_fromTop) {
+            const QPointF d = m_touchLast - m_touchStart;
+            if (d.y() > 0.05 && std::abs(d.x()) < d.y()) {
+                m_fromTop = false;
+                m_cancelled = true;
+                m_holdTimer->stop();
+                ToggleControlCenter();
+                return;
+            }
+        }
+        // pulled in from the right edge: notifications
+        if (m_fromRight) {
+            const QPointF d = m_touchLast - m_touchStart;
+            if (-d.x() > 0.04 && std::abs(d.y()) < -d.x()) {
+                m_fromRight = false;
+                m_cancelled = true;
+                m_holdTimer->stop();
+                ToggleNotifications();
+                return;
+            }
+        }
         if (!m_held && QLineF(m_touchStart, m_touchLast).length() > 0.015) {
             m_cancelled = true;   // a swipe or scroll
             m_holdTimer->stop();
         }
+    }
+
+    // The pulls from the top edge (control center) and the right edge (notifications) are read
+    // here, not by KWin: a KWin touch edge keeps every touch that starts in its 3 mm band for
+    // itself, which is most of the top bar (the tray arrow in the corner opened only now and
+    // then). The tablet-gestures script leaves both edges alone while kwinrc
+    // [Script-tablet-gestures] edgesByShell is true; topEdge / rightEdge there still turn them off.
+    static constexpr qreal kTopEdge = 0.03;     // of the screen height
+    static constexpr qreal kRightEdge = 0.02;   // of the screen width
+    bool edgeOn(const char *key) const
+    {
+        const QSettings kwinrc(QDir::homePath() + QStringLiteral("/.config/kwinrc"), QSettings::IniFormat);
+        return kwinrc.value(QStringLiteral("Script-tablet-gestures/") + QLatin1String(key), true).toBool();
+    }
+    void takeEdges(bool take)
+    {
+        const QSettings kwinrc(QDir::homePath() + QStringLiteral("/.config/kwinrc"), QSettings::IniFormat);
+        if (kwinrc.value(QStringLiteral("Script-tablet-gestures/edgesByShell"), false).toBool() == take) {
+            return;
+        }
+        // KConfig writes it (QSettings would rewrite KWin's [Tiling][...] groups)
+        QProcess::execute(QStringLiteral("kwriteconfig6"), {QStringLiteral("--file"), QStringLiteral("kwinrc"),
+            QStringLiteral("--group"), QStringLiteral("Script-tablet-gestures"), QStringLiteral("--key"),
+            QStringLiteral("edgesByShell"), QStringLiteral("--type"), QStringLiteral("bool"), take ? QStringLiteral("true") : QStringLiteral("false")});
+        QDBusConnection::sessionBus().asyncCall(QDBusMessage::createMethodCall(
+            QStringLiteral("org.kde.KWin"), QStringLiteral("/KWin"), QStringLiteral("org.kde.KWin"), QStringLiteral("reconfigure")));
     }
 
     // apps that bring their own long-press text menu: browsers, Electron, GTK, Kirigami (Qt Quick
@@ -1535,12 +1594,15 @@ private:
     bool m_touching = false;
     bool m_held = false;
     bool m_cancelled = false;
+    bool m_fromTop = false;
+    bool m_fromRight = false;
     QPointF m_touchStart;
     QPointF m_touchLast;
     QTimer *m_holdTimer = nullptr;
     int m_primaryChanges = 0;
     int m_primaryAtDown = 0;
     int m_rotation = 1;
+    QTimer *m_rotationRead = nullptr;
     qint64 m_windowPid = 0;
     QRectF m_windowArea;
     bool m_windowHome = false;

@@ -3,12 +3,14 @@
 // seconds, over a dimmed screen (not hidden: it is only a glance). Touches pass through.
 // tabletshell: shell.chargingStarted (UPower OnBattery -> false, or D-Bus ShowCharging).
 import QtQuick
+import org.kde.kirigami as Kirigami
 import QtQuick.Shapes
 import QtQuick.Window
 import QtMultimedia
 
 import org.kde.layershell as LayerShell
 import "Tr.js" as Tr
+import "MaterialYou.js" as MY
 
 Window {
     id: win
@@ -17,14 +19,14 @@ Window {
     flags: Qt.WindowTransparentForInput
     title: Tr.t("Зарядка")
 
-    LayerShell.Window.scope: "tabletshell-charge"
+    LayerShell.Window.scope: "dock"
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom
                                | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight
     LayerShell.Window.exclusionZone: -1
     LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
 
-    readonly property color green: uiStyle.pixel ? "#D0BCFF" : "#30D158"
+    readonly property color green: uiStyle.pixel ? MY.you("#D0BCFF", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#30D158", uiStyle.pixel, Kirigami.Theme.highlightColor)
     property int level: 0         // battery percent
     property bool full: false
     property real shown: 0        // fade in/out of everything
@@ -67,9 +69,9 @@ Window {
         anchors.fill: parent
         opacity: 0.6 * win.shown
         gradient: Gradient {
-            GradientStop { position: 0; color: "#000000" }
-            GradientStop { position: 0.5; color: uiStyle.pixel ? "#211B2D" : "#0b1a10" }
-            GradientStop { position: 1; color: "#000000" }
+            GradientStop { position: 0; color: MY.you("#000000", uiStyle.pixel, Kirigami.Theme.highlightColor) }
+            GradientStop { position: 0.5; color: uiStyle.pixel ? MY.you("#211B2D", uiStyle.pixel, Kirigami.Theme.highlightColor) : MY.you("#0b1a10", uiStyle.pixel, Kirigami.Theme.highlightColor) }
+            GradientStop { position: 1; color: MY.you("#000000", uiStyle.pixel, Kirigami.Theme.highlightColor) }
         }
     }
 
@@ -104,7 +106,7 @@ Window {
             width: 256
             height: 256
             radius: 128
-            color: uiStyle.pixel ? "#2B2932" : Qt.rgba(0, 0, 0, 0.72)
+            color: uiStyle.pixel ? MY.you("#2B2932", uiStyle.pixel, Kirigami.Theme.highlightColor) : Qt.rgba(0, 0, 0, 0.72)
         }
 
         // the ring: dim track, green arc up to the level

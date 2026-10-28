@@ -19,6 +19,7 @@ import org.kde.plasma.private.kicker as Kicker
 import org.kde.plasma.plasma5support as P5Support
 import org.kde.milou as Milou
 import "Tr.js" as Tr
+import "MaterialYou.js" as MY
 
 ContainmentItem {
     id: root
@@ -43,26 +44,31 @@ ContainmentItem {
     // (by the text colour: glass themes like WhiteSurLiquid give a translucent black background in
     // their light variant too)
     readonly property bool dark: Kirigami.ColorUtils.brightnessForColor(Kirigami.Theme.textColor) === Kirigami.ColorUtils.Light
+    // Material You: a baseline Material colour in the wallpaper's palette (MaterialYou.js; the KDE
+    // colour scheme made by tablet-tools material-you carries the seed in its highlight colour)
+    function my(c) {
+        return MY.you(c, pixel, Kirigami.Theme.highlightColor);
+    }
     readonly property QtObject pal: QtObject {
-        readonly property color card: root.pixel ? (root.dark ? "#292831" : "#F3F1FA") : root.dark ? Qt.rgba(28 / 255, 28 / 255, 30 / 255, 0.74) : Qt.rgba(1, 1, 1, 0.72)
+        readonly property color card: root.pixel ? (root.dark ? root.my("#292831") : root.my("#F3F1FA")) : root.dark ? Qt.rgba(28 / 255, 28 / 255, 30 / 255, 0.74) : Qt.rgba(1, 1, 1, 0.72)
         // Liquid Glass: a light rim around cards in both looks
-        readonly property color cardBorder: root.pixel ? (root.dark ? "#58555F" : "#D9D3E1") : root.dark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(1, 1, 1, 0.65)
-        readonly property color sheet: root.pixel ? (root.dark ? "#2B2932" : "#F6F2FA") : root.dark ? Qt.rgba(0.16, 0.16, 0.19, 0.92) : Qt.rgba(0.97, 0.97, 0.98, 0.94)
-        readonly property color sheetBorder: root.pixel ? (root.dark ? "#53505B" : "#D6D0DD") : root.dark ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(0, 0, 0, 0.1)
-        readonly property color text: root.pixel ? (root.dark ? "#E7E1EC" : "#1D1B20") : root.dark ? "white" : "black"
-        readonly property color secondary: root.pixel ? (root.dark ? "#CAC4D0" : "#625B71") : root.dark ? Qt.rgba(235 / 255, 235 / 255, 245 / 255, 0.6) : Qt.rgba(60 / 255, 60 / 255, 67 / 255, 0.6)
+        readonly property color cardBorder: root.pixel ? (root.dark ? root.my("#58555F") : root.my("#D9D3E1")) : root.dark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(1, 1, 1, 0.65)
+        readonly property color sheet: root.pixel ? (root.dark ? root.my("#2B2932") : root.my("#F6F2FA")) : root.dark ? Qt.rgba(0.16, 0.16, 0.19, 0.92) : Qt.rgba(0.97, 0.97, 0.98, 0.94)
+        readonly property color sheetBorder: root.pixel ? (root.dark ? root.my("#53505B") : root.my("#D6D0DD")) : root.dark ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(0, 0, 0, 0.1)
+        readonly property color text: root.pixel ? (root.dark ? root.my("#E7E1EC") : root.my("#1D1B20")) : root.dark ? "white" : "black"
+        readonly property color secondary: root.pixel ? (root.dark ? root.my("#CAC4D0") : root.my("#625B71")) : root.dark ? Qt.rgba(235 / 255, 235 / 255, 245 / 255, 0.6) : Qt.rgba(60 / 255, 60 / 255, 67 / 255, 0.6)
         readonly property color tertiary: root.dark ? Qt.rgba(1, 1, 1, 0.4) : Qt.rgba(0, 0, 0, 0.3)
-        readonly property color fill: root.pixel ? (root.dark ? "#49454F" : "#E8DEF8") : root.dark ? Qt.rgba(1, 1, 1, 0.15) : Qt.rgba(0, 0, 0, 0.08)
-        readonly property color fillStrong: root.pixel ? (root.dark ? "#605D67" : "#D0C9D9") : root.dark ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(0, 0, 0, 0.14)
-        readonly property color fillWeak: root.pixel ? (root.dark ? "#33313B" : "#F3EDF7") : root.dark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.04)
-        readonly property color control: root.pixel ? (root.dark ? "#49454F" : "#E6E0E9") : root.dark ? Qt.rgba(0.35, 0.35, 0.38, 0.95) : Qt.rgba(0.82, 0.82, 0.84, 0.95)
-        readonly property color green: root.pixel ? (root.dark ? "#81C995" : "#146C2E") : root.dark ? "#30D158" : "#34C759"
-        readonly property color red: root.pixel ? (root.dark ? "#F2B8B5" : "#B3261E") : root.dark ? "#FF453A" : "#FF3B30"
-        readonly property color orange: root.pixel ? "#FFB86C" : root.dark ? "#FF9F0A" : "#FF9500"
-        readonly property color blue: root.pixel ? (root.dark ? "#D0BCFF" : "#6750A4") : root.dark ? "#0A84FF" : "#007AFF"
-        readonly property color yellow: root.pixel ? "#F9DE81" : root.dark ? "#FFD60A" : "#FFCC00"
-        readonly property color purple: root.pixel ? "#B69DF8" : root.dark ? "#BF5AF2" : "#AF52DE"
-        readonly property color cyan: root.pixel ? "#7EC9D9" : root.dark ? "#64D2FF" : "#32ADE6"
+        readonly property color fill: root.pixel ? (root.dark ? root.my("#49454F") : root.my("#E8DEF8")) : root.dark ? Qt.rgba(1, 1, 1, 0.15) : Qt.rgba(0, 0, 0, 0.08)
+        readonly property color fillStrong: root.pixel ? (root.dark ? root.my("#605D67") : root.my("#D0C9D9")) : root.dark ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(0, 0, 0, 0.14)
+        readonly property color fillWeak: root.pixel ? (root.dark ? root.my("#33313B") : root.my("#F3EDF7")) : root.dark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.04)
+        readonly property color control: root.pixel ? (root.dark ? root.my("#49454F") : root.my("#E6E0E9")) : root.dark ? Qt.rgba(0.35, 0.35, 0.38, 0.95) : Qt.rgba(0.82, 0.82, 0.84, 0.95)
+        readonly property color green: root.pixel ? (root.dark ? root.my("#81C995") : root.my("#146C2E")) : root.dark ? "#30D158" : "#34C759"
+        readonly property color red: root.pixel ? (root.dark ? root.my("#F2B8B5") : root.my("#B3261E")) : root.dark ? "#FF453A" : "#FF3B30"
+        readonly property color orange: root.pixel ? root.my("#FFB86C") : root.dark ? "#FF9F0A" : "#FF9500"
+        readonly property color blue: root.pixel ? (root.dark ? root.my("#D0BCFF") : root.my("#6750A4")) : root.dark ? "#0A84FF" : "#007AFF"
+        readonly property color yellow: root.pixel ? root.my("#F9DE81") : root.dark ? "#FFD60A" : "#FFCC00"
+        readonly property color purple: root.pixel ? root.my("#B69DF8") : root.dark ? "#BF5AF2" : "#AF52DE"
+        readonly property color cyan: root.pixel ? root.my("#7EC9D9") : root.dark ? "#64D2FF" : "#32ADE6"
     }
 
     // ---- Material (Pixel) look -----------------------------------------------------------------
@@ -85,13 +91,15 @@ ContainmentItem {
             indigo:    d ? ["#2F3778", "#DFE0FF", "#BAC3FF"] : ["#DFE0FF", "#000F5C", "#4A55A2"],
             neutral:   d ? ["#2B2930", "#E6E0E9", "#D0BCFF"] : ["#ECE6F0", "#1D1B20", "#6750A4"],
         };
+        // Material You: the widgets take the wallpaper's palette (primary / secondary / tertiary
+        // containers, tinted by my()); battery, rates, YouTube and Claude keep their own colours
         const byKind = {
-            weather: "blue", calendar: "primary", clock: "tertiary", battery: "green",
-            typewriter: "secondary", screentime: "teal", youtube: "red", linux: "neutral",
-            russia: "neutral", custom: "teal", rates: "green", claude: "orange", onthisday: "tertiary",
-            sky: "indigo", weekly: "secondary", note: "orange",
+            weather: "primary", calendar: "secondary", clock: "tertiary", battery: "green",
+            typewriter: "secondary", screentime: "tertiary", youtube: "red", linux: "neutral",
+            russia: "neutral", custom: "primary", rates: "green", claude: "orange", onthisday: "tertiary",
+            sky: "primary", weekly: "secondary", note: "tertiary",
         };
-        const t = sets[byKind[kind] || kind] || sets.neutral;
+        const t = (sets[byKind[kind] || kind] || sets.neutral).map(c => my(c));
         return { container: t[0], on: t[1], accent: t[2] };
     }
     readonly property real glanceHeight: pixel && !pcMode ? Kirigami.Units.gridUnit * 4.4 : 0
@@ -250,6 +258,23 @@ ContainmentItem {
     // on each drag movement or page render.
     function pageEntries(p) {
         return placement.byPage[p] || [];
+    }
+    // make a page's ListModel hold exactly `wanted` (layout indices), keeping the rows already there
+    function syncEntries(model, wanted) {
+        const want = {};
+        for (const i of wanted) want[i] = true;
+        const have = {};
+        for (let r = model.count - 1; r >= 0; --r) {
+            const i = model.get(r).entryIndex;
+            if (want[i] && !have[i]) {
+                have[i] = true;
+            } else {
+                model.remove(r);
+            }
+        }
+        for (const i of wanted) {
+            if (!have[i]) model.append({ entryIndex: i });
+        }
     }
     // swipe view page of the first app page (the Today page is left of it)
     readonly property int firstAppPage: 1
@@ -847,12 +872,19 @@ ContainmentItem {
                         width: root.columns * root.cellWidth
                         height: root.rows * root.cellHeight
 
+                        // A stable model per page: after a rotation (other columns and rows) or
+                        // an edit, only the tiles that moved to another page are rebuilt; the
+                        // rest, widgets with their data among them, just move to their new cell.
                         Repeater {
-                            model: root.pageEntries(page.index)
+                            readonly property var wanted: root.pageEntries(page.index)
+                            onWantedChanged: root.syncEntries(slots, wanted)
+                            Component.onCompleted: root.syncEntries(slots, wanted)
+                            model: ListModel { id: slots }
 
                             delegate: Loader {
                                 id: slot
-                                required property int modelData
+                                required property int entryIndex
+                                readonly property int modelData: entryIndex
                                 readonly property var entry: root.layout[modelData]
                                 readonly property var at: root.placement.pos[modelData]
                                 x: at ? at.col * root.cellWidth : 0
@@ -1113,10 +1145,42 @@ ContainmentItem {
                 onRunningChanged: if (!running) searchBar.keyboardUp = false
             }
 
+            // A finger that lands on the bar is a tap only if it stays put: a swipe that starts
+            // here turns the home pages (sideways) and focuses nothing (on touchscreens with a
+            // jittery first contact, like the Surface, the field used to take focus on press).
             MouseArea {
                 id: searchArea
                 anchors.fill: parent
-                onClicked: searchField.forceActiveFocus()
+                // the clear / app grid button at the right end keeps its own taps
+                anchors.rightMargin: parent.height * 0.42 + Kirigami.Units.iconSizes.smallMedium + Kirigami.Units.smallSpacing
+                z: 1
+                property point start
+                property bool swiped: false
+                preventStealing: true
+                onPressed: m => {
+                    start = Qt.point(m.x, m.y);
+                    swiped = false;
+                }
+                onPositionChanged: m => {
+                    if (!swiped && Math.hypot(m.x - start.x, m.y - start.y) > root.tapSlop) {
+                        swiped = true;
+                    }
+                }
+                onReleased: m => {
+                    const dx = m.x - start.x, dy = m.y - start.y;
+                    if (!swiped) {
+                        searchField.forceActiveFocus();
+                        if (searchField.length) {
+                            searchField.cursorPosition = searchField.positionAt(mapToItem(searchField, m.x, m.y).x);
+                        }
+                    } else if (Math.abs(dx) > Math.abs(dy) * 1.5 && Math.abs(dx) > Kirigami.Units.gridUnit * 2) {
+                        if (dx < 0) {
+                            pages.incrementCurrentIndex();
+                        } else {
+                            pages.decrementCurrentIndex();
+                        }
+                    }
+                }
             }
             RowLayout {
                 anchors.fill: parent
@@ -1143,9 +1207,12 @@ ContainmentItem {
                     font.pixelSize: Kirigami.Units.gridUnit * 0.95
                     verticalAlignment: TextInput.AlignVCenter
                     inputMethodHints: Qt.ImhNoPredictiveText
-                    // focus only from a tap (or the swipe down), never by itself
+                    // focus only from a tap (or the swipe down), never by itself: the field
+                    // takes no touches of its own, searchArea above decides tap or swipe
                     focus: false
                     activeFocusOnTab: false
+                    activeFocusOnPress: false
+                    selectByMouse: false
                     onAccepted: searchResults.runFirst()
                     Keys.onEscapePressed: searchBar.clear()
                     Keys.onUpPressed: searchResults.forceFocus()
@@ -1703,7 +1770,9 @@ ContainmentItem {
     }
 
     // App launch, like iPadOS: a card with the app's icon grows from the tapped icon to the whole
-    // screen; the app's window then opens over it. If no window covers it in time, it fades away.
+    // screen and stays there until the app's window comes to the front (the home screen stops
+    // being the active window), then goes away under it. An app that has not shown up in 15 s, or a
+    // tap on the card, takes it away too.
     Item {
         id: launchZoom
         anchors.fill: parent
@@ -1719,6 +1788,7 @@ ContainmentItem {
             launchZoom.icon = icon;
             grow.stop();
             fade.stop();
+            underApp.stop();
             p = 0;
             card.opacity = 1;
             grow.start();
@@ -1769,7 +1839,15 @@ ContainmentItem {
         Connections {
             target: launchZoom.Window.window
             function onActiveChanged() {
-                if (launchZoom.Window.window.active && launchZoom.p === 1 && card.opacity === 1) {
+                if (card.opacity === 0) {
+                    return;
+                }
+                if (!launchZoom.Window.window.active) {
+                    // the app is in front: gone under it (its window may still be drawing its
+                    // first frame, so not at once)
+                    giveUp.stop();
+                    underApp.restart();
+                } else if (launchZoom.p === 1 && !underApp.running) {
                     fade.start();
                 }
             }
@@ -1779,8 +1857,16 @@ ContainmentItem {
             enabled: card.opacity > 0
             onClicked: fade.start()
         }
-        // the app window is over it by now; if not (slow start, other screen) fade it out
-        Timer { id: giveUp; interval: 1800; onTriggered: fade.start() }
+        Timer {
+            id: underApp
+            interval: 600
+            onTriggered: {
+                fade.stop();
+                card.opacity = 0;
+            }
+        }
+        // the app did not open (failed, or opened on another screen): fade it out
+        Timer { id: giveUp; interval: 15000; onTriggered: fade.start() }
         NumberAnimation { id: fade; target: card; property: "opacity"; to: 0; duration: 300 }
     }
 }

@@ -51,7 +51,7 @@ Item {
         anchors.fill: roundIcon
         visible: appIcon.home.pixel && appIcon.shape === "free"
         radius: width / 2
-        color: "#F3EDF7"
+        color: appIcon.home.my("#F3EDF7")   // icon plate in the wallpaper's palette
         Kirigami.Icon {
             anchors.centerIn: parent
             width: parent.width * 0.64
