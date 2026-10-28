@@ -223,7 +223,8 @@ see a half-switched desktop.
 | Surfaces | translucent Liquid Glass with blur | opaque tonal cards, no blur (cheaper on slow GPUs) |
 | Home screen | iPad grid, rounded-square folders, page dots | *At a glance* with date and weather, search bar, round 2×2 folders, page dashes |
 | Widgets and Today | iOS widgets | Material widgets: own colour per widget, calendar grid, progress bars |
-| Control center | round controls, tall sliders | wide tiles on a sheet, horizontal sliders |
+| Control center | round controls, tall brightness and volume sliders | wide tiles on a sheet, horizontal brightness and volume sliders |
+| Colours | system accent | Material You: from the wallpaper (*Auto* or one of its colours) or a basic colour, picked in **Settings → Appearance → Accent colour** |
 | Icons | MacTahoe | Colloid + round adaptive app icons |
 | Type | Inter | Roboto Flex (it has Cyrillic) |
 

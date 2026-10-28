@@ -786,5 +786,10 @@ EN = {
     'Кнопка выхода ×': '× button to leave',
     'В углу экрана, рядом с батареей и часами': 'In the screen corner, next to the battery and the clock',
     'Цвета из обоев (Material You, стиль Pixel)': 'Colours from the wallpaper (Material You, Pixel look)',
+    'Цвет оформления (стиль Pixel)': 'Accent colour (Pixel look)',
+    '«Авто» берёт главный цвет обоев. Цвет из обоев сбрасывается на «Авто» при смене обоев': '"Auto" takes the main colour of the wallpaper. A wallpaper colour goes back to "Auto" when the wallpaper changes',
+    'Авто': 'Auto',
+    'Из обоев': 'From the wallpaper',
+    'Основные цвета': 'Basic colours',
     'Панели, виджеты, клавиатура и приложения окрашиваются в тон обоев; выключено — фиолетовая палитра Material': 'Panels, widgets, the keyboard and apps take the wallpaper’s colours; off: the purple Material palette',
 }

@@ -634,7 +634,8 @@ public:
                 m_fromTop = false;
                 m_cancelled = true;
                 m_holdTimer->stop();
-                ToggleControlCenter();
+                m_edgePulled.start();
+                Q_EMIT toggleRequested();
                 return;
             }
         }
@@ -645,7 +646,8 @@ public:
                 m_fromRight = false;
                 m_cancelled = true;
                 m_holdTimer->stop();
-                ToggleNotifications();
+                m_edgePulled.start();
+                Q_EMIT notificationsRequested();
                 return;
             }
         }
@@ -662,6 +664,11 @@ public:
     // [Script-tablet-gestures] edgesByShell is true; topEdge / rightEdge there still turn them off.
     static constexpr qreal kTopEdge = 0.03;     // of the screen height
     static constexpr qreal kRightEdge = 0.02;   // of the screen width
+    QElapsedTimer m_edgePulled;
+    bool justPulled() const
+    {
+        return m_edgePulled.isValid() && m_edgePulled.elapsed() < 800;
+    }
     bool edgeOn(const char *key) const
     {
         const QSettings kwinrc(QDir::homePath() + QStringLiteral("/.config/kwinrc"), QSettings::IniFormat);
@@ -670,15 +677,28 @@ public:
     void takeEdges(bool take)
     {
         const QSettings kwinrc(QDir::homePath() + QStringLiteral("/.config/kwinrc"), QSettings::IniFormat);
-        if (kwinrc.value(QStringLiteral("Script-tablet-gestures/edgesByShell"), false).toBool() == take) {
+        if (kwinrc.value(QStringLiteral("Script-tablet-gestures/edgesByShell"), false).toBool() != take) {
+            // KConfig writes it (QSettings would rewrite KWin's [Tiling][...] groups)
+            QProcess::execute(QStringLiteral("kwriteconfig6"), {QStringLiteral("--file"), QStringLiteral("kwinrc"),
+                QStringLiteral("--group"), QStringLiteral("Script-tablet-gestures"), QStringLiteral("--key"),
+                QStringLiteral("edgesByShell"), QStringLiteral("--type"), QStringLiteral("bool"), take ? QStringLiteral("true") : QStringLiteral("false")});
+        }
+        // Always reload the script: a running one keeps the touch edges it registered whatever
+        // kwinrc says after a reconfigure (both it and we toggled the control center: it flashed
+        // and closed). A fresh start also reports the app in front again.
+        const QString path = QDir::homePath() + QStringLiteral("/.local/share/kwin/scripts/tablet-gestures/contents/code/main.js");
+        if (!QFile::exists(path)) {
             return;
         }
-        // KConfig writes it (QSettings would rewrite KWin's [Tiling][...] groups)
-        QProcess::execute(QStringLiteral("kwriteconfig6"), {QStringLiteral("--file"), QStringLiteral("kwinrc"),
-            QStringLiteral("--group"), QStringLiteral("Script-tablet-gestures"), QStringLiteral("--key"),
-            QStringLiteral("edgesByShell"), QStringLiteral("--type"), QStringLiteral("bool"), take ? QStringLiteral("true") : QStringLiteral("false")});
-        QDBusConnection::sessionBus().asyncCall(QDBusMessage::createMethodCall(
-            QStringLiteral("org.kde.KWin"), QStringLiteral("/KWin"), QStringLiteral("org.kde.KWin"), QStringLiteral("reconfigure")));
+        const QString scripting = QStringLiteral("org.kde.kwin.Scripting");
+        auto call = [&scripting](const QString &method, const QVariantList &args) {
+            QDBusMessage m = QDBusMessage::createMethodCall(QStringLiteral("org.kde.KWin"), QStringLiteral("/Scripting"), scripting, method);
+            m.setArguments(args);
+            QDBusConnection::sessionBus().call(m, QDBus::Block, 3000);
+        };
+        call(QStringLiteral("unloadScript"), {QStringLiteral("tablet-gestures")});
+        call(QStringLiteral("loadScript"), {path, QStringLiteral("tablet-gestures")});
+        call(QStringLiteral("start"), {});
     }
 
     // apps that bring their own long-press text menu: browsers, Electron, GTK, Kirigami (Qt Quick
@@ -766,14 +786,20 @@ public:
     }
 
 public Q_SLOTS:
+    // a KWin touch edge left over from before (see takeEdges) reports the same pull we just
+    // handled: ignore it, or the panel opens and closes at once
     Q_SCRIPTABLE void ToggleControlCenter()
     {
-        Q_EMIT toggleRequested();
+        if (!justPulled()) {
+            Q_EMIT toggleRequested();
+        }
     }
 
     Q_SCRIPTABLE void ToggleNotifications()
     {
-        Q_EMIT notificationsRequested();
+        if (!justPulled()) {
+            Q_EMIT notificationsRequested();
+        }
     }
 
     // Mode change animation (ModeTransition.qml): tablet|pc|dock|typewriter|coding|reading, empty = the

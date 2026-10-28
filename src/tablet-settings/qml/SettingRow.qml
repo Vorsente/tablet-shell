@@ -1,6 +1,6 @@
 // One setting. `item` describes it (type, label, note, where it is stored, how it is applied);
 // the look follows the mode: big touch controls in tablet mode, compact keyboard-friendly ones in PC mode.
-//   switch | choice | number | button | info
+//   switch | choice | number | button | info | text | colors
 import QtQuick
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
@@ -62,6 +62,13 @@ Rectangle {
                 active: row.touch && (row.item.type === "choice" || row.item.type === "number")
                 visible: active
                 sourceComponent: row.item.type === "choice" ? touchChoice : touchNumber
+            }
+            Loader {
+                Layout.fillWidth: true
+                Layout.topMargin: Kirigami.Units.smallSpacing
+                active: row.item.type === "colors"
+                visible: active
+                sourceComponent: colorsControl
             }
         }
 
@@ -186,6 +193,119 @@ Rectangle {
             text: row.value === undefined ? "" : String(row.value)
             opacity: 0.8
             horizontalAlignment: Text.AlignRight
+        }
+    }
+
+    // Material You colours like Pixel's "Wallpaper & style": "auto", the wallpaper's own colours,
+    // then basic ones. A circle shows primary over secondary | tertiary of that seed.
+    // item.swatches() -> { wallpaper: [...], basic: [...] }, each { seed, from, primary, secondary, tertiary }
+    Component {
+        id: colorsControl
+        ColumnLayout {
+            id: colors
+            readonly property var swatchData: row.item.swatches()
+            readonly property real size: Kirigami.Units.gridUnit * (row.touch ? 3.2 : 2.4)
+            spacing: Kirigami.Units.smallSpacing
+            component Swatch: Item {
+                id: sw
+                property var s: null           // null: automatic
+                property string label: ""
+                readonly property string current: String((row.value && row.value.seed !== undefined ? row.value.seed : row.value) || "").toUpperCase()
+                readonly property bool chosen: s ? current === s.seed : !current
+                implicitWidth: colors.size
+                implicitHeight: colors.size + (label ? caption.implicitHeight + 2 : 0)
+                Canvas {
+                    id: circle
+                    width: colors.size
+                    height: width
+                    readonly property var c: sw.s || (colors.swatchData.wallpaper.length ? colors.swatchData.wallpaper[0] : null)
+                    onCChanged: requestPaint()
+                    onPaint: {
+                        const g = getContext("2d");
+                        const r = width / 2;
+                        g.reset();
+                        if (!c) {
+                            g.fillStyle = Kirigami.Theme.alternateBackgroundColor;
+                            g.beginPath(); g.arc(r, r, r, 0, Math.PI * 2); g.fill();
+                            return;
+                        }
+                        // ring around the chosen one: draw smaller inside
+                        const inner = sw.chosen ? r * 0.78 : r;
+                        g.fillStyle = c.primary;
+                        g.beginPath(); g.moveTo(r, r); g.arc(r, r, inner, Math.PI, 0); g.fill();
+                        g.fillStyle = c.secondary;
+                        g.beginPath(); g.moveTo(r, r); g.arc(r, r, inner, Math.PI / 2, Math.PI); g.fill();
+                        g.fillStyle = c.tertiary;
+                        g.beginPath(); g.moveTo(r, r); g.arc(r, r, inner, 0, Math.PI / 2); g.fill();
+                        if (sw.chosen) {
+                            g.strokeStyle = c.primary;
+                            g.lineWidth = r * 0.1;
+                            g.beginPath(); g.arc(r, r, r * 0.92, 0, Math.PI * 2); g.stroke();
+                        }
+                    }
+                    Connections {
+                        target: sw
+                        function onChosenChanged() { circle.requestPaint(); }
+                    }
+                    Kirigami.Icon {
+                        anchors.centerIn: parent
+                        visible: sw.chosen || !sw.s
+                        width: parent.width * 0.38
+                        height: width
+                        source: sw.s ? "checkmark-symbolic" : "color-picker-symbolic"
+                        isMask: true
+                        color: "white"
+                    }
+                    scale: tap.pressed ? 0.92 : 1
+                    Behavior on scale { NumberAnimation { duration: 100 } }
+                }
+                QQC2.Label {
+                    id: caption
+                    visible: !!sw.label
+                    anchors.top: circle.bottom
+                    anchors.topMargin: 2
+                    anchors.horizontalCenter: circle.horizontalCenter
+                    text: sw.label
+                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                    opacity: 0.75
+                }
+                MouseArea {
+                    id: tap
+                    anchors.fill: parent
+                    onClicked: row.commit(sw.s ? { seed: sw.s.seed, from: sw.s.from } : { seed: "", from: "" })
+                }
+                Accessible.role: Accessible.RadioButton
+                Accessible.name: sw.label || (sw.s ? sw.s.seed : "")
+                Accessible.checked: sw.chosen
+            }
+            QQC2.Label {
+                visible: colors.swatchData.wallpaper.length > 0
+                text: row.item.wallpaperLabel || ""
+                opacity: 0.65
+                font.pointSize: Kirigami.Theme.smallFont.pointSize
+            }
+            Flow {
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.largeSpacing
+                Swatch { label: row.item.autoLabel || "" }
+                Repeater {
+                    model: colors.swatchData.wallpaper
+                    delegate: Swatch { required property var modelData; s: modelData }
+                }
+            }
+            QQC2.Label {
+                text: row.item.basicLabel || ""
+                opacity: 0.65
+                font.pointSize: Kirigami.Theme.smallFont.pointSize
+            }
+            Flow {
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.largeSpacing
+                Repeater {
+                    model: colors.swatchData.basic
+                    delegate: Swatch { required property var modelData; s: modelData }
+                }
+            }
         }
     }
 

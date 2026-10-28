@@ -1,6 +1,6 @@
 // Control center (iOS 26 style): swipe down from the top edge. Liquid Glass modules over a dimmed,
 // blurred backdrop: connectivity (airplane, Wi-Fi, Bluetooth, rotation), Do Not Disturb, tall
-// brightness slider and round controls. Quick settings come from Plasma Mobile
+// brightness / volume sliders and round controls. Quick settings come from Plasma Mobile
 // (plasmamobilerc [QuickSettings] enabledQuickSettings), the rest are the shell's own. Hold a
 // control for its settings. Tap outside the modules to close.
 import QtQuick
@@ -12,6 +12,7 @@ import org.kde.layershell as LayerShell
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.private.mobileshell.quicksettingsplugin as QS
 import org.kde.plasma.private.mobileshell.screenbrightnessplugin as ScreenBrightness
+import org.kde.plasma.private.volume as PA
 import org.kde.notificationmanager as NotificationManager
 import QtMultimedia
 import "Tr.js" as Tr
@@ -366,7 +367,7 @@ Window {
     // ---- look ----------------------------------------------------------------------------------
     readonly property real gu: (Kirigami.Units.gridUnit * uiStyle.dp)
     readonly property real sp: gu * 0.7                                   // gap between modules
-    readonly property int cols: pixel ? 6 : 5   // Apple: connectivity 2 | brightness 1 | focus 2
+    readonly property int cols: 6   // Apple: connectivity 2 | brightness 1 | volume 1 | focus 2
     readonly property real cell: Math.min(gu * 4.4, (width - gu * 2 - sp * (cols - 1)) / cols)
     readonly property real span2: cell * 2 + sp
     // frosted, a little lighter than the dimmed backdrop (KWin blurs what is behind)
@@ -769,7 +770,8 @@ Window {
                 }
             }
 
-            // connectivity 2x2 | brightness | Do Not Disturb over Split View and Slide Over
+            // connectivity 2x2 | brightness | volume | Do Not Disturb over Split View and Slide Over
+            // (Material: brightness over volume, both wide)
             Item {
                 width: parent.width
                 height: win.span2
@@ -827,21 +829,34 @@ Window {
                     }
                 }
 
-                // brightness only: sound has its keys, the OSD and the tray
                 TallSlider {
                     x: win.span2 + win.sp
-                    y: win.pixel ? (win.span2 - height) / 2 : 0
                     visible: brightness.brightnessAvailable
                     iconName: "brightness-high-symbolic"
                     value: brightness.maxBrightness > 0 ? brightness.brightness / brightness.maxBrightness : 0
                     onMoved: v => brightness.brightness = Math.max(1, Math.round(v * brightness.maxBrightness))
+                }
+                TallSlider {
+                    x: win.pixel ? win.span2 + win.sp : win.span2 + win.cell + win.sp * 2
+                    y: win.pixel ? win.cell + win.sp : 0
+                    visible: PA.PreferredDevice.sink !== null
+                    iconName: !PA.PreferredDevice.sink || PA.PreferredDevice.sink.muted || value === 0 ? "audio-volume-muted-symbolic"
+                              : value < 0.34 ? "audio-volume-low-symbolic" : value < 0.67 ? "audio-volume-medium-symbolic"
+                              : "audio-volume-high-symbolic"
+                    value: PA.PreferredDevice.sink ? Math.min(1, PA.PreferredDevice.sink.volume / 65536) : 0
+                    onMoved: v => {
+                        if (PA.PreferredDevice.sink) {
+                            PA.PreferredDevice.sink.muted = false;
+                            PA.PreferredDevice.sink.volume = Math.round(v * 65536);
+                        }
+                    }
                 }
                 // Do Not Disturb, the wide Focus module
                 Glass {
                     id: focusModule
                     shadow: true
                     readonly property bool on: win.dnd
-                    x: win.pixel ? win.span2 * 2 + win.sp * 2 : win.span2 + win.cell + win.sp * 2
+                    x: win.pixel ? win.span2 * 2 + win.sp * 2 : win.span2 + win.cell * 2 + win.sp * 3
                     width: win.span2
                     height: win.cell
                     radius: win.pixel ? height * 0.27 : height * 0.42

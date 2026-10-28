@@ -51,6 +51,7 @@ Kirigami.ApplicationWindow {
         case "appearance": return backend.run([home + "/.local/bin/appearance", "status"]).trim() || "auto";
         case "shellStyle": return uiStyle.name;
         case "uiScale": return String(Math.round(uiStyle.userScale * 100));
+        case "materialSeed": return backend.read("tabletrc", "Appearance", "materialSeed", "");
         case "info": return item.get();
         case "im": {
             const im = String(backend.read("kwinrc", "Wayland", "InputMethod", ""));
@@ -76,6 +77,12 @@ Kirigami.ApplicationWindow {
         case "uiScale":
             backend.write("tabletrc", "Appearance", "uiScale", v, false);
             backend.setHomeScreen("uiScale", Number(v));
+            break;
+        // a picked colour (or "auto": empty) also turns Material You on; off is the purple baseline
+        case "materialSeed":
+            backend.write("tabletrc", "Appearance", "materialSeed", v.seed, false);
+            backend.write("tabletrc", "Appearance", "materialSeedFrom", v.from, false);
+            backend.write("tabletrc", "Appearance", "materialYou", true, false);
             break;
         case "im":
             backend.write("kwinrc", "Wayland", "InputMethod",
@@ -208,6 +215,16 @@ Kirigami.ApplicationWindow {
             make(tabletrc("Appearance", "materialYou", true), { type: "switch", apply: "materialYou",
               label: Tr.t("Цвета из обоев (Material You, стиль Pixel)"),
               note: Tr.t("Панели, виджеты, клавиатура и приложения окрашиваются в тон обоев; выключено — фиолетовая палитра Material") }),
+            { type: "colors", store: "materialSeed", apply: "materialYou", label: Tr.t("Цвет оформления (стиль Pixel)"),
+              note: Tr.t("«Авто» берёт главный цвет обоев. Цвет из обоев сбрасывается на «Авто» при смене обоев"),
+              autoLabel: Tr.t("Авто"), wallpaperLabel: Tr.t("Из обоев"), basicLabel: Tr.t("Основные цвета"),
+              swatches: () => {
+                  try {
+                      return JSON.parse(backend.run([home + "/.local/bin/tablet-tools", "material-you", "--swatches"]));
+                  } catch (e) {
+                      return { wallpaper: [], basic: [] };
+                  }
+              } },
             make(tabletrc("Appearance", "liveWallpaper", true), { type: "switch", apply: "livewallpaper",
               label: Tr.t("Живые обои"), note: Tr.t("Светлый вариант со светлой темой, тёмный — с тёмной; плавный переход") }),
             make({store:"kconfig", file:"tabletrc", group:"Appearance", key:"weatherAnimation", def:false},

@@ -482,6 +482,11 @@ int wallpaperSet(const QString &path)
         KConfig rc(QStringLiteral("tabletrc"), KConfig::SimpleConfig);
         const QString style = rc.group(QStringLiteral("Appearance")).readEntry(QStringLiteral("shellStyle"), QStringLiteral("apple"));
         rc.group(QStringLiteral("Appearance")).writeEntry(style == QLatin1String("pixel") ? QStringLiteral("pixelWallpaper") : QStringLiteral("appleWallpaper"), abs);
+        // a colour picked from the old wallpaper means nothing for the new one: back to automatic
+        if (style == QLatin1String("pixel") && rc.group(QStringLiteral("Appearance")).readEntry("materialSeedFrom", QString()) == QLatin1String("wallpaper")) {
+            rc.group(QStringLiteral("Appearance")).deleteEntry("materialSeed");
+            rc.group(QStringLiteral("Appearance")).deleteEntry("materialSeedFrom");
+        }
 
         KConfig locker(QStringLiteral("kscreenlockerrc"));
         KConfigGroup greeter = locker.group(QStringLiteral("Greeter"));

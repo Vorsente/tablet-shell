@@ -1,12 +1,15 @@
 // Material You for the Pixel look: colours from the wallpaper, like a Pixel phone.
 //
 //   tablet-tools material-you [--print]
+//   tablet-tools material-you --swatches    the colours Settings offers (JSON, nothing written)
 //
 // The seed: tabletrc [Appearance] materialSeed (#RRGGBB) or, when empty, the most characteristic
 // colour of the Pixel wallpaper (pixelWallpaper; a wallpaper package: its light image). Pixels are
 // counted per hue in CIELAB; a hue scores by how much of the picture it covers and how colourful it
 // is (Material's Score: chroma near 48 preferred, greys never win). materialYou=false gives the
-// baseline Material purple.
+// baseline Material purple. Settings (Внешний вид → Цвет) offers up to four hues of the wallpaper
+// and a row of basic colours; a picked one is stored as materialSeed with materialSeedFrom
+// wallpaper|basic (a wallpaper colour is dropped again when the wallpaper changes).
 //
 // From the seed hue the tonal palettes of Material 3's "Tonal spot" scheme (Pixel's default):
 // primary (chroma 36), secondary (16), tertiary (hue + 60, 24), neutral (6), neutral variant (8).
@@ -28,6 +31,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>
@@ -38,6 +42,7 @@
 #include <cmath>
 #include <cstdio>
 #include <map>
+#include <vector>
 
 namespace {
 
@@ -109,11 +114,11 @@ double hueOf(QRgb c)
     return h < 0 ? h + 360 : h;
 }
 
-// the seed hue of a picture (-1: nothing colourful enough)
-double wallpaperHue(const QImage &source)
+// the hues of a picture, best seed first, at least 25 degrees apart (empty: nothing colourful)
+std::vector<double> wallpaperHues(const QImage &source, int max)
 {
     if (source.isNull()) {
-        return -1;
+        return {};
     }
     const QImage img = source.scaled(128, 128, Qt::IgnoreAspectRatio, Qt::SmoothTransformation).convertToFormat(QImage::Format_RGB32);
     constexpr int bins = 36;
@@ -137,7 +142,7 @@ double wallpaperHue(const QImage &source)
             sumC[i] += c;
         }
     }
-    double best = -1e9, bestHue = -1;
+    std::vector<std::pair<double, double>> scored;   // score, hue
     for (int i = 0; i < bins; ++i) {
         // a hue with its neighbours (+-15 degrees), like Material's "excited proportion"
         const double near = count[i] + 0.5 * (count[(i + 1) % bins] + count[(i + bins - 1) % bins]);
@@ -150,13 +155,30 @@ double wallpaperHue(const QImage &source)
             continue;
         }
         const double score = proportion * 100 * 0.7 + (chroma - 48) * (chroma < 48 ? 0.1 : 0.3);
-        if (score > best) {
-            best = score;
-            double h = std::atan2(sumB[i], sumA[i]) * 180 / M_PI;
-            bestHue = h < 0 ? h + 360 : h;
+        const double h = std::atan2(sumB[i], sumA[i]) * 180 / M_PI;
+        scored.push_back({score, h < 0 ? h + 360 : h});
+    }
+    std::sort(scored.begin(), scored.end(), [](const auto &a, const auto &b) { return a.first > b.first; });
+    std::vector<double> hues;
+    for (const auto &[score, h] : scored) {
+        const bool distinct = std::none_of(hues.begin(), hues.end(), [h](double o) {
+            const double d = std::abs(h - o);
+            return std::min(d, 360 - d) < 25;
+        });
+        if (distinct) {
+            hues.push_back(h);
+        }
+        if (int(hues.size()) >= max) {
+            break;
         }
     }
-    return bestHue;
+    return hues;
+}
+
+double wallpaperHue(const QImage &source)
+{
+    const std::vector<double> hues = wallpaperHues(source, 1);
+    return hues.empty() ? -1 : hues.front();
 }
 
 QString wallpaperImage()
@@ -311,8 +333,38 @@ void applyToKdeglobals(const QString &schemeFile)
 
 } // namespace
 
+// a swatch like Pixel's wallpaper & style page: the seed, and what the circle shows (primary,
+// secondary container, tertiary of that hue)
+QJsonObject swatch(double hue, const QString &from)
+{
+    return {{QStringLiteral("seed"), hex(tone(hue, 36, 40))}, {QStringLiteral("from"), from},
+            {QStringLiteral("hue"), std::round(hue)},
+            {QStringLiteral("primary"), hex(tone(hue, 36, 55))}, {QStringLiteral("secondary"), hex(tone(hue, 16, 85))},
+            {QStringLiteral("tertiary"), hex(tone(std::fmod(hue + 60, 360), 24, 70))}};
+}
+
+int swatchesCommand()
+{
+    QJsonArray wallpaper, basic;
+    for (const double h : wallpaperHues(QImage(wallpaperImage()), 4)) {
+        wallpaper.append(swatch(h, QStringLiteral("wallpaper")));
+    }
+    // blue, teal, green, olive, amber, orange-red, pink, purple (CIELAB hues)
+    for (const double h : {285.0, 215.0, 145.0, 105.0, 80.0, 45.0, 0.0, 305.0}) {
+        basic.append(swatch(h, QStringLiteral("basic")));
+    }
+    const QByteArray data = QJsonDocument(QJsonObject{{QStringLiteral("wallpaper"), wallpaper}, {QStringLiteral("basic"), basic}})
+                                .toJson(QJsonDocument::Compact);
+    std::fputs(data.constData(), stdout);
+    std::fputs("\n", stdout);
+    return 0;
+}
+
 int materialYouCommand(const QStringList &args)
 {
+    if (args.contains(QStringLiteral("--swatches"))) {
+        return swatchesCommand();
+    }
     KConfig rc(QStringLiteral("tabletrc"), KConfig::SimpleConfig);
     const KConfigGroup look = rc.group(QStringLiteral("Appearance"));
     const QRgb baseline = qRgb(0x67, 0x50, 0xA4);
