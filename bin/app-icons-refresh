@@ -5,3 +5,4 @@ helper="$HOME/.local/bin/tablet-tools"
 [ -x "$helper" ] || exit 0
 [ ! -f "$HOME/.local/share/icons/MacTahoe/index.theme" ] || "$helper" app-icons >/dev/null 2>&1 || true
 [ ! -f "$HOME/.local/share/icons/TabletPixel/index.theme" ] || "$helper" app-icons --pixel >/dev/null 2>&1 || true
+[ ! -f "$HOME/.local/share/icons/TabletPixel/index.theme" ] || "$helper" themed-icons >/dev/null 2>&1 || true

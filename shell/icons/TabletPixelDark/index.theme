@@ -3,7 +3,7 @@ Name=Tablet Pixel Dark
 Comment=Material icons and contrast-aware dark panel symbols
 Inherits=TabletPixel,Colloid-Dark,Colloid,breeze
 FollowsColorScheme=true
-Directories=scalable/actions,symbolic
+Directories=apps/themed,scalable/actions,symbolic
 
 [scalable/actions]
 Size=48
@@ -19,3 +19,11 @@ Type=Scalable
 MinSize=8
 MaxSize=512
 Context=Actions
+
+# themed app icons drawn on the device (tablet-tools themed-icons)
+[apps/themed]
+Size=48
+Type=Scalable
+MinSize=16
+MaxSize=512
+Context=Applications

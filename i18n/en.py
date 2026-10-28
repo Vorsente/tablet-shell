@@ -792,6 +792,6 @@ EN = {
     'Из обоев': 'From the wallpaper',
     'Основные цвета': 'Basic colours',
     'Иконки в цвет обоев (стиль Pixel)': 'Icons in the wallpaper colours (Pixel look)',
-    'Все иконки перекрашиваются в два тона палитры Material You, как тематические иконки на Pixel': 'Every icon is redrawn in two tones of the Material You palette, like themed icons on a Pixel',
+    'Иконки приложений на домашнем экране, в доке и в меню перекрашиваются в два тона палитры Material You, как тематические иконки на Pixel': 'App icons on the home screen, in the dock and in menus are redrawn in two tones of the Material You palette, like themed icons on a Pixel',
     'Панели, виджеты, клавиатура и приложения окрашиваются в тон обоев; выключено — фиолетовая палитра Material': 'Panels, widgets, the keyboard and apps take the wallpaper’s colours; off: the purple Material palette',
 }

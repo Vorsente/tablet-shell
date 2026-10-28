@@ -11,6 +11,7 @@
 //   cleanup scan | run ID... | auto                      storage: sizes / clean up (tablet-settings «Хранилище»)
 //   weekly                                               week report: screen time, words, battery vs the week before
 //   app-icons [--force]                                  MacTahoe-style icons for apps the icon theme lacks (icons.cpp)
+//   themed-icons [on|off]                                Pixel app icons in the wallpaper's two tones everywhere (icons.cpp)
 #include <KConfig>
 #include <KConfigGroup>
 
@@ -62,6 +63,7 @@ int typewriterExportCommand(const QString &file, const QString &format, QString 
 int typewriterRuntimeCommand(const QString &file);
 // app icons in the icon theme's style (icons.cpp)
 int appIconsCommand(const QStringList &args);
+int themedIconsCommand(const QStringList &args);
 
 int materialYouCommand(const QStringList &args);   // material-you.cpp
 
@@ -1856,6 +1858,11 @@ int main(int argc, char *argv[])
         qputenv("QT_QPA_PLATFORM", "offscreen"); // painting icons, no window
         QGuiApplication app(argc, argv);
         return appIconsCommand(args);
+    }
+    if (tool == QLatin1String("themed-icons")) {
+        qputenv("QT_QPA_PLATFORM", "offscreen"); // painting icons, no window
+        QGuiApplication app(argc, argv);
+        return themedIconsCommand(args);
     }
     if (tool == QLatin1String("webapp-create")) {
         qputenv("QT_QPA_PLATFORM", "offscreen"); // painting icons, no window

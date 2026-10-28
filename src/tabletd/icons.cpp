@@ -14,6 +14,9 @@
 //     web apps) get a themed name instead: Icon= is rewritten, the old path kept as
 //     X-TabletShell-Icon (and used again by --force)
 // Already generated icons are kept unless --force; re-run after installing apps or the theme.
+#include <KConfig>
+#include <KConfigGroup>
+
 #include <QBuffer>
 #include <QDBusConnection>
 #include <QDBusMessage>
@@ -24,6 +27,8 @@
 #include <QHash>
 #include <QIcon>
 #include <QImage>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLinearGradient>
 #include <QPainter>
 #include <QPainterPath>
@@ -35,6 +40,7 @@
 #include <QTextStream>
 #include <QTransform>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 
@@ -99,6 +105,46 @@ QString aliasFor(const QString &desktopId, const QString &appName, const QHash<Q
         }
     }
     return {};
+}
+
+struct App
+{
+    QString id, path, icon, original, name;
+};
+
+// the applications the launcher shows (first desktop file of each id, user's before the system's)
+QList<App> desktopApps()
+{
+    QList<App> apps;
+    QSet<QString> seen;
+    const QStringList dirs = {home + QStringLiteral("/.local/share/applications"), home + QStringLiteral("/.local/share/flatpak/exports/share/applications"),
+                              QStringLiteral("/var/lib/flatpak/exports/share/applications"), QStringLiteral("/usr/share/applications")};
+    for (const QString &dir : dirs) {
+        QDirIterator it(dir, {QStringLiteral("*.desktop")}, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QString path = it.next();
+            const QString id = QDir(dir).relativeFilePath(path).replace(QLatin1Char('/'), QLatin1Char('-'));
+            if (seen.contains(id)) {
+                continue;
+            }
+            seen.insert(id);
+            QSettings entry(path, QSettings::IniFormat);
+            entry.beginGroup(QStringLiteral("Desktop Entry"));
+            const QString only = entry.value(QStringLiteral("OnlyShowIn")).toString();
+            if (entry.value(QStringLiteral("Type")).toString() != QLatin1String("Application")
+                || entry.value(QStringLiteral("NoDisplay")).toString() == QLatin1String("true")
+                || entry.value(QStringLiteral("Hidden")).toString() == QLatin1String("true")
+                || (!only.isEmpty() && !only.contains(QLatin1String("KDE")))) {
+                continue;
+            }
+            const QString icon = entry.value(QStringLiteral("Icon")).toString();
+            if (!icon.isEmpty()) {
+                apps.append({id, path, icon, entry.value(QStringLiteral("X-TabletShell-Icon")).toString(),
+                             entry.value(QStringLiteral("Name")).toString()});
+            }
+        }
+    }
+    return apps;
 }
 
 QImage render(const QIcon &icon)
@@ -324,13 +370,13 @@ QImage drawPixel(const QImage &src, const QRectF &rect)
     return out;
 }
 
-bool save(const QImage &img, const QString &name)
+bool saveTo(const QImage &img, const QString &dir, const QString &name)
 {
     QByteArray png;
     QBuffer buf(&png);
     buf.open(QIODevice::WriteOnly);
     img.save(&buf, "PNG");
-    const QString path = outDir + QLatin1Char('/') + name + QStringLiteral(".svg");
+    const QString path = dir + QLatin1Char('/') + name + QStringLiteral(".svg");
     if (QFileInfo(path).isSymLink()) {
         QFile::remove(path);  // an alias of an earlier run: never write through it into another theme
     }
@@ -342,6 +388,51 @@ bool save(const QImage &img, const QString &name)
             "viewBox=\"0 0 512 512\">" + marker + "<image width=\"512\" height=\"512\" xlink:href=\"data:image/png;base64,"
             + png.toBase64() + "\"/></svg>\n");
     return true;
+}
+
+bool save(const QImage &img, const QString &name)
+{
+    return saveTo(img, outDir, name);
+}
+
+// Themed icons (Settings → Домашний экран, tabletrc [Appearance] themedIcons): the round icon
+// redrawn in two tones like the home screen's shaders/themed-icon.frag. The plate is what lies on
+// a ring just inside the circle; whatever differs from it in brightness is the drawing.
+double luminance(QRgb px)
+{
+    const double a = qAlpha(px) / 255.0;
+    return a > 0.0001 ? (0.2126 * qRed(px) + 0.7152 * qGreen(px) + 0.0722 * qBlue(px)) / a / 255.0 : 0;
+}
+
+QImage recolour(const QImage &round, const QRectF &circle, QColor plate, QColor glyph)
+{
+    QImage img = round.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    double sum = 0, weight = 0;
+    for (int i = 0; i < 12; ++i) {
+        const double t = i * M_PI / 6;
+        const QRgb px = img.pixel(std::clamp(int(circle.center().x() + 0.41 * circle.width() * std::cos(t)), 0, img.width() - 1),
+                                  std::clamp(int(circle.center().y() + 0.41 * circle.height() * std::sin(t)), 0, img.height() - 1));
+        sum += luminance(px) * qAlpha(px) / 255.0;
+        weight += qAlpha(px) / 255.0;
+    }
+    const double plateL = weight > 0.001 ? sum / weight : 0.5;
+    auto smoothstep = [](double e0, double e1, double x) {
+        const double t = std::clamp((x - e0) / (e1 - e0), 0.0, 1.0);
+        return t * t * (3 - 2 * t);
+    };
+    for (int y = 0; y < img.height(); ++y) {
+        QRgb *line = reinterpret_cast<QRgb *>(img.scanLine(y));
+        for (int x = 0; x < img.width(); ++x) {
+            const int a = qAlpha(line[x]);
+            if (a < 40) {
+                continue;  // drawPixel's faint shadow under the circle stays
+            }
+            const double t = smoothstep(0.07, 0.32, std::abs(luminance(line[x]) - plateL));
+            auto mix = [&](int p, int g) { return int(std::lround((p + (g - p) * t) * a / 255.0)); };
+            line[x] = qRgba(mix(plate.red(), glyph.red()), mix(plate.green(), glyph.green()), mix(plate.blue(), glyph.blue()), a);
+        }
+    }
+    return img;
 }
 
 // ~/.local/share/applications entry with an absolute icon path: give it a themed name
@@ -398,76 +489,51 @@ int appIconsCommand(const QStringList &args)
     const QRectF sq = themeSquircle();
     const QString userApps = home + QStringLiteral("/.local/share/applications");
 
-    QSet<QString> seen;
     int made = 0;
     bool renamed = false;
-    const QStringList dirs = {userApps, home + QStringLiteral("/.local/share/flatpak/exports/share/applications"),
-                              QStringLiteral("/var/lib/flatpak/exports/share/applications"), QStringLiteral("/usr/share/applications")};
-    for (const QString &dir : dirs) {
-        QDirIterator it(dir, {QStringLiteral("*.desktop")}, QDir::Files, QDirIterator::Subdirectories);
-        while (it.hasNext()) {
-            const QString path = it.next();
-            const QString id = QDir(dir).relativeFilePath(path).replace(QLatin1Char('/'), QLatin1Char('-'));
-            if (seen.contains(id)) {
+    for (const App &app : desktopApps()) {
+        const QString &path = app.path, &id = app.id, &icon = app.icon, &original = app.original;
+        const bool ours = generatedByUs(icon);
+        if (pixelTheme) {
+            // Pixel draws EVERY app round (Colloid's rounded squares included), so the dock,
+            // menus and the task switcher match the round home screen icons. Hand-made icons
+            // of the theme (scalable/apps) stay; drawn ones are redrawn only with --force.
+            if (QFile::exists(themeDir + QStringLiteral("/scalable/apps/") + icon + QStringLiteral(".svg"))
+                || ((ours || QFileInfo(outDir + QLatin1Char('/') + icon + QStringLiteral(".svg")).isSymLink()) && !force)) {
                 continue;
             }
-            seen.insert(id);
-            QSettings entry(path, QSettings::IniFormat);
-            entry.beginGroup(QStringLiteral("Desktop Entry"));
-            const QString only = entry.value(QStringLiteral("OnlyShowIn")).toString();
-            if (entry.value(QStringLiteral("Type")).toString() != QLatin1String("Application")
-                || entry.value(QStringLiteral("NoDisplay")).toString() == QLatin1String("true")
-                || entry.value(QStringLiteral("Hidden")).toString() == QLatin1String("true")
-                || (!only.isEmpty() && !only.contains(QLatin1String("KDE")))) {
+        } else if (have.contains(icon) && !(force && ours)) {
+            continue;  // the theme has it (or we made it before)
+        }
+        const QString alias = pixelTheme ? QString() : aliasFor(id, app.name, have);
+        const QImage src = alias.isEmpty() ? source(!original.isEmpty() ? original : icon) : QImage();
+        if (alias.isEmpty() && src.isNull()) {
+            std::fprintf(stderr, "app-icons: no picture for %s (%s)\n", qPrintable(id), qPrintable(icon));
+            continue;
+        }
+        QString name = icon;
+        if (icon.startsWith(QLatin1Char('/'))) {
+            if (!path.startsWith(userApps + QLatin1Char('/'))) {
+                continue;  // a system entry pointing at a file: cannot give it a name
+            }
+            name = rename(path, icon);
+            if (name.isEmpty()) {
                 continue;
             }
-            QString icon = entry.value(QStringLiteral("Icon")).toString();
-            const QString original = entry.value(QStringLiteral("X-TabletShell-Icon")).toString();
-            if (icon.isEmpty()) {
-                continue;
-            }
-            const bool ours = generatedByUs(icon);
-            if (pixelTheme) {
-                // Pixel draws EVERY app round (Colloid's rounded squares included), so the dock,
-                // menus and the task switcher match the round home screen icons. Hand-made icons
-                // of the theme (scalable/apps) stay; drawn ones are redrawn only with --force.
-                if (QFile::exists(themeDir + QStringLiteral("/scalable/apps/") + icon + QStringLiteral(".svg"))
-                    || ((ours || QFileInfo(outDir + QLatin1Char('/') + icon + QStringLiteral(".svg")).isSymLink()) && !force)) {
-                    continue;
-                }
-            } else if (have.contains(icon) && !(force && ours)) {
-                continue;  // the theme has it (or we made it before)
-            }
-            const QString alias = pixelTheme ? QString() : aliasFor(id, entry.value(QStringLiteral("Name")).toString(), have);
-            const QImage src = alias.isEmpty() ? source(!original.isEmpty() ? original : icon) : QImage();
-            if (alias.isEmpty() && src.isNull()) {
-                std::fprintf(stderr, "app-icons: no picture for %s (%s)\n", qPrintable(id), qPrintable(icon));
-                continue;
-            }
-            QString name = icon;
-            if (icon.startsWith(QLatin1Char('/'))) {
-                if (!path.startsWith(userApps + QLatin1Char('/'))) {
-                    continue;  // a system entry pointing at a file: cannot give it a name
-                }
-                name = rename(path, icon);
-                if (name.isEmpty()) {
-                    continue;
-                }
-                renamed = true;
-            }
-            if (!alias.isEmpty()) {
-                const QString link = outDir + QLatin1Char('/') + name + QStringLiteral(".svg");
-                QFile::remove(link);
-                if (QFile::link(QDir(outDir).relativeFilePath(alias), link)) {
-                    ++made;
-                    std::printf("%s\t%s\t-> %s\n", qPrintable(name), qPrintable(id), qPrintable(QFileInfo(alias).fileName()));
-                }
-                continue;
-            }
-            if (save(pixelTheme ? drawPixel(src, sq) : draw(src, sq), name)) {
+            renamed = true;
+        }
+        if (!alias.isEmpty()) {
+            const QString link = outDir + QLatin1Char('/') + name + QStringLiteral(".svg");
+            QFile::remove(link);
+            if (QFile::link(QDir(outDir).relativeFilePath(alias), link)) {
                 ++made;
-                std::printf("%s\t%s\n", qPrintable(name), qPrintable(id));
+                std::printf("%s\t%s\t-> %s\n", qPrintable(name), qPrintable(id), qPrintable(QFileInfo(alias).fileName()));
             }
+            continue;
+        }
+        if (save(pixelTheme ? drawPixel(src, sq) : draw(src, sq), name)) {
+            ++made;
+            std::printf("%s\t%s\n", qPrintable(name), qPrintable(id));
         }
     }
     if (made > 0) {
@@ -479,5 +545,117 @@ int appIconsCommand(const QStringList &args)
     if (renamed) {
         QProcess::startDetached(QStringLiteral("kbuildsycoca6"), {});
     }
+    return 0;
+}
+
+QRgb materialTint(QRgb color, double seedHue); // material-you.cpp
+
+// tablet-tools themed-icons [on|off]: the Pixel look's app icons in two tones of the wallpaper's
+// palette everywhere (dock, menus, task switcher), not only on the home screen, which draws them
+// itself (AppIcon.qml). Written into TabletPixelLight and TabletPixelDark (apps/themed, searched
+// before the TabletPixel icons they inherit), each in its own tones, so a day/night switch needs
+// nothing redrawn. on/off stores tabletrc [Appearance] themedIcons; without an argument the stored
+// choice is redrawn (app-icons-refresh, material-you after a palette change).
+int themedIconsCommand(const QStringList &args)
+{
+    using namespace appicons;
+    KConfig rc(QStringLiteral("tabletrc"), KConfig::SimpleConfig);
+    KConfigGroup look = rc.group(QStringLiteral("Appearance"));
+    if (args.value(0) == QLatin1String("on") || args.value(0) == QLatin1String("off")) {
+        look.writeEntry("themedIcons", args.value(0) == QLatin1String("on"));
+        rc.sync();
+    }
+    const bool enabled = look.readEntry("themedIcons", false);
+    const QString icons = home + QStringLiteral("/.local/share/icons/");
+    if (!QFile::exists(icons + QStringLiteral("TabletPixel/index.theme"))) {
+        return 0;
+    }
+
+    double seedHue = std::nan("");
+    QFile json(home + QStringLiteral("/.config/tablet-material-you.json"));
+    if (json.open(QIODevice::ReadOnly)) {
+        const QJsonValue h = QJsonDocument::fromJson(json.readAll()).object().value(QStringLiteral("seedHue"));
+        if (h.isDouble()) {
+            seedHue = h.toDouble();
+        }
+    }
+    // the home screen's tones (AppIcon.qml): light plate + dark drawing, in the dark look the reverse
+    struct Variant { QString dir; QColor plate, glyph; };
+    const QList<Variant> variants{
+        {icons + QStringLiteral("TabletPixelLight"), QColor(materialTint(qRgb(0xEA, 0xDD, 0xFF), seedHue)),
+         QColor(materialTint(qRgb(0x21, 0x00, 0x5D), seedHue))},
+        {icons + QStringLiteral("TabletPixelDark"), QColor(materialTint(qRgb(0x2B, 0x26, 0x32), seedHue)),
+         QColor(materialTint(qRgb(0xD0, 0xBC, 0xFF), seedHue))}};
+
+    pixelTheme = true;
+    theme = QStringLiteral("TabletPixel");
+    themeDir = icons + theme;
+    QIcon::setThemeSearchPaths({home + QStringLiteral("/.local/share/icons"), QStringLiteral("/usr/local/share/icons"),
+                                QStringLiteral("/usr/share/icons")});
+    QIcon::setFallbackThemeName(QStringLiteral("hicolor"));
+    const QRectF rect = themeSquircle();
+    const QRectF circle = rect.adjusted(8, 8, -8, -8);  // drawPixel's
+
+    // the round icons once, the tones per variant
+    QHash<QString, QImage> round;
+    if (enabled) {
+        for (const App &app : desktopApps()) {
+            if (round.contains(app.icon)) {
+                continue;
+            }
+            QImage src;
+            if (app.icon.startsWith(QLatin1Char('/'))) {
+                src = source(app.icon);
+            } else {
+                QIcon::setThemeName(theme);
+                src = render(QIcon::fromTheme(app.icon));
+            }
+            if (src.isNull()) {
+                std::fprintf(stderr, "themed-icons: no picture for %s (%s)\n", qPrintable(app.id), qPrintable(app.icon));
+                continue;
+            }
+            round.insert(app.icon, drawPixel(src, rect));
+        }
+    }
+
+    for (const Variant &v : variants) {
+        if (!QFile::exists(v.dir + QStringLiteral("/index.theme"))) {
+            continue;
+        }
+        const QString out = v.dir + QStringLiteral("/apps/themed");
+        // themes installed before this folder existed
+        QFile index(v.dir + QStringLiteral("/index.theme"));
+        if (index.open(QIODevice::ReadOnly)) {
+            QString text = QString::fromUtf8(index.readAll());
+            index.close();
+            if (!text.contains(QLatin1String("[apps/themed]")) && index.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                text.replace(QStringLiteral("Directories="), QStringLiteral("Directories=apps/themed,"));
+                text += QStringLiteral("\n# themed app icons drawn on the device (tablet-tools themed-icons)\n[apps/themed]\n"
+                                       "Size=48\nType=Scalable\nMinSize=16\nMaxSize=512\nContext=Applications\n");
+                index.write(text.toUtf8());
+                index.close();
+            }
+        }
+        // the previous drawing goes: apps removed since, or themed icons switched off
+        QDir old(out);
+        for (const QString &f : old.entryList({QStringLiteral("*.svg")}, QDir::Files)) {
+            if (!round.contains(QFileInfo(f).completeBaseName())) {
+                old.remove(f);
+            }
+        }
+        if (enabled) {
+            QDir().mkpath(out);
+            for (auto it = round.cbegin(); it != round.cend(); ++it) {
+                // an absolute path cannot be a name in the theme (app-icons renames user entries)
+                if (!it.key().startsWith(QLatin1Char('/'))) {
+                    saveTo(recolour(it.value(), circle, v.plate, v.glyph), out, it.key());
+                }
+            }
+        }
+        QProcess::execute(QStringLiteral("gtk-update-icon-cache"), {QStringLiteral("-f"), QStringLiteral("-q"), v.dir});
+    }
+    QDBusConnection::sessionBus().send(QDBusMessage::createSignal(QStringLiteral("/KIconLoader"), QStringLiteral("org.kde.KIconLoader"),
+                                                                 QStringLiteral("iconChanged")) << 0);
+    std::printf("themed icons %s: %d\n", enabled ? "on" : "off", int(round.size()));
     return 0;
 }

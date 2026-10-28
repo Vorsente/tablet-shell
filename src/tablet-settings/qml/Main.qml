@@ -101,6 +101,9 @@ Kirigami.ApplicationWindow {
             backend.setHomeScreen("liveWallpaper", v);   // weather on the wallpaper moves only then
         } else if (item.apply === "materialYou") {
             backend.start([home + "/.local/bin/tablet-tools", "material-you", "--apply"]);
+        } else if (item.apply === "themedIcons") {
+            // the dock and menus take the icon theme's copies (tablet-tools themed-icons)
+            backend.start([home + "/.local/bin/tablet-tools", "themed-icons", v ? "on" : "off"]);
         } else if (item.apply === "tabletshell") {
             backend.start(["systemctl", "--user", "restart", "tabletshell.service"]);
         } else if (item.apply === "homeData") {
@@ -246,8 +249,8 @@ Kirigami.ApplicationWindow {
         { title: Tr.t("Домашний экран"), icon: "go-home-symbolic", webApps: true, items: [
             { type: "switch", store: "home", key: "showBadges", def: true,
               label: Tr.t("Значки уведомлений"), note: Tr.t("Красный счётчик непрочитанного на иконках") },
-            { type: "switch", store: "home", key: "themedIcons", def: false, label: Tr.t("Иконки в цвет обоев (стиль Pixel)"),
-              note: Tr.t("Все иконки перекрашиваются в два тона палитры Material You, как тематические иконки на Pixel") },
+            { type: "switch", store: "home", key: "themedIcons", def: false, apply: "themedIcons", label: Tr.t("Иконки в цвет обоев (стиль Pixel)"),
+              note: Tr.t("Иконки приложений на домашнем экране, в доке и в меню перекрашиваются в два тона палитры Material You, как тематические иконки на Pixel") },
             { type: "switch", store: "home", key: "weatherOnWallpaper", def: true, label: Tr.t("Погода на обоях"),
               note: Tr.t("Обои становятся зимними, дождливыми или туманными; с живыми обоями капли бегут по стеклу и падает снег") },
             { type: "button", label: Tr.t("Расположение иконок"), note: Tr.t("Вернуть порядок «избранное, затем по алфавиту»"),
