@@ -335,30 +335,6 @@ void applyToKdeglobals(const QString &schemeFile)
 
 } // namespace
 
-// scripts/MaterialYou.js tint(): a baseline Material colour moved to the seed hue at the same tone
-// (themed icons in icons.cpp must match the home screen's, which use the JS version)
-QRgb materialTint(QRgb color, double seedHue)
-{
-    constexpr double baselinePrimary = 305, baselineTertiary = 358;
-    auto distance = [](double a, double b) {
-        const double d = std::fmod(std::abs(a - b), 360.0);
-        return d > 180 ? 360 - d : d;
-    };
-    if (std::isnan(seedHue) || distance(seedHue, baselinePrimary) < 2) {
-        return color;
-    }
-    const Lab p = toLab(color);
-    const double c = std::hypot(p.a, p.b);
-    const double h = hueOf(color);
-    if (c < 10 || distance(h, baselinePrimary) < 25) {
-        return tone(seedHue, c > 25 ? c * 0.75 : c, p.L);
-    }
-    if (distance(h, baselineTertiary) < 25) {
-        return tone(std::fmod(seedHue + 60, 360.0), c, p.L);
-    }
-    return color;
-}
-
 // a swatch like Pixel's wallpaper & style page: the seed, and what the circle shows (primary,
 // secondary container, tertiary of that hue)
 QJsonObject swatch(double hue, const QString &from)
@@ -431,10 +407,6 @@ int materialYouCommand(const QStringList &args)
     const QString current = KConfig(QStringLiteral("kdeglobals")).group(QStringLiteral("General")).readEntry("ColorScheme", QString());
     if (current.startsWith(QLatin1String("TabletPixel")) && (changed || args.contains(QStringLiteral("--apply")))) {
         applyToKdeglobals(schemes + current + QStringLiteral(".colors"));
-    }
-    // themed icons (icons.cpp) are drawn in the palette: redraw them in the new one
-    if (changed && look.readEntry("themedIcons", false)) {
-        QProcess::startDetached(QCoreApplication::applicationFilePath(), {QStringLiteral("themed-icons")});
     }
     return 0;
 }

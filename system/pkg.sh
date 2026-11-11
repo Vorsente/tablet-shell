@@ -41,6 +41,9 @@ pkg_names() {
         libpulse) echo libpulse0 ;;
         inter-font) echo fonts-inter ;;
         ttf-croscore) echo fonts-croscore ;;
+        tesseract) echo tesseract-ocr ;;
+        tesseract-data-eng) echo tesseract-ocr-eng ;;
+        tesseract-data-rus) echo tesseract-ocr-rus ;;
         bluez-utils) echo bluez-tools ;;
         libinput-tools) echo libinput-tools ;;
         networkmanager) echo network-manager ;;
@@ -77,6 +80,9 @@ pkg_names() {
         libpulse) echo pulseaudio-libs ;;
         inter-font) echo rsms-inter-fonts ;;
         ttf-croscore) echo google-croscore-cousine-fonts ;;
+        tesseract) echo tesseract ;;
+        tesseract-data-eng) echo tesseract-langpack-eng ;;
+        tesseract-data-rus) echo tesseract-langpack-rus ;;
         bluez-utils) echo bluez ;;
         libinput-tools) echo libinput-utils ;;
         networkmanager) echo NetworkManager ;;
@@ -116,6 +122,9 @@ pkg_names() {
         libpulse) echo libpulse0 ;;
         inter-font) echo google-inter-fonts ;;
         ttf-croscore) echo google-cousine-fonts ;;
+        tesseract) echo tesseract-ocr ;;
+        tesseract-data-eng) echo tesseract-ocr-traineddata-english ;;
+        tesseract-data-rus) echo tesseract-ocr-traineddata-russian ;;
         bluez-utils) echo bluez ;;
         libinput-tools) echo libinput-tools ;;
         networkmanager) echo NetworkManager ;;

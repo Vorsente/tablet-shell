@@ -31,12 +31,13 @@ Item {
         clock: Tr.t("Часы"), weather: Tr.t("Погода"), calendar: Tr.t("Календарь"), battery: Tr.t("Батарея"),
         typewriter: Tr.t("Печатная машинка"), screentime: Tr.t("Экранное время"), youtube: "YouTube",
         linux: Tr.t("Новости Linux"), russia: Tr.t("Новости России"), custom: Tr.t("Моя лента"), rates: Tr.t("Курс ЦБ"),
-        claude: "Claude", onthisday: Tr.t("В этот день"), sky: Tr.t("Небо"), weekly: Tr.t("Итоги недели"),
+        claude: "Claude", deepseek: "DeepSeek", onthisday: Tr.t("В этот день"), sky: Tr.t("Небо"), weekly: Tr.t("Итоги недели"),
     })
     readonly property var icons: ({
         clock: "clock-symbolic", calendar: "view-calendar-day-symbolic", typewriter: "document-edit-symbolic",
         screentime: "chronometer-symbolic", youtube: "media-playback-start-symbolic", linux: "news-subscribe-symbolic",
         russia: "globe-symbolic", custom: "application-rss+xml-symbolic", rates: "wallet-open-symbolic", claude: "dialog-messages-symbolic",
+        deepseek: "office-chart-bar-symbolic",
         onthisday: "view-history-symbolic", sky: "weather-clear-night-symbolic", weekly: "office-chart-bar-symbolic",
     })
     function headerIcon() {
@@ -151,6 +152,7 @@ Item {
             text: material.kind === "clock" ? material.d.now.toLocaleDateString(material.ru, "ddd")
                 : material.kind === "onthisday" ? material.d.now.toLocaleDateString(material.ru, "d MMMM")
                 : material.kind === "claude" && material.d.claude && material.d.claude.plan ? material.d.claude.plan
+                : material.kind === "deepseek" && material.wide ? "OpenCode"
                 : ""
         }
     }
@@ -164,7 +166,7 @@ Item {
         sourceComponent: ({ clock: clockView, weather: weatherView, calendar: calendarView,
             battery: batteryView, screentime: screentimeView, typewriter: writingView,
             youtube: youtubeView, linux: newsView, russia: newsView, custom: newsView, rates: ratesView,
-            claude: claudeView, onthisday: onThisDayView, sky: skyView, weekly: weeklyView })[material.kind] || null
+            claude: claudeView, deepseek: deepseekView, onthisday: onThisDayView, sky: skyView, weekly: weeklyView })[material.kind] || null
     }
 
     // ---- clock ----
@@ -565,6 +567,44 @@ Item {
                         tint: pct >= 90 ? material.home.tone("red").accent : material.accent
                     }
                 }
+            }
+            Item { Layout.fillHeight: true }
+        }
+    }
+
+    // ---- DeepSeek token usage (OpenCode) ----
+    Component {
+        id: deepseekView
+        ColumnLayout {
+            readonly property var s: material.d.deepseek
+            readonly property var rows: [["today", Tr.t("Сегодня")], ["week", Tr.t("Неделя")]]
+            spacing: material.u * 0.5
+            Item { Layout.fillHeight: true }
+            Repeater {
+                model: s && s.error && !s.today ? [] : rows
+                delegate: ColumnLayout {
+                    required property var modelData
+                    readonly property var l: s ? s[modelData[0]] : null
+                    readonly property real peak: s && s.week ? Math.max(1, s.week.tokens) : 1
+                    Layout.fillWidth: true
+                    spacing: material.u * 0.25
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Label { text: modelData[1]; Layout.fillWidth: true }
+                        Muted { text: l ? material.d.tokenCount(l.tokens) + " · " + material.d.money(l.cost) : "—" }
+                    }
+                    Progress {
+                        Layout.fillWidth: true
+                        value: l ? Math.min(1, l.tokens / peak) : 0
+                    }
+                }
+            }
+            Muted {
+                visible: s && s.error && !s.today
+                text: s ? s.error : ""
+                wrapMode: Text.WordWrap
+                maximumLineCount: 2
+                Layout.fillWidth: true
             }
             Item { Layout.fillHeight: true }
         }

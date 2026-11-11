@@ -145,7 +145,7 @@ PLASMA=$(plasmashell --version 2>/dev/null | grep -o '[0-9]\+' | head -1)
 NEED=(base-devel git curl rsync python qt6-base qt6-declarative qt6-wayland qt6-multimedia qt6-multimedia-ffmpeg
       qt6-webengine qt6-shadertools qt6-tools wayland wayland-protocols kirigami kcmutils kconfig kcoreaddons kwindowsystem
       plasma-workspace plasma5support plasma-pa plasma-mobile libksysguard ksystemstats layer-shell-qt libkscreen
-      spectacle ghostwriter krita power-profiles-daemon neovim konsole ripgrep fd fzf lazygit tree-sitter-cli ttf-jetbrains-mono-nerd hunspell-en_us librsvg libpulse upower wl-clipboard at-spi2-core inter-font ttf-croscore)
+      spectacle ghostwriter krita power-profiles-daemon neovim konsole ripgrep fd fzf lazygit tree-sitter-cli ttf-jetbrains-mono-nerd hunspell-en_us librsvg libpulse upower wl-clipboard at-spi2-core inter-font ttf-croscore tesseract tesseract-data-eng tesseract-data-rus)
 MISSING=()
 for p in "${NEED[@]}"; do
     # fonts installed by hand count too
@@ -294,7 +294,10 @@ for p in shell/plasmoids/*; do
     sync_dir "$p" "$SHARE/plasma/plasmoids/$(basename "$p")"
 done
 skipped shaders || install -Dm644 build/weather.frag.qsb "$SHARE/plasma/plasmoids/org.ipad.homescreen/contents/ui/shaders/weather.frag.qsb"
-skipped shaders || [ ! -s build/themed-icon.frag.qsb ] || install -Dm644 build/themed-icon.frag.qsb "$SHARE/plasma/plasmoids/org.ipad.homescreen/contents/ui/shaders/themed-icon.frag.qsb"
+# the forced Material You recolouring of app icons is gone: drop its icons and shader
+rm -rf "$SHARE/icons/TabletPixelLight/apps/themed" "$SHARE/icons/TabletPixelDark/apps/themed"
+rm -f "$SHARE/plasma/plasmoids/org.ipad.homescreen/contents/ui/shaders/themed-icon.frag" \
+      "$SHARE/plasma/plasmoids/org.ipad.homescreen/contents/ui/shaders/themed-icon.frag.qsb"
 sync_dir shell/wallpapers/org.ipad.daynight "$SHARE/plasma/wallpapers/org.ipad.daynight"
 # bundled wallpaper packages: Apple-like and Material-specific day/night packs
 if [ -d shell/wallpaper-packs ]; then

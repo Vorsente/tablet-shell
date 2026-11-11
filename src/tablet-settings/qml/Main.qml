@@ -46,6 +46,7 @@ Kirigami.ApplicationWindow {
         case "device": return backend.deviceMode();
         case "home": return backend.homeScreen(item.key, item.def);
         case "dashboard": return backend.containmentConfig("org.ipad.dashboard", item.key, item.def);
+        case "display": return backend.read("tabletrc", "Display", item.key, item.def);
         // one city for every weather (home screen widgets and the dock dashboard)
         case "weatherCity": return String(backend.homeScreen("weatherCity", "") || backend.containmentConfig("org.ipad.dashboard", "weatherCity", ""));
         case "appearance": return backend.run([home + "/.local/bin/appearance", "status"]).trim() || "auto";
@@ -67,6 +68,7 @@ Kirigami.ApplicationWindow {
         case "device": backend.setDeviceMode(v); break;
         case "home": backend.setHomeScreen(item.key, v); break;
         case "dashboard": backend.setContainmentConfig("org.ipad.dashboard", item.key, v); break;
+        case "display": backend.write("tabletrc", "Display", item.key, v, false); break;
         case "weatherCity":
             backend.setHomeScreen("weatherCity", v);
             backend.setContainmentConfig("org.ipad.dashboard", "weatherCity", v);
@@ -101,9 +103,8 @@ Kirigami.ApplicationWindow {
             backend.setHomeScreen("liveWallpaper", v);   // weather on the wallpaper moves only then
         } else if (item.apply === "materialYou") {
             backend.start([home + "/.local/bin/tablet-tools", "material-you", "--apply"]);
-        } else if (item.apply === "themedIcons") {
-            // the dock and menus take the icon theme's copies (tablet-tools themed-icons)
-            backend.start([home + "/.local/bin/tablet-tools", "themed-icons", v ? "on" : "off"]);
+        } else if (item.apply === "display") {
+            backend.applyDisplay();
         } else if (item.apply === "tabletshell") {
             backend.start(["systemctl", "--user", "restart", "tabletshell.service"]);
         } else if (item.apply === "homeData") {
@@ -205,6 +206,18 @@ Kirigami.ApplicationWindow {
             make(tabletrc("Effects", "lockSound", true), { type: "switch",
               label: Tr.t("Звук блокировки"), note: Tr.t("Короткий щелчок, когда экран заблокирован") }),
         ] },
+        { title: Tr.t("Внешний монитор"), icon: "video-display-symbolic", needs: "externalDisplay", items: [
+            { type: "choice", store: "display", key: "mode", def: "extend", apply: "display",
+              label: Tr.t("Как использовать внешний монитор"),
+              note: Tr.t("Расширить — второй рабочий стол, дублировать — одна картинка на обоих экранах"),
+              options: [{ value: "extend", label: Tr.t("Расширить") }, { value: "mirror", label: Tr.t("Дублировать") },
+                        { value: "external", label: Tr.t("Только внешний") }, { value: "internal", label: Tr.t("Только планшет") }] },
+            { type: "choice", store: "display", key: "side", def: "right", apply: "display",
+              label: Tr.t("Положение внешнего монитора"),
+              note: Tr.t("Где стоит внешний экран относительно планшета"),
+              options: [{ value: "right", label: Tr.t("Справа") }, { value: "left", label: Tr.t("Слева") },
+                        { value: "above", label: Tr.t("Сверху") }, { value: "below", label: Tr.t("Снизу") }] },
+        ] },
         { title: Tr.t("Внешний вид"), icon: "preferences-desktop-theme-global-symbolic", wallpapers: true, items: [
             { type: "choice", store: "shellStyle", label: Tr.t("Стиль всей оболочки"),
               note: Tr.t("Apple — исходный интерфейс. Pixel — Material Design: рабочий стол, панели, иконки, настройки, клавиатура, блокировка и вход."),
@@ -249,8 +262,6 @@ Kirigami.ApplicationWindow {
         { title: Tr.t("Домашний экран"), icon: "go-home-symbolic", webApps: true, items: [
             { type: "switch", store: "home", key: "showBadges", def: true,
               label: Tr.t("Значки уведомлений"), note: Tr.t("Красный счётчик непрочитанного на иконках") },
-            { type: "switch", store: "home", key: "themedIcons", def: false, apply: "themedIcons", label: Tr.t("Иконки в цвет обоев (стиль Pixel)"),
-              note: Tr.t("Иконки приложений на домашнем экране, в доке и в меню перекрашиваются в два тона палитры Material You, как тематические иконки на Pixel") },
             { type: "switch", store: "home", key: "weatherOnWallpaper", def: true, label: Tr.t("Погода на обоях"),
               note: Tr.t("Обои становятся зимними, дождливыми или туманными; с живыми обоями капли бегут по стеклу и падает снег") },
             { type: "button", label: Tr.t("Расположение иконок"), note: Tr.t("Вернуть порядок «избранное, затем по алфавиту»"),
@@ -500,11 +511,14 @@ Kirigami.ApplicationWindow {
     }
     // what this device has (tablet-tools hardware): sections and rows with `needs` are hidden without it
     readonly property var hw: {
+        let h = {};
         try {
-            return JSON.parse(backend.run([home + "/.local/bin/tablet-tools", "hardware"]));
+            h = JSON.parse(backend.run([home + "/.local/bin/tablet-tools", "hardware"]));
         } catch (e) {
-            return {};
+            h = {};
         }
+        h.externalDisplay = backend.externalDisplay;
+        return h;
     }
     function present(x) {
         return !x.needs || hw[x.needs] !== false;

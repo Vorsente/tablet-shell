@@ -15,6 +15,7 @@ Item {
     signal webAppRequested()
     signal newFolderRequested()
     signal newFileRequested()
+    signal commandsRequested()
 
     property bool open: false
     property point at: Qt.point(0, 0)
@@ -131,6 +132,11 @@ Item {
                 onClicked: { menu.open = false; menu.newFileRequested(); }
             }
             Separator { visible: menu.home.pcMode }
+            Entry {
+                text: Tr.t("Команды…")
+                iconName: "system-run-symbolic"
+                onClicked: { menu.open = false; menu.commandsRequested(); }
+            }
             Entry {
                 text: Tr.t("Обои")
                 iconName: "preferences-desktop-wallpaper"

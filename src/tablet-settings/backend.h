@@ -18,6 +18,7 @@ class Backend : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(bool tabletMode READ tabletMode NOTIFY tabletModeChanged)
+    Q_PROPERTY(bool externalDisplay READ externalDisplay NOTIFY externalDisplayChanged)
     Q_PROPERTY(QVariantMap updateInfo READ updateInfo NOTIFY updateInfoChanged)
 
 public:
@@ -27,6 +28,10 @@ public:
     {
         return m_tabletMode;
     }
+    bool externalDisplay() const;
+
+    // apply the chosen external-monitor layout (tabletrc [Display] mode / side)
+    Q_INVOKABLE void applyDisplay();
 
     // KConfig access; `group` may be nested with "/" (e.g. "Containments/1/General")
     Q_INVOKABLE QVariant read(const QString &file, const QString &group, const QString &key, const QVariant &fallback) const;
@@ -77,6 +82,7 @@ public Q_SLOTS:
 
 Q_SIGNALS:
     void tabletModeChanged();
+    void externalDisplayChanged();
     void webAppsChanged();
     void updateInfoChanged();
     void moduleRequested(const QString &id);

@@ -569,6 +569,8 @@ Item {
                         Kirigami.Icon {
                             anchors.fill: parent
                             visible: !item.picture
+                            // exact icon box, not the nearest icon-theme size (the desktop round-off made icons scale unevenly)
+                            roundToIconSize: false
                             source: item.suffix === "desktop" ? (item.appIcon || "application-x-executable")
                                                               : desk.iconFor(item.fileName, item.fileIsDir)
                         }

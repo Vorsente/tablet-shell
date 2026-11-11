@@ -22,21 +22,10 @@ Item {
     // up to their visible box and cut to a circle; free-form logos sit on a light round plate,
     // like legacy icons on Android.
     readonly property bool roundFill: home.pixel && shape !== "free"
-    // Themed icons (home screen setting themedIcons): the finished round icon redrawn in two tones
-    // of the wallpaper's palette (shaders/themed-icon.frag): a light plate with a dark drawing, in
-    // the dark theme a dark plate with a light one
-    readonly property bool themed: home.pixel && home.themedIcons
     Item {
         id: pixelFace
         anchors.fill: parent
         visible: appIcon.home.pixel
-        layer.enabled: appIcon.themed
-        layer.smooth: true
-        layer.effect: ShaderEffect {
-            readonly property color plate: appIcon.home.dark ? appIcon.home.my("#2B2632") : appIcon.home.my("#EADDFF")
-            readonly property color glyph: appIcon.home.dark ? appIcon.home.my("#D0BCFF") : appIcon.home.my("#21005D")
-            fragmentShader: Qt.resolvedUrl("shaders/themed-icon.frag.qsb")
-        }
         Item {
             id: roundIcon
             anchors.fill: parent

@@ -43,6 +43,7 @@ Window {
     readonly property var tools: [
         { id: "note", icon: "document-edit", label: Tr.t("Заметка") },
         { id: "shot", icon: "image-x-generic", label: Tr.t("Скриншот") },
+        { id: "ocr", icon: "edit-find", label: Tr.t("Текст") },
         { id: "krita", icon: "applications-graphics", label: "Krita" },
         { id: "color", icon: "color-picker", label: Tr.t("Пипетка") },
         { id: "record", icon: "media-record", label: Tr.t("Запись") },
@@ -63,6 +64,8 @@ Window {
             shell.start([home + "/.local/bin/quick-note"]);
         } else if (tool === "shot") {
             shell.start(["spectacle", "-r"]);
+        } else if (tool === "ocr") {
+            shell.start([home + "/.local/bin/ocr"]);
         } else if (tool === "krita") {
             shell.start([home + "/.local/bin/launch-krita"]);
         } else if (tool === "color") {

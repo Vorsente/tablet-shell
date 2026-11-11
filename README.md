@@ -38,7 +38,9 @@ stay light: the background parts are small C++ programs, the UI is QML, nothing 
 | 🔒 **Lock & login** | One look for both, now-playing card, notifications; own greetd greeter |
 | ⚙️ **Settings** | One app instead of System Settings: all KDE modules plus the shell's own sections |
 | ✍️ **Typewriter** | Distraction-free screenplay writing in Markdown, daily goal, scenes, versions, export to PDF / DOCX / EPUB |
-| 🖊️ **Pen** | Palm rejection, quick note from the corner, a tool ring (note, screenshot, Krita, color picker, recording) |
+| 🖊️ **Pen** | Palm rejection, quick note from the corner, a tool ring (note, screenshot, text recognition, Krita, color picker, recording) |
+| 🔎 **Commands** | Action palette with `Ctrl+Alt+Space`, from the home screen menu and search: modes, themes, screenshot, OCR, external display, OpenCode and settings |
+| 🖥️ **External monitor** | A settings section appears when one is connected: extend, mirror, external only or tablet only; place it right, left, above or below |
 | 📊 **Dashboard** | StandBy-style clock and system widgets on the built-in screen when docked |
 | 🌗 **Light & dark** | Follows the time of day; cards, menus and sheets adapt |
 | 🖼️ **Icons** | Apple: MacTahoe (macOS 26) icon theme. Material: Colloid plus round adaptive icons. Apps a theme lacks get icons drawn to match (`tablet-tools app-icons`, re-run automatically when apps are installed) |
@@ -225,7 +227,7 @@ see a half-switched desktop.
 | Widgets and Today | iOS widgets | Material widgets: own colour per widget, calendar grid, progress bars |
 | Control center | round controls, tall brightness and volume sliders | wide tiles on a sheet, horizontal brightness and volume sliders |
 | Colours | system accent | Material You: from the wallpaper (*Auto* or one of its colours) or a basic colour, picked in **Settings → Appearance → Accent colour** |
-| Icons | MacTahoe | Colloid + round adaptive app icons; optionally themed in two tones of the wallpaper (**Settings → Home screen**) |
+| Icons | MacTahoe | Colloid + round adaptive app icons in their own colours |
 | Type | Inter | Roboto Flex (it has Cyrillic) |
 
 Light / dark / automatic is a separate setting and works with both. Each style remembers its own
@@ -299,7 +301,8 @@ interface); it creates no files and makes no git commits. Quit with `:qa`.
 ### Home screen and widgets
 
 - *Edit Home Screen* (long press on empty space) → **+ Widget**: weather, calendar, battery,
-  typewriter, screen time, YouTube, news, exchange rates, Claude limits, on this day, sky.
+  typewriter, screen time, YouTube, news, exchange rates, Claude limits, DeepSeek token usage from
+  OpenCode, on this day, sky.
 - On the Today page tap **Edit** to reorder (↑ ↓), remove (−) or add widgets.
 - **Web apps**: long press → *Web app*, give an address: the site gets its own icon and window.
 
@@ -392,6 +395,23 @@ Inter, Roboto Flex and Cousine fonts · [LazyVim](https://www.lazyvim.org) · we
 [GPL-3.0-or-later](LICENSE)
 
 ## What's new
+
+**November 2026**
+
+- **Command palette:** `Ctrl+Alt+Space`, *Commands…* in the home screen menu, or the *Commands* row
+  in search. Reading and coding modes, themes, screenshot, OCR, external display, OpenCode and
+  settings in one searchable list with keyboard navigation.
+- **Text recognition:** select a region with the pen or from the command palette and the text goes
+  to the clipboard. A *Text* button is in the pen tool ring. Needs `tesseract` and language packs
+  (`tesseract-data-rus`, `tesseract-data-eng`).
+- **External monitor in Settings:** the section appears when a monitor is connected — extend, mirror,
+  external only or tablet only, and choose where the external screen stands.
+- **DeepSeek token usage widget** from OpenCode: today and this week, tokens and cost, with no keys
+  stored by the shell.
+- **Icons without forced recolouring:** the two-tone Material You repaint is gone; app icons keep
+  their own colours.
+- **Faster:** measured icon shapes are cached between launches, search no longer asks the keyboard
+  four times a second, and the two OpenCode stats calls run in parallel.
 
 **October 2026**
 

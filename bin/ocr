@@ -1,0 +1,67 @@
+#!/bin/bash
+# OCR of a screen region (or of an image passed as the first argument): copies the recognised
+# text to the clipboard and says how much was copied. Used by the pen ring, the command palette
+# and the "Распознать текст" action.
+set -u
+case "${LANGUAGE:-${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}}" in ru*) RU=1 ;; *) RU= ;; esac
+t() { if [ -n "$RU" ]; then printf '%s' "$1"; else printf '%s' "$2"; fi; }
+notify() { command -v notify-send >/dev/null 2>&1 && notify-send -a tablet-shell -i "$1" "$2" "$3" >/dev/null 2>&1 || true; }
+
+if ! command -v tesseract >/dev/null 2>&1; then
+    notify dialog-error "$(t 'Распознавание текста' 'Text recognition')" \
+        "$(t 'Установите tesseract и языковые пакеты (tesseract-data-rus, tesseract-data-eng)' \
+             'Install tesseract and its language packs (tesseract-data-rus, tesseract-data-eng)')"
+    exit 1
+fi
+
+tmp="${XDG_RUNTIME_DIR:-/tmp}/tablet-shell-ocr"
+mkdir -p "$tmp" || exit 1
+image=${1:-}
+own=0
+if [ -z "$image" ]; then
+    command -v spectacle >/dev/null 2>&1 || { notify dialog-error "$(t 'Распознавание текста' 'Text recognition')" "$(t 'Нет spectacle' 'spectacle is not installed')"; exit 1; }
+    image="$tmp/region-$$.png"
+    own=1
+    # region capture; cancelled selection exits without a notification
+    spectacle -r -b -n -o "$image" >/dev/null 2>&1 || exit 0
+fi
+[ -s "$image" ] || { [ "$own" = 1 ] && rm -f "$image"; exit 0; }
+
+available=$(tesseract --list-langs 2>/dev/null | sed '1d')
+langs=""
+for l in rus eng; do
+    printf '%s\n' "$available" | grep -qx "$l" && langs="${langs:+$langs+}$l"
+done
+if [ -z "$langs" ]; then
+    langs=$(printf '%s\n' "$available" | head -1)
+fi
+if [ -z "$langs" ]; then
+    notify dialog-error "$(t 'Распознавание текста' 'Text recognition')" \
+        "$(t 'Не установлены языковые пакеты tesseract' 'No tesseract language packs are installed')"
+    [ "$own" = 1 ] && rm -f "$image"
+    exit 1
+fi
+
+text=$(tesseract "$image" stdout -l "$langs" --psm 6 2>/dev/null | sed -e 's/[[:space:]]\+$//' -e '/^$/d')
+[ "$own" = 1 ] && rm -f "$image"
+if [ -z "$text" ]; then
+    notify edit-find "$(t 'Распознавание текста' 'Text recognition')" "$(t 'Текст не найден' 'No text found')"
+    exit 0
+fi
+
+if command -v wl-copy >/dev/null 2>&1; then
+    printf '%s\n' "$text" | wl-copy >/dev/null 2>&1
+elif command -v xclip >/dev/null 2>&1; then
+    printf '%s\n' "$text" | xclip -selection clipboard >/dev/null 2>&1
+else
+    out="$HOME/Documents/ocr-$(date +%Y-%m-%d_%H-%M-%S).txt"
+    mkdir -p "$(dirname "$out")"
+    printf '%s\n' "$text" > "$out"
+    notify edit-find "$(t 'Текст распознан' 'Text recognised')" "$(t 'Сохранено: ' 'Saved: ')$out"
+    exit 0
+fi
+
+chars=${#text}
+lines=$(printf '%s\n' "$text" | wc -l)
+notify edit-find "$(t 'Текст распознан' 'Text recognised')" \
+    "$(t 'Скопировано: ' 'Copied: ')$chars $(t 'символов, ' 'characters, ')$lines $(t 'строк' 'lines')"

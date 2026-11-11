@@ -11,7 +11,7 @@
 //   cleanup scan | run ID... | auto                      storage: sizes / clean up (tablet-settings «Хранилище»)
 //   weekly                                               week report: screen time, words, battery vs the week before
 //   app-icons [--force]                                  MacTahoe-style icons for apps the icon theme lacks (icons.cpp)
-//   themed-icons [on|off]                                Pixel app icons in the wallpaper's two tones everywhere (icons.cpp)
+//   display-mode extend|mirror|external|internal [side]  external monitor layout through KScreen
 #include <KConfig>
 #include <KConfigGroup>
 
@@ -63,7 +63,6 @@ int typewriterExportCommand(const QString &file, const QString &format, QString 
 int typewriterRuntimeCommand(const QString &file);
 // app icons in the icon theme's style (icons.cpp)
 int appIconsCommand(const QStringList &args);
-int themedIconsCommand(const QStringList &args);
 
 int materialYouCommand(const QStringList &args);   // material-you.cpp
 
@@ -598,6 +597,140 @@ int screentimeApps(const QStringList &ids)
     return 0;
 }
 
+// ---- external monitor ---------------------------------------------------------------------------
+// KScreen owns the screen layout. This is a tiny front-end for the settings app and the command
+// palette: extend the desktop to the external monitor, mirror it, or keep only one screen.
+int displayModeCommand(const QStringList &args)
+{
+    const QString mode = args.value(0, QStringLiteral("extend"));
+    const QString side = args.value(1, QStringLiteral("right"));
+    const QStringList modes{QStringLiteral("extend"), QStringLiteral("mirror"), QStringLiteral("external"), QStringLiteral("internal")};
+    const QStringList sides{QStringLiteral("right"), QStringLiteral("left"), QStringLiteral("above"), QStringLiteral("below")};
+    if (!modes.contains(mode) || !sides.contains(side)) {
+        std::fprintf(stderr, "usage: tablet-tools display-mode extend|mirror|external|internal [right|left|above|below]\n");
+        return 2;
+    }
+
+    QProcess doctor;
+    doctor.start(QStringLiteral("kscreen-doctor"), {QStringLiteral("-j")});
+    if (!doctor.waitForStarted(3000) || !doctor.waitForFinished(5000)) {
+        doctor.kill();
+        doctor.waitForFinished(1000);
+        std::fprintf(stderr, "display-mode: kscreen-doctor did not answer\n");
+        return 1;
+    }
+    if (doctor.exitStatus() != QProcess::NormalExit || doctor.exitCode() != 0) {
+        std::fprintf(stderr, "display-mode: kscreen-doctor failed\n");
+        return 1;
+    }
+    const QJsonObject config = QJsonDocument::fromJson(doctor.readAllStandardOutput()).object();
+    if (config.isEmpty()) {
+        return 1;
+    }
+
+    QJsonObject internal, external;
+    for (const QJsonValue &v : config.value(QStringLiteral("outputs")).toArray()) {
+        const QJsonObject o = v.toObject();
+        if (!o.value(QStringLiteral("connected")).toBool()) {
+            continue;
+        }
+        const QString name = o.value(QStringLiteral("name")).toString();
+        const bool isInternal = name.startsWith(QLatin1String("eDP")) || name.startsWith(QLatin1String("LVDS"))
+                             || name.startsWith(QLatin1String("DSI")) || name.startsWith(QLatin1String("Panel"));
+        if (isInternal) {
+            if (internal.isEmpty() || o.value(QStringLiteral("enabled")).toBool()) {
+                internal = o;
+            }
+        } else if (external.isEmpty()
+                   || (!external.value(QStringLiteral("enabled")).toBool() && o.value(QStringLiteral("enabled")).toBool())) {
+            external = o;
+        }
+    }
+    if (internal.isEmpty() || external.isEmpty()) {
+        std::fprintf(stderr, "display-mode: no external monitor is connected\n");
+        return 1;
+    }
+
+    const QString in = internal.value(QStringLiteral("name")).toString();
+    const QString ex = external.value(QStringLiteral("name")).toString();
+    auto logicalSize = [](const QJsonObject &o) {
+        const QJsonObject s = o.value(QStringLiteral("size")).toObject();
+        double scale = o.value(QStringLiteral("scale")).toDouble(1.0);
+        if (!(scale > 0.1)) {
+            scale = 1.0;
+        }
+        return QSize(qMax(1, qRound(s.value(QStringLiteral("width")).toDouble() / scale)),
+                     qMax(1, qRound(s.value(QStringLiteral("height")).toDouble() / scale)));
+    };
+    auto addMode = [&](const QJsonObject &o, const QString &name, QStringList &cmd) {
+        QString id = o.value(QStringLiteral("currentModeId")).toString();
+        if (id.isEmpty()) {
+            const QJsonArray preferred = o.value(QStringLiteral("preferredModes")).toArray();
+            if (!preferred.isEmpty()) {
+                id = preferred.first().toString();
+            }
+        }
+        if (!id.isEmpty()) {
+            cmd << QStringLiteral("output.%1.mode.%2").arg(name, id);
+        }
+    };
+
+    const QSize is = logicalSize(internal), es = logicalSize(external);
+    const QString internalAt = "0,0";
+    QString externalAt;
+    QString internalPos = internalAt;
+    if (side == QLatin1String("left")) {
+        externalAt = internalAt;
+        internalPos = QStringLiteral("%1,0").arg(es.width());
+    } else if (side == QLatin1String("above")) {
+        externalAt = internalAt;
+        internalPos = QStringLiteral("0,%1").arg(es.height());
+    } else if (side == QLatin1String("below")) {
+        externalAt = QStringLiteral("0,%1").arg(is.height());
+    } else {
+        externalAt = QStringLiteral("%1,0").arg(is.width());
+    }
+
+    QStringList cmd;
+    if (mode == QLatin1String("internal")) {
+        cmd << QStringLiteral("output.%1.disable").arg(ex)
+            << QStringLiteral("output.%1.enable").arg(in)
+            << QStringLiteral("output.%1.position.0,0").arg(in);
+    } else if (mode == QLatin1String("external")) {
+        addMode(external, ex, cmd);
+        cmd << QStringLiteral("output.%1.disable").arg(in)
+            << QStringLiteral("output.%1.enable").arg(ex)
+            << QStringLiteral("output.%1.mirror.none").arg(ex)
+            << QStringLiteral("output.%1.position.0,0").arg(ex);
+    } else if (mode == QLatin1String("mirror")) {
+        cmd << QStringLiteral("output.%1.enable").arg(in)
+            << QStringLiteral("output.%1.enable").arg(ex)
+            << QStringLiteral("output.%1.mirror.%2").arg(ex, in);
+    } else {
+        addMode(external, ex, cmd);
+        cmd << QStringLiteral("output.%1.enable").arg(in)
+            << QStringLiteral("output.%1.enable").arg(ex)
+            << QStringLiteral("output.%1.mirror.none").arg(ex)
+            << QStringLiteral("output.%1.position.%2").arg(in, internalPos)
+            << QStringLiteral("output.%1.position.%2").arg(ex, externalAt);
+    }
+
+    QProcess apply;
+    apply.start(QStringLiteral("kscreen-doctor"), cmd);
+    if (!apply.waitForStarted(3000) || !apply.waitForFinished(10000)) {
+        apply.kill();
+        apply.waitForFinished(1000);
+        std::fprintf(stderr, "display-mode: kscreen-doctor did not apply the layout\n");
+        return 1;
+    }
+    if (apply.exitStatus() != QProcess::NormalExit || apply.exitCode() != 0) {
+        std::fputs(apply.readAllStandardError().constData(), stderr);
+        return 1;
+    }
+    out(QStringLiteral("{\"ok\":true,\"mode\":\"%1\",\"external\":\"%2\"}\n").arg(mode, ex));
+    return 0;
+}
+
 // ---- dock dashboard ----------------------------------------------------------------------------
 // Claude plan limits come from the endpoint Claude Code's /usage uses (its own OAuth token).
 // YouTube subscribers come from the YouTube Analytics API (exact, like YouTube Studio): lifetime
@@ -651,6 +784,95 @@ QJsonObject googleClient()
     const QJsonObject o = readJson(googleClientPath);
     return o.value(QStringLiteral("installed")).toObject().isEmpty() ? o.value(QStringLiteral("web")).toObject()
                                                                      : o.value(QStringLiteral("installed")).toObject();
+}
+
+// DeepSeek token usage as OpenCode itself counts it (`opencode stats --json`). The shell never
+// reads or stores a key: OpenCode owns the credentials and the counters.
+QJsonObject deepseekUsage()
+{
+    QString program = QStandardPaths::findExecutable(QStringLiteral("opencode"));
+    if (program.isEmpty()) {
+        for (const QString &cand : {home + QStringLiteral("/.local/bin/opencode"),
+                                    home + QStringLiteral("/.local/share/opencode/bin/opencode"),
+                                    QStringLiteral("/usr/local/bin/opencode")}) {
+            if (QFileInfo(cand).isExecutable()) {
+                program = cand;
+                break;
+            }
+        }
+    }
+    if (program.isEmpty()) {
+        return {{QStringLiteral("error"), T(QStringLiteral("OpenCode не найден"))}};
+    }
+    auto launch = [&](const QStringList &range) {
+        auto *p = new QProcess;
+        p->setStandardErrorFile(QProcess::nullDevice());
+        p->start(program, QStringList{QStringLiteral("stats"), QStringLiteral("--json"), QStringLiteral("--cost"),
+                                      QStringLiteral("--models")} + range);
+        return p;
+    };
+    auto finish = [](QProcess *p) -> QJsonObject {
+        if (!p) {
+            return {};
+        }
+        if (!p->waitForStarted(3000) || !p->waitForFinished(20000)) {
+            p->kill();
+            p->waitForFinished(1000);
+            delete p;
+            return {};
+        }
+        QJsonObject result;
+        if (p->exitStatus() == QProcess::NormalExit && p->exitCode() == 0) {
+            const QJsonDocument doc = QJsonDocument::fromJson(p->readAllStandardOutput());
+            if (doc.isObject()) {
+                result = doc.object();
+            }
+        }
+        delete p;
+        return result;
+    };
+    // both ranges run at the same time: the dashboard waits for one CLI round, not two
+    QProcess *todayProc = launch({QStringLiteral("--days"), QStringLiteral("0")});
+    QProcess *weekProc = launch({QStringLiteral("--days"), QStringLiteral("7")});
+    const QJsonObject today = finish(todayProc);
+    const QJsonObject week = finish(weekProc);
+    auto deepseek = [](const QJsonObject &s) {
+        qint64 input = 0, output = 0, reasoning = 0, cacheRead = 0;
+        double cost = 0;
+        int steps = 0;
+        for (const QJsonValue &v : s.value(QStringLiteral("models")).toArray()) {
+            const QJsonObject m = v.toObject();
+            const QJsonObject model = m.value(QStringLiteral("model")).toObject();
+            if (model.value(QStringLiteral("providerID")).toString().compare(QStringLiteral("deepseek"), Qt::CaseInsensitive) != 0) {
+                continue;
+            }
+            const QJsonObject t = m.value(QStringLiteral("tokens")).toObject();
+            input += t.value(QStringLiteral("input")).toInteger();
+            output += t.value(QStringLiteral("output")).toInteger();
+            reasoning += t.value(QStringLiteral("reasoning")).toInteger();
+            cacheRead += t.value(QStringLiteral("cache")).toObject().value(QStringLiteral("read")).toInteger();
+            cost += m.value(QStringLiteral("cost")).toDouble();
+            steps += m.value(QStringLiteral("steps")).toInteger();
+        }
+        return QJsonObject{{QStringLiteral("tokens"), input + output + reasoning + cacheRead},
+                           {QStringLiteral("input"), input},
+                           {QStringLiteral("output"), output},
+                           {QStringLiteral("reasoning"), reasoning},
+                           {QStringLiteral("cacheRead"), cacheRead},
+                           {QStringLiteral("cost"), cost},
+                           {QStringLiteral("steps"), steps}};
+    };
+    if (today.isEmpty() && week.isEmpty()) {
+        return {{QStringLiteral("error"), T(QStringLiteral("OpenCode не отвечает"))}};
+    }
+    QJsonObject out;
+    if (!today.isEmpty()) {
+        out.insert(QStringLiteral("today"), deepseek(today));
+    }
+    if (!week.isEmpty()) {
+        out.insert(QStringLiteral("week"), deepseek(week));
+    }
+    return out;
 }
 
 QJsonObject claudeUsage(QNetworkAccessManager &net)
@@ -1720,6 +1942,7 @@ int dashboard(bool force, const QString &city)
     }
     QNetworkAccessManager net;
     QJsonObject result{{QStringLiteral("claude"), claudeUsage(net)},
+                       {QStringLiteral("deepseek"), deepseekUsage()},
                        {QStringLiteral("youtube"), youtubeStats(net)},
                        {QStringLiteral("weather"), weather(net, city, cached.value(QStringLiteral("weather")).toObject())},
                        {QStringLiteral("updated"), QDateTime::currentDateTime().toString(Qt::ISODate)}};
@@ -1743,6 +1966,7 @@ int dashboard(bool force, const QString &city)
         result.insert(section, now);
     };
     keepOld(QStringLiteral("claude"), QStringLiteral("session"), {QStringLiteral("session"), QStringLiteral("weekly"), QStringLiteral("plan")});
+    keepOld(QStringLiteral("deepseek"), QStringLiteral("today"), {QStringLiteral("today"), QStringLiteral("week")});
     keepOld(QStringLiteral("youtube"), QStringLiteral("subscribers"), {QStringLiteral("subscribers"), QStringLiteral("last28"), QStringLiteral("title")});
     if (retry) {
         result.insert(QStringLiteral("retry"), true);
@@ -1859,10 +2083,8 @@ int main(int argc, char *argv[])
         QGuiApplication app(argc, argv);
         return appIconsCommand(args);
     }
-    if (tool == QLatin1String("themed-icons")) {
-        qputenv("QT_QPA_PLATFORM", "offscreen"); // painting icons, no window
-        QGuiApplication app(argc, argv);
-        return themedIconsCommand(args);
+    if (tool == QLatin1String("display-mode")) {
+        return displayModeCommand(args);
     }
     if (tool == QLatin1String("webapp-create")) {
         qputenv("QT_QPA_PLATFORM", "offscreen"); // painting icons, no window

@@ -1,6 +1,6 @@
 // One iPadOS-like widget card: clock, weather, calendar, battery, typewriter, screen time,
-// YouTube, Linux news, country news, own RSS feeds, exchange rates, Claude limits, on this day, sky,
-// week report.
+// YouTube, Linux news, country news, own RSS feeds, exchange rates, Claude limits, DeepSeek token
+// usage from OpenCode, on this day, sky, week report.
 // "small" fills 2x2 home grid cells, "wide" 4x2. Data comes from home.homeData (HomeData.qml).
 // Tapping does what the widget is about (typewriter opens the typewriter, screen time its
 // window); the home grid's WidgetTile handles editing.
@@ -54,6 +54,8 @@ Rectangle {
             Qt.openUrlExternally("https://studio.youtube.com/");
         } else if (kind === "claude") {
             Qt.openUrlExternally("https://claude.ai/settings/usage");
+        } else if (kind === "deepseek") {
+            home.runCommand(["konsole", "-e", "opencode", "stats", "--cost", "--models"]);
         } else if (kind === "linux" || kind === "russia" || kind === "custom") {
             const list = kind === "linux" ? d.linuxNews : kind === "custom" ? d.customNews : d.russiaNews;
             if (list.length > 0) {
@@ -109,7 +111,7 @@ Rectangle {
             clock: clockView, weather: weatherView, calendar: calendarView,
             battery: batteryView, typewriter: typewriterView, screentime: screentimeView,
             youtube: youtubeView, linux: newsView, russia: newsView, custom: newsView, rates: ratesView,
-            claude: claudeView, onthisday: onThisDayView, sky: skyView, weekly: weeklyView,
+            claude: claudeView, deepseek: deepseekView, onthisday: onThisDayView, sky: skyView, weekly: weeklyView,
         })[card.kind] || null
     }
 
@@ -730,6 +732,61 @@ Rectangle {
                             height: parent.height
                             radius: height / 2
                             color: pct >= 90 ? card.red : pct >= 70 ? card.orange : "#D97757"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- DeepSeek token usage (OpenCode) ----
+    Component {
+        id: deepseekView
+        ColumnLayout {
+            readonly property var s: card.d.deepseek
+            readonly property var rows: [["today", Tr.t("Сегодня")], ["week", Tr.t("Неделя")]]
+            spacing: card.u * 0.5
+            RowLayout {
+                Text { text: "◈"; color: "#4D6BFE"; font.pixelSize: card.u * 1.4 }
+                Caption { text: "DeepSeek"; color: card.text; Layout.fillWidth: true }
+                Caption { text: "OpenCode"; visible: card.wide }
+            }
+            Item { Layout.fillHeight: true }
+            Caption {
+                visible: s && s.error && !s.today
+                text: s ? s.error : ""
+                color: card.red
+                wrapMode: Text.WordWrap
+                maximumLineCount: 2
+                Layout.fillWidth: true
+            }
+            Repeater {
+                model: s && s.error && !s.today ? [] : rows
+                delegate: ColumnLayout {
+                    required property var modelData
+                    readonly property var l: s ? s[modelData[0]] : null
+                    readonly property real peak: s && s.week ? Math.max(1, s.week.tokens) : 1
+                    Layout.fillWidth: true
+                    spacing: card.u * 0.2
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Caption { text: modelData[1] }
+                        Item { Layout.fillWidth: true }
+                        Caption {
+                            text: l ? card.d.tokenCount(l.tokens) + (card.wide ? " · " + card.d.money(l.cost) : "") : "—"
+                            color: card.text
+                        }
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: card.u * 0.5
+                        radius: height / 2
+                        color: card.home.pal.fill
+                        Rectangle {
+                            width: parent.width * (l ? Math.min(1, l.tokens / peak) : 0)
+                            height: parent.height
+                            radius: height / 2
+                            color: "#4D6BFE"
                         }
                     }
                 }

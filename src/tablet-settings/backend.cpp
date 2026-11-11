@@ -16,6 +16,7 @@
 #include <QQmlEngine>
 #include <QDir>
 #include <QFile>
+#include <QGuiApplication>
 #include <QProcess>
 #include <QStandardPaths>
 #include <QStorageInfo>
@@ -97,6 +98,21 @@ Backend::Backend(QObject *parent)
     if (qEnvironmentVariableIsSet("TABLET_SETTINGS_TOUCH")) {
         m_tabletMode = qEnvironmentVariableIntValue("TABLET_SETTINGS_TOUCH") != 0;
     }
+    connect(qGuiApp, &QGuiApplication::screenAdded, this, [this](QScreen *) { Q_EMIT externalDisplayChanged(); });
+    connect(qGuiApp, &QGuiApplication::screenRemoved, this, [this](QScreen *) { Q_EMIT externalDisplayChanged(); });
+}
+
+bool Backend::externalDisplay() const
+{
+    return QGuiApplication::screens().size() > 1;
+}
+
+void Backend::applyDisplay()
+{
+    KConfig cfg(QStringLiteral("tabletrc"), KConfig::SimpleConfig);
+    const KConfigGroup g = cfg.group(QStringLiteral("Display"));
+    start({home() + QStringLiteral("/.local/bin/tablet-tools"), QStringLiteral("display-mode"),
+           g.readEntry("mode", QStringLiteral("extend")), g.readEntry("side", QStringLiteral("right"))});
 }
 
 void Backend::onTabletModeChanged(bool tablet)

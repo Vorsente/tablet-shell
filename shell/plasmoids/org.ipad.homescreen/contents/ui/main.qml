@@ -36,7 +36,6 @@ ContainmentItem {
     readonly property real pageDotsClearance: Kirigami.Units.smallSpacing * 3
     readonly property bool pixel: Plasmoid.configuration.shellStyle === "pixel"
     readonly property bool showBadges: Plasmoid.configuration.showBadges
-    readonly property bool themedIcons: Plasmoid.configuration.themedIcons
     readonly property string weatherCity: Plasmoid.configuration.weatherCity
 
     // Light/dark like iPadOS: follows the Plasma colour scheme (org.ipad.light / org.ipad.dark,
@@ -97,7 +96,7 @@ ContainmentItem {
         const byKind = {
             weather: "primary", calendar: "secondary", clock: "tertiary", battery: "green",
             typewriter: "secondary", screentime: "tertiary", youtube: "red", linux: "neutral",
-            russia: "neutral", custom: "primary", rates: "green", claude: "orange", onthisday: "tertiary",
+            russia: "neutral", custom: "primary", rates: "green", claude: "orange", deepseek: "blue", onthisday: "tertiary",
             sky: "primary", weekly: "secondary", note: "tertiary",
         };
         const t = (sets[byKind[kind] || kind] || sets.neutral).map(c => my(c));
@@ -109,8 +108,9 @@ ContainmentItem {
     // Physical size: Screen.pixelDensity is logical px per mm in Qt 6 (screens without a believable
     // size get the reference tablet's 7.085), times tabletrc [Appearance] uiScale (mirrored here by
     // tablet-settings). Keeps icons finger-sized on any screen instead of a fixed column count.
+    readonly property real userScale: Math.max(50, Math.min(200, Plasmoid.configuration.uiScale)) / 100
     readonly property real mm: (Screen.pixelDensity > 2.5 && Screen.pixelDensity < 25 ? Screen.pixelDensity : 7.085)
-                               * Math.max(50, Math.min(200, Plasmoid.configuration.uiScale)) / 100
+                               * userScale
     // a touch that moved further than this is a swipe, not a tap
     readonly property real tapSlop: mm * 2.5
 
@@ -119,7 +119,7 @@ ContainmentItem {
     readonly property bool portrait: pages.height > pages.width
     readonly property int columns: Math.max(portrait ? 4 : 5, Math.min(portrait ? 7 : 10,
                                    Math.floor((pages.width - Kirigami.Units.gridUnit * 4) / (mm * (portrait ? 24 : 27)))))
-    readonly property real cellWidth: pcMode ? Kirigami.Units.gridUnit * 5.5
+    readonly property real cellWidth: pcMode ? Kirigami.Units.gridUnit * 5.5 * userScale
                                              : Math.floor((pages.width - Kirigami.Units.gridUnit * 4) / columns)
     // a row is ~23 mm; the rows that fit share the whole height (iPadOS), so no empty band is left
     // between the grid and the panels
@@ -127,12 +127,13 @@ ContainmentItem {
     readonly property real gridRoom: pages.height - Kirigami.Units.gridUnit
     readonly property int rows: pcMode ? Math.max(1, Math.floor(gridRoom / cellHeight))
                                        : Math.max(1, Math.floor(gridRoom / nominalCellHeight))
-    readonly property real cellHeight: pcMode ? Kirigami.Units.gridUnit * 5.2
+    readonly property real cellHeight: pcMode ? Kirigami.Units.gridUnit * 5.2 * userScale
                                               : Math.min(nominalCellHeight * 1.4, Math.floor(gridRoom / Math.max(1, Math.floor(gridRoom / nominalCellHeight))))
     readonly property int pageSize: columns * rows
     // DeX desktop: icons in columns, top to bottom
     readonly property int pcRows: Math.max(1, Math.floor((area.height - Kirigami.Units.largeSpacing * 2) / cellHeight))
-    readonly property real iconSize: pcMode ? Kirigami.Units.gridUnit * 2.6 : Math.round(Math.min(cellWidth, nominalCellHeight) * 0.56)
+    readonly property real iconSize: pcMode ? Math.round(Kirigami.Units.gridUnit * 2.6 * userScale)
+                                            : Math.round(Math.min(cellWidth, nominalCellHeight) * 0.56)
 
     property bool editing: false
 
@@ -145,6 +146,59 @@ ContainmentItem {
     // O(1) duplicate detection while hundreds of icons are being classified.
     property var iconPending: ({})
     readonly property var nativeIcon: ({ shape: "native", scale: 1, dx: 0, dy: 0 })
+    // measured shapes survive a restart: the first home screen after login used to spend seconds
+    // grabbing every icon in the grid again
+    readonly property string iconCachePath: root.homeDir + "/.cache/tablet-shell/icon-shapes.json"
+    property string iconCacheTheme: ""
+    property bool iconCacheReady: false
+    function loadIconShapes() {
+        root.runCommand(["sh", "-c",
+            "theme=$(kreadconfig6 --file kdeglobals --group Icons --key Theme 2>/dev/null); printf '%s\\n' \"$theme\"; [ ! -f \"$1\" ] || cat \"$1\"",
+            "sh", iconCachePath], out => {
+            const nl = out.indexOf("\n");
+            root.iconCacheTheme = nl >= 0 ? out.slice(0, nl).trim() : "";
+            root.iconCacheReady = true;
+            if (nl < 0) {
+                return;
+            }
+            let saved = null;
+            try {
+                saved = JSON.parse(out.slice(nl + 1));
+            } catch (e) {
+                return;
+            }
+            if (!saved || saved.style !== (root.pixel ? "pixel" : "apple")
+                    || saved.icons !== root.iconCacheTheme || !saved.shapes) {
+                return;
+            }
+            const shapes = Object.assign({}, saved.shapes, root.iconShapes);
+            root.iconShapes = shapes;
+            root.iconQueue = root.iconQueue.filter(n => shapes[n] === undefined);
+            const pending = {};
+            for (const n in root.iconPending) {
+                if (shapes[n] === undefined) {
+                    pending[n] = true;
+                }
+            }
+            root.iconPending = pending;
+        });
+    }
+    function saveIconShapes() {
+        if (!root.iconCacheReady || !root.iconCacheTheme || !Object.keys(root.iconShapes).length) {
+            return;
+        }
+        const payload = JSON.stringify({ style: root.pixel ? "pixel" : "apple", icons: root.iconCacheTheme,
+                                         shapes: root.iconShapes });
+        root.runCommand(["sh", "-c", "mkdir -p \"$(dirname \"$1\")\"; printf '%s' \"$2\" > \"$1\"",
+                         "sh", iconCachePath, payload]);
+    }
+    function scheduleIconCacheSave() {
+        iconCacheSave.restart();
+    }
+    property Timer iconCacheSave: Timer {
+        interval: 1500
+        onTriggered: root.saveIconShapes()
+    }
     // Another style means another icon theme: the old measurements put every MacTahoe icon on a
     // plate after a live Material -> Apple switch. Measure again once the new theme is loaded.
     onPixelChanged: reshapeTimer.restart()
@@ -159,6 +213,7 @@ ContainmentItem {
             root.iconQueue = [];
             root.iconPending = ({});
             root.iconShapes = ({});
+            root.loadIconShapes();
         }
     }
     function iconShape(name) {
@@ -296,6 +351,7 @@ ContainmentItem {
     }
     onPageCountChanged: syncPages()
     Component.onCompleted: {
+        root.loadIconShapes();
         syncPages();
         Qt.callLater(() => pages.setCurrentIndex(root.firstAppPage));
     }
@@ -1137,7 +1193,7 @@ ContainmentItem {
                 }
             }
             Timer {
-                interval: 350
+                interval: 1000
                 repeat: true
                 running: searchField.activeFocus
                 triggeredOnStart: true
@@ -1390,7 +1446,7 @@ ContainmentItem {
                 color: root.pal.sheet
                 border.width: 1
                 border.color: root.pal.sheetBorder
-                visible: popular.count > 0 || searchBar.recent.length > 0
+                visible: true
 
                 Kicker.RecentUsageModel {
                     id: usage
@@ -1455,6 +1511,52 @@ ContainmentItem {
                     anchors.fill: parent
                     anchors.margins: parent.pad
                     spacing: Kirigami.Units.largeSpacing
+
+                    // the command palette, one tap away from the empty search bar
+                    Rectangle {
+                        width: parent.width
+                        height: Kirigami.Units.gridUnit * 2.8
+                        radius: root.pixel ? height / 2 : Kirigami.Units.gridUnit * 0.7
+                        color: commandsTap.pressed ? root.pal.fillStrong : root.pal.fill
+                        Row {
+                            anchors.fill: parent
+                            anchors.leftMargin: Kirigami.Units.largeSpacing
+                            anchors.rightMargin: Kirigami.Units.largeSpacing
+                            spacing: Kirigami.Units.largeSpacing
+                            Kirigami.Icon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: Kirigami.Units.iconSizes.smallMedium
+                                height: width
+                                source: "system-run-symbolic"
+                                isMask: true
+                                color: root.pal.blue
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: Tr.t("Команды")
+                                color: root.pal.text
+                                font.family: root.fontFamily
+                                font.pixelSize: Kirigami.Units.gridUnit * 0.9
+                                font.weight: Font.Medium
+                            }
+                            Item { width: Math.max(0, parent.width - parent.children[0].width - parent.children[1].width - parent.spacing * 3); height: 1 }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "Ctrl+Alt+Space"
+                                color: root.pal.secondary
+                                font.family: root.fontFamily
+                                font.pixelSize: Kirigami.Units.gridUnit * 0.72
+                            }
+                        }
+                        MouseArea {
+                            id: commandsTap
+                            anchors.fill: parent
+                            onClicked: {
+                                searchBar.clear();
+                                commandPalette.show();
+                            }
+                        }
+                    }
 
                     Text {
                         visible: popular.count > 0
@@ -1625,6 +1727,7 @@ ContainmentItem {
             grab = null;
             shot.source = "";
             root.iconShapes = m;
+            root.scheduleIconCacheSave();
             next();
         }
         Kirigami.Icon {
@@ -1746,6 +1849,19 @@ ContainmentItem {
         onWebAppRequested: webAppDialog.show()
         onNewFolderRequested: deskGrid.create(true)
         onNewFileRequested: deskGrid.create(false)
+        onCommandsRequested: commandPalette.show()
+    }
+
+    CommandPalette {
+        id: commandPalette
+        anchors.fill: parent
+        z: 35
+        home: root
+    }
+
+    Shortcut {
+        sequence: "Ctrl+Alt+Space"
+        onActivated: commandPalette.show()
     }
 
     WallpaperPicker {

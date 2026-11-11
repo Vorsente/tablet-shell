@@ -98,7 +98,7 @@ ColumnLayout {
                 spacing: parent.width * 0.06
                 Repeater {
                     model: face.isFolder && face.home.pixel ? face.entry.apps.slice(0, 4) : []
-                    // themed icons: the apps inside are round and two-toned like the rest
+                    // the apps inside the folder, as their own colourful icons
                     delegate: Item {
                         id: mini
                         required property var modelData
@@ -107,16 +107,8 @@ ColumnLayout {
                         height: width
                         Kirigami.Icon {
                             anchors.fill: parent
-                            visible: !face.home.themedIcons
-                            source: visible ? mini.icon : ""
-                        }
-                        Loader {
-                            anchors.fill: parent
-                            active: face.home.themedIcons
-                            sourceComponent: AppIcon {
-                                home: face.home
-                                source: mini.icon
-                            }
+                            source: mini.icon
+                            roundToIconSize: false
                         }
                     }
                 }

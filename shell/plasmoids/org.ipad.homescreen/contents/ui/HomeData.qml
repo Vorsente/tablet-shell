@@ -1,7 +1,8 @@
 // Data of the home screen widgets and the Today page: `tablet-tools dashboard` (weather, screen
-// time, typewriter statistics, YouTube, Claude limits; its online part is cached for 5 minutes),
-// `tablet-tools today` (Linux and Russia news, exchange rates, on this day; cached 30 minutes)
-// and the battery from sysfs. Refreshed only while the home screen is on top, and whenever it comes back.
+// time, typewriter statistics, YouTube, Claude limits, DeepSeek tokens from OpenCode; its online
+// part is cached for 5 minutes), `tablet-tools today` (Linux and Russia news, exchange rates, on this
+// day; cached 30 minutes) and the battery from sysfs. Refreshed only while the home screen is on top,
+// and whenever it comes back.
 import QtQuick
 import "Tr.js" as Tr
 
@@ -22,6 +23,8 @@ QtObject {
     readonly property var disk: online.disk || null
     readonly property var youtube: online.youtube || null
     readonly property var claude: online.claude || null
+    // DeepSeek token usage counted by OpenCode itself (no key is read or stored here)
+    readonly property var deepseek: online.deepseek || null
 
     property var today: ({})
     readonly property var linuxNews: today.linux || []
@@ -173,6 +176,18 @@ QtObject {
     }
     function bigNumber(n) {
         return Number(n || 0).toLocaleString(Tr.locale(), "f", 0);
+    }
+    // token volumes: 12,3 тыс / 1,2 млн
+    function tokenCount(n) {
+        n = Number(n || 0);
+        if (n >= 1000000) return (n / 1000000).toLocaleString(Tr.locale(), "f", 1) + Tr.t(" млн");
+        if (n >= 10000) return Math.round(n / 1000).toLocaleString(Tr.locale(), "f", 0) + Tr.t(" тыс");
+        return n.toLocaleString(Tr.locale(), "f", 0);
+    }
+    // small amounts need more digits (a fraction of a cent is still a number, not $0.00)
+    function money(n) {
+        n = Number(n || 0);
+        return "$" + n.toLocaleString(Tr.locale(), "f", n > 0 && n < 0.01 ? 4 : 2);
     }
 
     // ---- sky: sunrise / sunset and the moon (computed here, no network) ----

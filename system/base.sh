@@ -6,7 +6,7 @@ source "$(dirname "$(readlink -f "$0")")/common.sh"
 
 say "Пакеты" "Packages"
 pkg_install power-profiles-daemon bluez bluez-utils alsa-utils libinput-tools networkmanager \
-    gwenview okular haruna kate ark kcalc || true
+    gwenview okular haruna kate ark kcalc tesseract tesseract-data-eng tesseract-data-rus || true
 
 # Network: Plasma's Wi-Fi applet talks to NetworkManager. Systems set up with systemd-networkd are
 # switched over (with the iwd backend when iwd is what already holds the saved networks).
