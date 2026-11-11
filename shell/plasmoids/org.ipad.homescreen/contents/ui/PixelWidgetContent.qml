@@ -600,8 +600,8 @@ Item {
                 }
             }
             Muted {
-                visible: s && s.error && !s.today
-                text: s ? s.error : ""
+                visible: !!(s && s.error && !s.today)
+                text: s && s.error ? s.error : ""
                 wrapMode: Text.WordWrap
                 maximumLineCount: 2
                 Layout.fillWidth: true

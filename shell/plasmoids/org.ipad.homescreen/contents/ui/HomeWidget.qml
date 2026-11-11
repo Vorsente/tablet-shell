@@ -753,8 +753,8 @@ Rectangle {
             }
             Item { Layout.fillHeight: true }
             Caption {
-                visible: s && s.error && !s.today
-                text: s ? s.error : ""
+                visible: !!(s && s.error && !s.today)
+                text: s && s.error ? s.error : ""
                 color: card.red
                 wrapMode: Text.WordWrap
                 maximumLineCount: 2

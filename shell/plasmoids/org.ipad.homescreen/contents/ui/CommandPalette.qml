@@ -15,15 +15,16 @@ Item {
     property string query: ""
     property int current: 0
 
-    readonly property bool pixel: home.pixel
-    readonly property color text: home.pal.text
-    readonly property color secondary: home.pal.secondary
-    readonly property color sheet: home.pal.sheet
-    readonly property color sheetBorder: home.pal.sheetBorder
-    readonly property color fill: home.pal.fill
-    readonly property color fieldFill: home.pal.fillWeak !== undefined ? home.pal.fillWeak : home.pal.fill
-    readonly property color accent: home.pal.blue
-    readonly property string family: home.fontFamily
+    readonly property bool pixel: home.pixel === true
+    readonly property color text: home.pal && home.pal.text !== undefined ? home.pal.text : "#FFFFFF"
+    readonly property color secondary: home.pal && home.pal.secondary !== undefined ? home.pal.secondary : "#AAAAAA"
+    readonly property color sheet: home.pal && home.pal.sheet !== undefined ? home.pal.sheet : "#2B2932"
+    readonly property color sheetBorder: home.pal && home.pal.sheetBorder !== undefined ? home.pal.sheetBorder : "#53505B"
+    readonly property color fill: home.pal && home.pal.fill !== undefined ? home.pal.fill : "#49454F"
+    readonly property color fieldFill: home.pal && home.pal.fillWeak !== undefined ? home.pal.fillWeak
+                                  : home.pal && home.pal.fill !== undefined ? home.pal.fill : "#33313B"
+    readonly property color accent: home.pal && home.pal.blue !== undefined ? home.pal.blue : "#D0BCFF"
+    readonly property string family: home.fontFamily ? home.fontFamily : Qt.application.font.family
 
     function show() {
         query = "";
@@ -207,7 +208,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
-                model: palette.shown
+                model: palette.open ? palette.shown : []
                 currentIndex: palette.current
                 boundsBehavior: Flickable.StopAtBounds
                 spacing: Kirigami.Units.smallSpacing
