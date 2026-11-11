@@ -242,13 +242,15 @@ Item {
                 }
             }
 
-            // hidden widgets, to add back
+            // every widget in edit mode: tap to add, tap an added one to remove it. The list
+            // shows all kinds, not only the hidden ones, so a widget that is already on the page
+            // (or one the user is looking for) is never missing from the editor.
             Column {
-                visible: today.editing && today.hidden.length > 0
+                visible: today.editing
                 width: parent.width
                 spacing: Kirigami.Units.smallSpacing
                 Text {
-                    text: Tr.t("Добавить")
+                    text: Tr.t("Виджеты")
                     color: "white"
                     font.pixelSize: Kirigami.Units.gridUnit * 1.1
                     font.weight: Font.DemiBold
@@ -257,25 +259,31 @@ Item {
                     width: parent.width
                     spacing: Kirigami.Units.smallSpacing
                     Repeater {
-                        model: today.hidden
+                        model: today.allKinds
                         delegate: Rectangle {
                             required property string modelData
+                            readonly property bool added: today.shown.indexOf(modelData) >= 0
                             width: chip.implicitWidth + Kirigami.Units.gridUnit * 1.6
                             height: Kirigami.Units.gridUnit * 2.4
                             radius: height / 2
+                            opacity: added ? 1 : 0.62
                             color: today.home.pixel ? today.home.tone(modelData).container : today.home.pal.card
                             border.color: today.home.pixel ? "transparent" : today.home.pal.cardBorder
                             Text {
                                 id: chip
                                 anchors.centerIn: parent
-                                text: "+ " + today.names[modelData]
+                                text: (parent.added ? "✓  " : "+  ") + today.names[modelData]
                                 color: today.home.pixel ? today.home.tone(modelData).on : today.home.pal.text
                                 font.family: today.home.fontFamily
                                 font.pixelSize: Kirigami.Units.gridUnit * 0.9
                             }
                             MouseArea {
                                 anchors.fill: parent
-                                onClicked: today.save(today.shown.concat([modelData]))
+                                onClicked: if (parent.added) {
+                                    today.save(today.shown.filter(k => k !== modelData));
+                                } else {
+                                    today.save(today.shown.concat([modelData]));
+                                }
                             }
                         }
                     }
