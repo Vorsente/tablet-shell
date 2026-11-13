@@ -34,6 +34,9 @@ class Greeter : public QObject
     Q_PROPERTY(bool demo READ demo CONSTANT)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(QVariantMap config MEMBER m_config CONSTANT)
+    Q_PROPERTY(QVariantList sessions READ sessions CONSTANT)
+    Q_PROPERTY(QString sessionPath READ sessionPath NOTIFY sessionChanged)
+    Q_PROPERTY(QString sessionName READ sessionName NOTIFY sessionChanged)
 
 public:
     explicit Greeter(QObject *parent = nullptr)
@@ -52,16 +55,24 @@ public:
             m_config.insert(k, look.value(k));
         }
         look.endGroup();
+        // every wayland-sessions entry the login screen can offer
+        const QFileInfoList sessionFiles = QDir(QStringLiteral("/usr/share/wayland-sessions"))
+            .entryInfoList({QStringLiteral("*.desktop")}, QDir::Files, QDir::Name);
+        for (const QFileInfo &file : sessionFiles) {
+            QSettings desktop(file.filePath(), QSettings::IniFormat);
+            QString name = desktop.value(QStringLiteral("Name")).toString();
+            if (name.isEmpty()) {
+                name = file.completeBaseName();
+            }
+            m_sessions.append(QVariantMap{{QStringLiteral("path"), file.filePath()},
+                                          {QStringLiteral("name"), name}});
+        }
         // a session chosen in the settings app wins over the installer's default
         const QString session = m_config.value(QStringLiteral("session")).toString();
-        m_session = sessionCommand(QFile::exists(session) ? session
-                                   : cfg.value(QStringLiteral("session"), QStringLiteral("/usr/share/wayland-sessions/plasma.desktop")).toString());
-        // greetd gives the session the login VT as stdout: the wrapper (system/session-launch.sh)
-        // keeps startplasma/KWin/libseat messages off the screen, whatever session was chosen
-        const QString quiet = QStringLiteral("/usr/local/libexec/tablet-shell-session");
-        if (QFileInfo(quiet).isExecutable() && m_session.value(0) != quiet) {
-            m_session.prepend(quiet);
-        }
+        const QString chosen = QFile::exists(session)
+            ? session
+            : cfg.value(QStringLiteral("session"), QStringLiteral("/usr/share/wayland-sessions/plasma.desktop")).toString();
+        applySession(chosen);
         if (const passwd *pw = getpwnam(m_user.toLocal8Bit().constData())) {
             m_fullName = QString::fromLocal8Bit(pw->pw_gecos).section(QLatin1Char(','), 0, 0);
         }
@@ -83,6 +94,16 @@ public:
     bool demo() const
     {
         return m_demo;
+    }
+    QVariantList sessions() const { return m_sessions; }
+    QString sessionPath() const { return m_sessionPath; }
+    QString sessionName() const { return m_sessionName; }
+
+    Q_INVOKABLE void setSession(const QString &path)
+    {
+        if (path != m_sessionPath && QFile::exists(path)) {
+            applySession(path);
+        }
     }
     bool busy() const
     {
@@ -128,8 +149,34 @@ Q_SIGNALS:
     void failed(const QString &message);
     void loggedIn();
     void busyChanged();
+    void sessionChanged();
 
 private:
+    static QString displayName(const QString &path)
+    {
+        QSettings desktop(path, QSettings::IniFormat);
+        QString name = desktop.value(QStringLiteral("Name")).toString();
+        if (name.isEmpty()) {
+            name = QFileInfo(path).completeBaseName();
+            if (!name.isEmpty()) {
+                name[0] = name.at(0).toUpper();
+            }
+        }
+        return name;
+    }
+    void applySession(const QString &path)
+    {
+        m_sessionPath = path;
+        m_session = sessionCommand(path);
+        // greetd gives the session the login VT as stdout: the wrapper (system/session-launch.sh)
+        // keeps startplasma/KWin/libseat messages off the screen, whatever session was chosen
+        const QString quiet = QStringLiteral("/usr/local/libexec/tablet-shell-session");
+        if (QFileInfo(quiet).isExecutable() && m_session.value(0) != quiet) {
+            m_session.prepend(quiet);
+        }
+        m_sessionName = displayName(path);
+        Q_EMIT sessionChanged();
+    }
     // Exec= line of a wayland-sessions .desktop file, split like a shell would (no quoting needed here)
     static QStringList sessionCommand(const QString &desktopFile)
     {
@@ -224,7 +271,9 @@ private:
     QLocalSocket m_socket;
     QByteArray m_buffer;
     QString m_user, m_fullName, m_avatar, m_wallpaper, m_password;
+    QString m_sessionPath, m_sessionName;
     QStringList m_session;
+    QVariantList m_sessions;
     QVariantMap m_config;
     bool m_demo = true;
     bool m_busy = false;

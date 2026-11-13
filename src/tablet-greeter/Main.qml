@@ -11,10 +11,14 @@ LockSurface {
         readonly property string avatar: greeter.avatar
         readonly property bool busy: greeter.busy
         readonly property bool passwordless: false
+        readonly property var sessions: greeter.sessions
+        readonly property string sessionPath: greeter.sessionPath
+        readonly property string sessionName: greeter.sessionName
         signal failed(string message)
         signal succeeded()
         function login(password) { greeter.login(password); }
         function unlockNow() {}
+        function setSession(path) { greeter.setSession(path); }
         function powerOff() { greeter.powerOff(); }
         function reboot() { greeter.reboot(); }
         function suspend() { greeter.suspend(); }

@@ -51,6 +51,7 @@ Item {
     property string password: ""
     property string message: ""
     property bool touchKeyboard: osk === "always"
+    property bool sessionMenuOpen: false
 
     focus: true
     Keys.onPressed: event => {
@@ -539,6 +540,95 @@ Item {
         RoundButton { glyph: "↻"; caption: Tr.t("Перезагрузка"); onActivated: root.auth.reboot() }
         RoundButton { glyph: "⏻"; caption: Tr.t("Выключить"); onActivated: root.auth.powerOff() }
     }
+    // session chooser on the login screen: Tablet Compositor, Plasma and other wayland-sessions
+    MouseArea {
+        anchors.fill: parent
+        z: 3
+        visible: root.sessionMenuOpen
+        onClicked: root.sessionMenuOpen = false
+    }
+    Rectangle {
+        id: sessionPill
+        anchors.left: parent.left
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: root.u * 1.6
+        anchors.bottomMargin: (root.touchKeyboard ? keyboard.height + root.u * 1.2 : root.u * 2.2) + root.u * 4.2
+        width: sessionText.implicitWidth + root.u * 2.4
+        height: root.u * 2.2
+        radius: height / 2
+        color: sessionArea.pressed ? Qt.rgba(1, 1, 1, 0.38) : Qt.rgba(1, 1, 1, 0.18)
+        visible: root.unlocking && !root.leaving && root.auth.mode === "login" && root.auth.sessions.length > 1
+        z: 6
+        Text {
+            id: sessionText
+            anchors.centerIn: parent
+            text: Tr.t("Сеанс") + ": " + root.auth.sessionName
+            color: "white"
+            font.family: root.pixel ? "Noto Sans" : "Inter"
+            font.pixelSize: root.u * 0.72
+            font.weight: Font.DemiBold
+            elide: Text.ElideRight
+            width: Math.min(implicitWidth, root.width * 0.5)
+        }
+        MouseArea {
+            id: sessionArea
+            anchors.fill: parent
+            onClicked: root.sessionMenuOpen = !root.sessionMenuOpen
+        }
+    }
+    Rectangle {
+        id: sessionMenu
+        anchors.left: sessionPill.left
+        anchors.bottom: sessionPill.top
+        anchors.bottomMargin: root.u * 0.7
+        width: Math.max(sessionPill.width, root.u * 18)
+        height: root.auth.sessions.length * root.u * 2.4 + root.u * 0.8
+        radius: root.u * 0.8
+        color: Qt.rgba(0.12, 0.11, 0.15, 0.96)
+        border.width: 1
+        border.color: Qt.rgba(1, 1, 1, 0.22)
+        visible: root.sessionMenuOpen
+        z: 7
+        Column {
+            id: sessionColumn
+            anchors.fill: parent
+            anchors.margins: root.u * 0.4
+            spacing: 2
+            Repeater {
+                model: root.auth.sessions
+                delegate: Rectangle {
+                    required property var modelData
+                    width: sessionColumn.width
+                    height: root.u * 2.4
+                    radius: root.u * 0.55
+                    color: itemArea.pressed ? Qt.rgba(1, 1, 1, 0.24)
+                           : modelData.path === root.auth.sessionPath ? Qt.rgba(1, 1, 1, 0.14) : "transparent"
+                    Text {
+                        anchors.left: parent.left
+                        anchors.leftMargin: root.u * 0.7
+                        anchors.right: parent.right
+                        anchors.rightMargin: root.u * 0.7
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: modelData.name
+                        color: "white"
+                        font.family: root.pixel ? "Noto Sans" : "Inter"
+                        font.pixelSize: root.u * 0.72
+                        font.weight: modelData.path === root.auth.sessionPath ? Font.DemiBold : Font.Normal
+                        elide: Text.ElideRight
+                    }
+                    MouseArea {
+                        id: itemArea
+                        anchors.fill: parent
+                        onClicked: {
+                            root.auth.setSession(modelData.path);
+                            root.sessionMenuOpen = false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     RoundButton {
         anchors.left: parent.left
         anchors.bottom: parent.bottom
