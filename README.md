@@ -412,6 +412,9 @@ Inter, Roboto Flex and Cousine fonts · [LazyVim](https://www.lazyvim.org) · we
   their own colours.
 - **Faster:** measured icon shapes are cached between launches, search no longer asks the keyboard
   four times a second, and the two OpenCode stats calls run in parallel.
+- **Session choice on the login screen:** the login panel lists the installed Wayland sessions;
+  after installing `tablet-compositor`, **Tablet Compositor** appears there. The choice applies to
+  the next login; the default stays in Settings → Login screen.
 
 **October 2026**
 
